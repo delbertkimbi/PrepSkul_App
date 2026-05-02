@@ -54,6 +54,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   int _sessionCount = 0;
   bool _isOffline = false;
   final ConnectivityService _connectivity = ConnectivityService();
+  bool _isLoadingUserInfoRequestInFlight = false;
+  bool _isCheckingOnboardingInFlight = false;
+  DateTime? _lastUserInfoLoadAt;
+  DateTime? _lastOnboardingCheckAt;
+  static const Duration _homeRefreshCooldown = Duration(seconds: 20);
 
   @override
   void initState() {
@@ -67,14 +72,16 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh data when screen becomes visible again
-    // This ensures progress is updated after saving
+    // didChangeDependencies can fire often due to inherited updates.
+    // Throttle expensive refreshes to avoid repeated API churn/log spam.
+    final now = DateTime.now();
+    final recentlyRefreshed = _lastUserInfoLoadAt != null &&
+        now.difference(_lastUserInfoLoadAt!) < _homeRefreshCooldown;
+    if (recentlyRefreshed) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _checkOnboardingStatus();
-        // Also reload user info to get latest progress
-        _loadUserInfo();
-      }
+      if (!mounted) return;
+      _checkOnboardingStatus();
+      _loadUserInfo();
     });
   }
 
@@ -106,6 +113,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Future<void> _checkOnboardingStatus() async {
+    final now = DateTime.now();
+    if (_isCheckingOnboardingInFlight) return;
+    if (_lastOnboardingCheckAt != null &&
+        now.difference(_lastOnboardingCheckAt!) < _homeRefreshCooldown) {
+      return;
+    }
+    _isCheckingOnboardingInFlight = true;
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
@@ -117,8 +131,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _onboardingSkipped = skipped;
         _onboardingComplete = complete;
       });
+      _lastOnboardingCheckAt = DateTime.now();
     } catch (e) {
       LogService.warning('Error checking onboarding status: $e');
+    } finally {
+      _isCheckingOnboardingInFlight = false;
     }
   }
 
@@ -197,6 +214,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Future<void> _loadUserInfo() async {
+    final now = DateTime.now();
+    if (_isLoadingUserInfoRequestInFlight) return;
+    if (_lastUserInfoLoadAt != null &&
+        now.difference(_lastUserInfoLoadAt!) < _homeRefreshCooldown) {
+      return;
+    }
+    _isLoadingUserInfoRequestInFlight = true;
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
@@ -313,6 +337,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _sessionCount = sessionCount;
         _isLoading = false;
       });
+      _lastUserInfoLoadAt = DateTime.now();
 
       // LinkedIn-style nudge: ask on home once user lands (avoid onboarding screens).
       if (mounted) {
@@ -337,6 +362,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       safeSetState(() {
         _isLoading = false;
       });
+    } finally {
+      _isLoadingUserInfoRequestInFlight = false;
     }
   }
 

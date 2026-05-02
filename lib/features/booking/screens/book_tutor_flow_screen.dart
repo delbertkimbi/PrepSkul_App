@@ -245,6 +245,10 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     }
     
     if (nextStep < _totalSteps) {
+      LogService.info(
+        '📍 Booking flow next: current=$_currentStep target=$nextStep '
+        'location=$_selectedLocation total=$_totalSteps',
+      );
       safeSetState(() {
         _currentStep = nextStep;
         // Track when review step is reached for timing check
@@ -252,17 +256,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           _reviewStepReachedAt = DateTime.now();
         }
       });
-      // Use jumpToPage for immediate navigation when skipping steps to avoid showing empty step
-      if (wasSkipping) {
-        // Direct jump when skipping flexible step
-        _pageController.jumpToPage(nextStep);
-      } else {
-        _pageController.animateToPage(
-          nextStep,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
+      _goToStep(nextStep, immediate: wasSkipping);
     }
   }
 
@@ -280,21 +274,32 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         LogService.info('📍 Skipping flexible step ($flexibleStep) on back - location is $_selectedLocation, going to location ($locationStep)');
       }
       
+      LogService.info(
+        '📍 Booking flow back: current=$_currentStep target=$prevStep '
+        'location=$_selectedLocation total=$_totalSteps',
+      );
       safeSetState(() {
         _currentStep = prevStep;
       });
-      // Use jumpToPage for immediate navigation when skipping steps to avoid showing empty step
-      if (wasSkipping) {
-        // Direct jump when skipping flexible step
-        _pageController.jumpToPage(prevStep);
+      _goToStep(prevStep, immediate: wasSkipping);
+    }
+  }
+
+  void _goToStep(int targetStep, {bool immediate = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) return;
+      final pageCount = _buildPageViewChildren().length;
+      final clamped = targetStep.clamp(0, pageCount - 1);
+      if (immediate) {
+        _pageController.jumpToPage(clamped);
       } else {
         _pageController.animateToPage(
-          prevStep,
+          clamped,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
         );
       }
-    }
+    });
   }
 
   double _getProgressValue() {
@@ -417,54 +422,58 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
     // Step 4 (or 3 if not showing "Who is this for?"): Location Selector + KYC notice when onsite/hybrid
     children.add(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          LocationSelector(
-            tutor: widget.tutor,
-            initialLocation: _selectedLocation,
-            initialAddress: _onsiteAddress,
-            initialLocationDescription: _locationDescription,
-            onLocationSelected: (location, address, locationDescription) {
-              safeSetState(() {
-                _selectedLocation = location;
-                _onsiteAddress = address;
-                _locationDescription = locationDescription;
-                if (location != 'hybrid') {
-                  _sessionLocations.clear();
-                  _locationDetails.clear();
-                }
-              });
-            },
-          ),
-          if (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') ...[
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline, size: 20, color: AppTheme.primaryColor),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'If you book a tutor for onsite sessions, you\'ll be required to complete identity verification (KYC) when booking your first onsite session—after the tutor accepts your request and before payment.',
-                        style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textDark, height: 1.4),
+      SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            LocationSelector(
+              tutor: widget.tutor,
+              initialLocation: _selectedLocation,
+              initialAddress: _onsiteAddress,
+              initialLocationDescription: _locationDescription,
+              embeddedInParentScroll: true,
+              onLocationSelected: (location, address, locationDescription) {
+                safeSetState(() {
+                  _selectedLocation = location;
+                  _onsiteAddress = address;
+                  _locationDescription = locationDescription;
+                  if (location != 'hybrid') {
+                    _sessionLocations.clear();
+                    _locationDetails.clear();
+                  }
+                });
+              },
+            ),
+            if (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') ...[
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline, size: 20, color: AppTheme.primaryColor),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'If you book a tutor for onsite sessions, you\'ll be required to complete identity verification (KYC) when booking your first onsite session—after the tutor accepts your request and before payment.',
+                          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textDark, height: 1.4),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
 
@@ -1308,6 +1317,18 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final pageCount = _buildPageViewChildren().length;
+    if (_currentStep >= pageCount && pageCount > 0) {
+      // Recover from any transient step/index drift to prevent blank pages.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        safeSetState(() {
+          _currentStep = pageCount - 1;
+        });
+        _goToStep(pageCount - 1, immediate: true);
+      });
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -1380,28 +1401,27 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         child: SafeArea(
           child: Row(
             children: [
-              if (_currentStep > 0)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _previousStep,
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: AppTheme.primaryColor),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _currentStep > 0 ? _previousStep : () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: AppTheme.primaryColor),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      'Back',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primaryColor,
-                      ),
+                  ),
+                  child: Text(
+                    'Back',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
                     ),
                   ),
                 ),
-              if (_currentStep > 0) const SizedBox(width: 12),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 flex: 2,
                 child: ElevatedButton(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// PrepSkul VA (Virtual Assistant) avatar shown during sessions to indicate monitoring.
@@ -17,7 +16,8 @@ class PrepSkulVAAvatar extends StatefulWidget {
 class _PrepSkulVAAvatarState extends State<PrepSkulVAAvatar>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  late Animation<double> _ringOpacityAnimation;
+  late Animation<double> _ringWidthAnimation;
 
   @override
   void initState() {
@@ -26,7 +26,10 @@ class _PrepSkulVAAvatarState extends State<PrepSkulVAAvatar>
       vsync: this,
       duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
+    _ringOpacityAnimation = Tween<double>(begin: 0.35, end: 0.95).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _ringWidthAnimation = Tween<double>(begin: 1.4, end: 2.8).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
@@ -43,30 +46,26 @@ class _PrepSkulVAAvatarState extends State<PrepSkulVAAvatar>
     return Semantics(
       label: 'PrepSkul virtual assistant monitoring',
       child: AnimatedBuilder(
-        animation: _pulseAnimation,
+        animation: _pulseController,
         builder: (context, child) {
-          return Container(
-            width: size + 16,
-            height: size + 16,
+          return Stack(
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [
-                // Dark ring so pulse is visible on light backgrounds
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 14,
-                  spreadRadius: 3,
+            children: [
+              SizedBox(
+                width: size,
+                height: size,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppTheme.accentBlue.withOpacity(_ringOpacityAnimation.value),
+                      width: _ringWidthAnimation.value,
+                    ),
+                  ),
                 ),
-                // Bright pulse (opacity 0.4–1.0, larger blur) for light and dark
-                BoxShadow(
-                  color: Colors.white.withOpacity(_pulseAnimation.value),
-                  blurRadius: 16,
-                  spreadRadius: 4,
-                ),
-              ],
-            ),
-            child: child,
+              ),
+              child!,
+            ],
           );
         },
         child: Container(
@@ -75,10 +74,6 @@ class _PrepSkulVAAvatarState extends State<PrepSkulVAAvatar>
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: AppTheme.primaryDark,
-            border: Border.all(
-              color: AppTheme.accentBlue.withOpacity(0.6),
-              width: 2,
-            ),
           ),
           child: ClipOval(
             child: Image.asset(

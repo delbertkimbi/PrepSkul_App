@@ -11,6 +11,32 @@ class SessionProfileService {
   // Cache for profile data
   final Map<String, Map<String, dynamic>> _profileCache = {};
 
+  /// Resolve tutor auth user id for a session (individual or trial row).
+  Future<String?> getTutorUserIdForSession(String sessionId) async {
+    try {
+      final session = await SupabaseService.client
+          .from('individual_sessions')
+          .select('tutor_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (session != null) {
+        return session['tutor_id'] as String?;
+      }
+
+      final trialSession = await SupabaseService.client
+          .from('trial_sessions')
+          .select('tutor_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      return trialSession?['tutor_id'] as String?;
+    } catch (e) {
+      LogService.warning('[SESSION] getTutorUserIdForSession failed: $e');
+      return null;
+    }
+  }
+
   /// Get both tutor and learner profiles for a session
   /// Returns: {'tutor': {...}, 'learner': {...}}
   Future<Map<String, Map<String, dynamic>?>> getSessionParticipants(String sessionId) async {

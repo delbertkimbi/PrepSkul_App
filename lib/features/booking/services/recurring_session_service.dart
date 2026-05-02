@@ -285,6 +285,163 @@ class RecurringSessionService {
     }
   }
 
+  /// End a recurring booking and cancel all future unstarted session instances.
+  ///
+  /// Can be triggered by tutor, student, or parent (learner_id holder).
+  /// Returns a summary payload with the number of future sessions cancelled.
+  static Future<Map<String, dynamic>> endRecurringSession({
+    required String recurringSessionId,
+    required String endedByUserId,
+    String terminationMode = 'end_now', // end_now | complete_paid_sessions | admin_refund_review
+    String? reason,
+  }) async {
+    try {
+      final recurring = await _supabase
+          .from('recurring_sessions')
+          .select(
+            'id, tutor_id, learner_id, status, subject, tutor_name, learner_name, learner_type',
+          )
+          .eq('id', recurringSessionId)
+          .maybeSingle();
+
+      if (recurring == null) {
+        throw Exception('Recurring booking not found.');
+      }
+
+      final tutorId = recurring['tutor_id'] as String?;
+      final learnerId = recurring['learner_id'] as String?;
+      final status = (recurring['status'] as String? ?? '').toLowerCase();
+      final subject = recurring['subject'] as String? ?? 'Tutoring Session';
+      final tutorName = recurring['tutor_name'] as String? ?? 'Tutor';
+      final learnerName = recurring['learner_name'] as String? ?? 'Student';
+      final learnerType = recurring['learner_type'] as String? ?? 'student';
+
+      if (tutorId == null || learnerId == null) {
+        throw Exception('Recurring booking has missing participants.');
+      }
+
+      if (endedByUserId != tutorId && endedByUserId != learnerId) {
+        throw Exception('You do not have permission to end this recurring booking.');
+      }
+
+      if (status == 'cancelled' || status == 'completed') {
+        throw Exception('Recurring booking is already ended.');
+      }
+
+      final today = DateTime.now();
+      final todayIso = DateTime(today.year, today.month, today.day)
+          .toIso8601String()
+          .split('T')
+          .first;
+
+      final futureRowsRaw = await _supabase
+          .from('individual_sessions')
+          .select('id, status')
+          .eq('recurring_session_id', recurringSessionId)
+          .gte('scheduled_date', todayIso)
+          .inFilter('status', ['scheduled', 'payment_pending']);
+
+      final futureRows = (futureRowsRaw as List).cast<Map<String, dynamic>>();
+      final futureSessionIds = futureRows
+          .map((row) => row['id'] as String?)
+          .whereType<String>()
+          .toList();
+
+      final paidSessionIds = <String>{};
+      if (futureSessionIds.isNotEmpty) {
+        try {
+          final paidRows = await _supabase
+              .from('session_payments')
+              .select('session_id')
+              .inFilter('session_id', futureSessionIds)
+              .eq('payment_status', 'paid');
+          for (final row in (paidRows as List).cast<Map<String, dynamic>>()) {
+            final sid = row['session_id'] as String?;
+            if (sid != null) paidSessionIds.add(sid);
+          }
+        } catch (e) {
+          LogService.warning('Could not evaluate paid upcoming sessions: $e');
+        }
+      }
+
+      final cancellableSessionIds = futureSessionIds.where((id) {
+        if (terminationMode == 'complete_paid_sessions' ||
+            terminationMode == 'admin_refund_review') {
+          return !paidSessionIds.contains(id);
+        }
+        return true;
+      }).toList();
+      final cancelledFutureCount = cancellableSessionIds.length;
+      final paidSessionsPreserved = futureSessionIds.length - cancelledFutureCount;
+
+      await _supabase.from('recurring_sessions').update({
+        'status': 'cancelled',
+        'end_date': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', recurringSessionId);
+
+      if (cancelledFutureCount > 0) {
+        await _supabase
+            .from('individual_sessions')
+            .update({
+              'status': 'cancelled',
+              'cancellation_reason':
+                  reason?.trim().isNotEmpty == true
+                      ? reason!.trim()
+                      : 'Recurring booking ended',
+              'cancelled_by': endedByUserId,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .inFilter('id', cancellableSessionIds);
+      }
+
+      final endedByRole = endedByUserId == tutorId
+          ? 'tutor'
+          : (learnerType == 'parent' ? 'parent' : 'student');
+      final endedByName = endedByUserId == tutorId ? tutorName : learnerName;
+      final recipientId = endedByUserId == tutorId ? learnerId : tutorId;
+
+      await NotificationHelperService.notifyRecurringSessionEnded(
+        recipientUserId: recipientId,
+        recurringSessionId: recurringSessionId,
+        endedByName: endedByName,
+        endedByRole: endedByRole,
+        subject: subject,
+        reason: reason,
+        affectedFutureSessions: cancelledFutureCount,
+      );
+
+      if (terminationMode == 'admin_refund_review' ||
+          terminationMode == 'complete_paid_sessions') {
+        await NotificationHelperService.notifyAdminsAboutRecurringQuitRequest(
+          recurringSessionId: recurringSessionId,
+          actorUserId: endedByUserId,
+          actorName: endedByName,
+          actorRole: endedByRole,
+          subject: subject,
+          requestedOutcome: terminationMode,
+          reason: reason,
+          paidSessionsRemaining: paidSessionsPreserved,
+        );
+      }
+
+      LogService.success(
+        'Recurring booking ended: $recurringSessionId (future sessions cancelled: $cancelledFutureCount)',
+      );
+
+      return {
+        'recurring_session_id': recurringSessionId,
+        'cancelled_future_sessions': cancelledFutureCount,
+        'paid_sessions_preserved': paidSessionsPreserved,
+        'ended_by_role': endedByRole,
+        'termination_mode': terminationMode,
+      };
+    } catch (e) {
+      LogService.error('Error ending recurring session: $e');
+      rethrow;
+    }
+  }
+
   /// Generate individual session instances from a recurring session
   ///
   /// Creates individual sessions for the next [weeksAhead] weeks

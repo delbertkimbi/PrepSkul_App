@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -77,6 +78,111 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   bool get _isOnsiteSession {
     final loc = (_sessionData?['location'] as String?)?.toLowerCase().trim();
     return loc == 'onsite' || loc == 'hybrid';
+  }
+
+  /// Neumorphic raised plate (soft light + soft dark shadow).
+  static const List<BoxShadow> _neuRaised = [
+    BoxShadow(
+      color: Color(0xFFFFFFFF),
+      offset: Offset(-2, -2),
+      blurRadius: 6,
+    ),
+    BoxShadow(
+      color: Color(0x14000000),
+      offset: Offset(3, 3),
+      blurRadius: 8,
+    ),
+  ];
+
+  static const List<BoxShadow> _neuInsetHint = [
+    BoxShadow(
+      color: Color(0x12000000),
+      offset: Offset(2, 2),
+      blurRadius: 4,
+    ),
+    BoxShadow(
+      color: Color(0xCCFFFFFF),
+      offset: Offset(-2, -2),
+      blurRadius: 4,
+    ),
+  ];
+
+  String get _stepTitleLabel {
+    switch (_currentStep) {
+      case 0:
+        return 'Rating';
+      case 1:
+        return 'Review';
+      case 2:
+        return 'Details';
+      default:
+        return '';
+    }
+  }
+
+  Widget _buildStepEyebrow() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        'Step ${_currentStep + 1} of 3 · $_stepTitleLabel',
+        style: GoogleFonts.poppins(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.6,
+          color: AppTheme.textLight,
+        ),
+      ),
+    );
+  }
+
+  TextStyle get _questionStyle => GoogleFonts.poppins(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
+        color: AppTheme.primaryDark,
+      );
+
+  TextStyle get _helperStyle => GoogleFonts.poppins(
+        fontSize: 12,
+        height: 1.4,
+        color: AppTheme.textMedium,
+      );
+
+  TextStyle get _fieldLabelStyle => GoogleFonts.poppins(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: AppTheme.textDark,
+      );
+
+  InputDecoration _neuInputDecoration(String hint, {int maxLines = 3}) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textLight),
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: InputBorder.none,
+      counterText: '',
+    );
+  }
+
+  Widget _neuMultilineField({
+    required TextEditingController controller,
+    required String hint,
+    int maxLines = 3,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.neutral50,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: _neuInsetHint,
+      ),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textDark, height: 1.45),
+        decoration: _neuInputDecoration(hint, maxLines: maxLines),
+      ),
+    );
   }
 
   @override
@@ -268,9 +374,13 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       if (mounted) {
         final raw = e.toString();
         final isFeedbackUnavailable = raw.contains('Feedback system is not available') ||
-            raw.contains('session_feedback');
+            raw.contains('PGRST205') ||
+            raw.contains('42P01') ||
+            raw.contains('Could not find the table');
         final userMessage = isFeedbackUnavailable
-            ? 'Feedback is temporarily unavailable. Please try again later.'
+            ? (kDebugMode
+                ? 'Feedback table missing on Supabase. Apply migration 022_normal_sessions_tables.sql (session_feedback), then retry.'
+                : 'We couldn\'t save your feedback. Please try again later or contact support.')
             : 'Unable to submit feedback right now. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -370,124 +480,144 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       },
       child: Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                PhosphorIcons.chatCircle(),
-                size: 18,
-                color: AppTheme.primaryColor,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              _isTrial && !_isTutor ? 'How was your trial?' : 'Session Feedback',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
-              ),
-            ),
-          ],
+        title: Text(
+          _isTrial && !_isTutor ? 'How was your trial?' : 'Session feedback',
+          style: GoogleFonts.poppins(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.primaryDark,
+          ),
         ),
-        backgroundColor: Colors.white,
+        centerTitle: true,
+        backgroundColor: AppTheme.surfaceColor,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
           onPressed: _exitFeedbackFlow,
         ),
       ),
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: AppTheme.surfaceColor,
       body: Column(
         children: [
           // Session Context Header
           if (_sessionData != null) _buildSessionContextHeader(),
-          // Progress Indicator
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            color: Colors.white,
-            child: Row(
-              children: [
-                _buildProgressStep(0, 'Rating'),
-                _buildProgressLine(0),
-                _buildProgressStep(1, 'Review'),
-                _buildProgressLine(1),
-                _buildProgressStep(2, 'Details'),
-              ],
+          // Progress — neumorphic plate
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppTheme.neutral50,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: _neuRaised,
+              ),
+              child: Row(
+                children: [
+                  _buildProgressStep(0, 'Rating'),
+                  _buildProgressLine(0),
+                  _buildProgressStep(1, 'Review'),
+                  _buildProgressLine(1),
+                  _buildProgressStep(2, 'Details'),
+                ],
+              ),
             ),
           ),
           // Content
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
               child: _buildStepContent(),
             ),
           ),
-          // Navigation Buttons
+          // Navigation — soft depth
           Container(
-            padding: const EdgeInsets.all(20),
-            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
             child: SafeArea(
               child: Row(
                 children: [
                   if (_currentStep > 0)
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: _previousStep,
-                        style: OutlinedButton.styleFrom(
+                      child: InkWell(
+                        onTap: _isSubmitting ? null : _previousStep,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(color: AppTheme.primaryColor),
-                        ),
-                        child: Text(
-                          'Back',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryColor,
+                          decoration: BoxDecoration(
+                            color: AppTheme.neutral50,
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: _neuRaised,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            'Back',
+                            style: GoogleFonts.poppins(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryDark,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   if (_currentStep > 0) const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: _currentStep == 2
+                    child: InkWell(
+                      onTap: _currentStep == 2
                           ? (_isSubmitting ? null : _submitFeedback)
                           : _nextStep,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        minimumSize: const Size(double.infinity, 56),
-                        elevation: 2,
-                        shadowColor: AppTheme.primaryColor.withOpacity(0.3),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              _currentStep == 2 ? 'Submit' : 'Next',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              AppTheme.primaryColor,
+                              AppTheme.primaryColor.withOpacity(0.92),
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withOpacity(0.35),
+                              offset: const Offset(3, 4),
+                              blurRadius: 10,
                             ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor:
+                                      AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Text(
+                                _currentStep == 2 ? 'Submit' : 'Next',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
                     ),
                   ),
                 ],
@@ -503,51 +633,61 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   Widget _buildProgressStep(int step, String label) {
     final isActive = _currentStep == step;
     final isCompleted = _currentStep > step;
+    final inactiveNeu = !isActive && !isCompleted;
     return Expanded(
       child: Column(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
-              color: isCompleted
-                  ? AppTheme.primaryColor
-                  : isActive
-                      ? AppTheme.primaryColor
-                      : Colors.grey[300],
-              shape: BoxShape.circle,
-              boxShadow: isActive || isCompleted
-                  ? [
-                      BoxShadow(
-                        color: AppTheme.primaryColor.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
+              color: inactiveNeu ? AppTheme.neutral50 : null,
+              gradient: !inactiveNeu
+                  ? LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppTheme.primaryColor,
+                        AppTheme.primaryColor.withOpacity(0.88),
+                      ],
+                    )
                   : null,
+              shape: BoxShape.circle,
+              boxShadow: inactiveNeu
+                  ? _neuInsetHint
+                  : [
+                      BoxShadow(
+                        color: AppTheme.primaryColor.withOpacity(0.28),
+                        blurRadius: 8,
+                        offset: const Offset(2, 3),
+                      ),
+                    ],
             ),
             child: Center(
               child: isCompleted
-                  ? Icon(PhosphorIcons.check(), color: Colors.white, size: 18)
+                  ? Icon(PhosphorIcons.check(), color: Colors.white, size: 16)
                   : Text(
                       '${step + 1}',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: isActive ? Colors.white : Colors.grey[600],
+                        color: isActive ? Colors.white : AppTheme.textMedium,
                       ),
                     ),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
-              fontSize: 11,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+              fontSize: 10,
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
               color: isActive || isCompleted
                   ? AppTheme.primaryColor
-                  : Colors.grey[600],
+                  : AppTheme.textLight,
             ),
           ),
         ],
@@ -576,16 +716,15 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   }
 
   Widget _buildStepContent() {
-    switch (_currentStep) {
-      case 0:
-        return _buildRatingStep();
-      case 1:
-        return _buildReviewStep();
-      case 2:
-        return _buildDetailsStep();
-      default:
-        return _buildRatingStep();
-    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepEyebrow(),
+        if (_currentStep == 0) _buildRatingStep(),
+        if (_currentStep == 1) _buildReviewStep(),
+        if (_currentStep == 2) _buildDetailsStep(),
+      ],
+    );
   }
 
   Widget _buildRatingStep() {
@@ -607,36 +746,35 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       children: [
         Text(
           ratingTitle,
-          style: GoogleFonts.poppins(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textDark,
-          ),
+          style: _questionStyle,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           ratingSubtitle,
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            color: AppTheme.textMedium,
-          ),
+          style: _helperStyle,
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 28),
         Center(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(5, (index) {
               final rating = index + 1;
+              final filled = (_selectedRating ?? 0) >= rating;
               return GestureDetector(
                 onTap: () => safeSetState(() => _selectedRating = rating),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  margin: const EdgeInsets.symmetric(horizontal: 5),
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.neutral50,
+                    shape: BoxShape.circle,
+                    boxShadow: filled ? _neuInsetHint : _neuRaised,
+                  ),
                   child: Icon(
                     Icons.star_rounded,
-                    size: 40,
-                    color: (_selectedRating ?? 0) >= rating
-                        ? AppTheme.softYellow
-                        : Colors.grey[300],
+                    size: 34,
+                    color: filled ? AppTheme.softYellow : AppTheme.textLight.withOpacity(0.45),
                   ),
                 ),
               );
@@ -667,37 +805,18 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         children: [
           Text(
             'Session content summary',
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
+            style: _questionStyle,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             'Document what topics and concepts were taught in this session.',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppTheme.textMedium,
-            ),
+            style: _helperStyle,
           ),
-          const SizedBox(height: 24),
-          TextField(
+          const SizedBox(height: 16),
+          _neuMultilineField(
             controller: _whatWasTaughtController,
+            hint: 'e.g. Quadratic equations, factoring, practice problems…',
             maxLines: 5,
-            decoration: InputDecoration(
-              hintText: 'Example: Covered quadratic equations, factoring methods, and solved 5 practice problems...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
         ],
       );
@@ -709,46 +828,23 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         children: [
           Text(
             'How did your child respond?',
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
+            style: _questionStyle,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             'Share your observations about your child\'s engagement and response to this session.',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppTheme.textMedium,
-            ),
+            style: _helperStyle,
           ),
-          const SizedBox(height: 24),
-          TextField(
+          const SizedBox(height: 16),
+          _neuMultilineField(
             controller: _childResponseController,
+            hint: 'e.g. Engaged, asked questions, clearer on the topic…',
             maxLines: 4,
-            decoration: InputDecoration(
-              hintText: 'Example: My child seemed engaged and asked good questions. They understood the concepts better...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           Text(
             'How engaged was your child? (1-5)',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
           Row(
@@ -800,21 +896,14 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         children: [
           Text(
             'Would you continue lessons with this tutor?',
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
+            style: _questionStyle,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Your feedback helps us match you with the right tutor.',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppTheme.textMedium,
-            ),
+            'Quick tap — then add a sentence or two if you like.',
+            style: _helperStyle,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
           Row(
             children: [
               Expanded(
@@ -824,7 +913,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
                   () => safeSetState(() => _wouldContinueLessonsChoice = 1),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: _buildThreeOptionButton(
                   'No',
@@ -832,7 +921,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
                   () => safeSetState(() => _wouldContinueLessonsChoice = 0),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: _buildThreeOptionButton(
                   'Not sure',
@@ -842,59 +931,27 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
           Text(
-            'What did you like most?',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            'What stood out positively?',
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
-          TextField(
+          _neuMultilineField(
             controller: _whatWentWellController,
+            hint: 'e.g. Clear explanations, patient pace…',
             maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Example: Clear explanations, patient teaching style...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Text(
-            'Anything we could improve?',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            'What could be better next time?',
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
-          TextField(
+          _neuMultilineField(
             controller: _whatCouldImproveController,
+            hint: 'e.g. More practice, slower examples…',
             maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Example: More practice problems, slower pace...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
         ],
       );
@@ -906,21 +963,14 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       children: [
         Text(
           'Did you achieve your learning goals?',
-          style: GoogleFonts.poppins(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textDark,
-          ),
+          style: _questionStyle,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           'Help us understand your session experience.',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            color: AppTheme.textMedium,
-          ),
+          style: _helperStyle,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 18),
         Row(
           children: [
             Expanded(
@@ -948,14 +998,10 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         Text(
           'Would you recommend this tutor?',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
+          style: _fieldLabelStyle,
         ),
         const SizedBox(height: 8),
         Row(
@@ -976,57 +1022,30 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         children: [
           Text(
             'Learner progress & next steps',
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
+            style: _questionStyle,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             'Track learner progress and plan ahead.',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppTheme.textMedium,
-            ),
+            style: _helperStyle,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           // Learner Progress
           Text(
             'Specific progress observations',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
-          TextField(
+          _neuMultilineField(
             controller: _learnerProgressController,
+            hint: 'e.g. Strong on algebra basics; needs word-problem practice…',
             maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Example: Student showed strong understanding of algebra basics, needs more practice with word problems...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           // Student Engagement
           Text(
             'How engaged was the learner? (1-5)',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
           Row(
@@ -1042,13 +1061,22 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
                   decoration: BoxDecoration(
                     color: _studentEngagement == engagement
                         ? AppTheme.primaryColor
-                        : Colors.white,
+                        : AppTheme.neutral50,
                     shape: BoxShape.circle,
+                    boxShadow: _studentEngagement == engagement
+                        ? [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withOpacity(0.25),
+                              blurRadius: 8,
+                              offset: const Offset(2, 3),
+                            ),
+                          ]
+                        : _neuRaised,
                     border: Border.all(
                       color: _studentEngagement == engagement
                           ? AppTheme.primaryColor
-                          : AppTheme.softBorder,
-                      width: 2,
+                          : Colors.transparent,
+                      width: _studentEngagement == engagement ? 2 : 0,
                     ),
                   ),
                   child: Center(
@@ -1067,89 +1095,41 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
               );
             }),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           // Homework Assigned
           Text(
             'Homework or assignments given',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
-          TextField(
+          _neuMultilineField(
             controller: _homeworkAssignedController,
+            hint: 'e.g. Exercises 1–10 p.45, review ch.3…',
             maxLines: 2,
-            decoration: InputDecoration(
-              hintText: 'Example: Complete exercises 1-10 on page 45, review chapter 3...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           // Next Focus Areas
           Text(
             'What to focus on next session',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
-          TextField(
+          _neuMultilineField(
             controller: _nextFocusAreasController,
+            hint: 'e.g. Quadratics, graphing, timed practice…',
             maxLines: 2,
-            decoration: InputDecoration(
-              hintText: 'Example: Continue with quadratic equations, introduce graphing, practice problem-solving...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           // Concerns
           Text(
             'Any concerns or areas needing attention?',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
-          TextField(
+          _neuMultilineField(
             controller: _concernsController,
+            hint: 'e.g. Needs pacing support, confidence…',
             maxLines: 2,
-            decoration: InputDecoration(
-              hintText: 'Example: Student seems to struggle with time management, may need extra support...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
         ],
       );
@@ -1163,21 +1143,14 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           children: [
             Text(
               'Would you book regular sessions with this tutor?',
-              style: GoogleFonts.poppins(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textDark,
-              ),
+              style: _questionStyle,
             ),
             const SizedBox(height: 8),
             Text(
               'Your feedback helps us match your child with the right tutor.',
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: AppTheme.textMedium,
-              ),
+              style: _helperStyle,
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 18),
             Row(
               children: [
                 Expanded(
@@ -1214,29 +1187,18 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         children: [
           Text(
             'Additional feedback',
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
+            style: _questionStyle,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             'Help us understand your experience and improve.',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppTheme.textMedium,
-            ),
+            style: _helperStyle,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
           // Tutor Communication
           Text(
             'Did the tutor communicate clearly about your child\'s progress?',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
           Row(
@@ -1383,59 +1345,32 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         children: [
           Text(
             'Additional details',
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
+            style: _questionStyle,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             'Share more about your trial experience.',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: AppTheme.textMedium,
-            ),
+            style: _helperStyle,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Text(
             'What did you learn?',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
-          TextField(
+          _neuMultilineField(
             controller: _whatLearnedController,
+            hint: 'e.g. Algebra basics, strategies you can reuse…',
             maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Example: Basic algebra concepts, problem-solving strategies...',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-            ),
           ),
           if (_isOnsiteSession) ...[
             const SizedBox(height: 20),
             _buildOnsiteSessionTookPlaceSection(),
           ],
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           Text(
             'How confident do you feel about the topic? (1-5)',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+            style: _fieldLabelStyle,
           ),
           const SizedBox(height: 8),
           Row(
@@ -1451,13 +1386,22 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
                   decoration: BoxDecoration(
                     color: _confidenceLevel == confidence
                         ? AppTheme.primaryColor
-                        : Colors.white,
+                        : AppTheme.neutral50,
                     shape: BoxShape.circle,
+                    boxShadow: _confidenceLevel == confidence
+                        ? [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withOpacity(0.25),
+                              blurRadius: 8,
+                              offset: const Offset(2, 3),
+                            ),
+                          ]
+                        : _neuRaised,
                     border: Border.all(
                       color: _confidenceLevel == confidence
                           ? AppTheme.primaryColor
-                          : AppTheme.softBorder,
-                      width: 2,
+                          : Colors.transparent,
+                      width: _confidenceLevel == confidence ? 2 : 0,
                     ),
                   ),
                   child: Center(
@@ -1486,103 +1430,87 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       children: [
         Text(
           'Additional feedback',
-          style: GoogleFonts.poppins(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textDark,
-          ),
+          style: _questionStyle,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           'Share what worked and what could be improved.',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            color: AppTheme.textMedium,
-          ),
+          style: _helperStyle,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 18),
         if (_isOnsiteSession) ...[
           _buildOnsiteSessionTookPlaceSection(),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
         ],
         Text(
           'What went well?',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
+          style: _fieldLabelStyle,
         ),
         const SizedBox(height: 8),
-        TextField(
+        _neuMultilineField(
           controller: _whatWentWellController,
+          hint: 'e.g. Clear explanations, helpful examples…',
           maxLines: 3,
-          decoration: InputDecoration(
-            hintText: 'Example: Clear explanations, helpful examples, patient teaching style...',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.softBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-          ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         // What Could Improve
         Text(
           'What could improve?',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
+          style: _fieldLabelStyle,
         ),
         const SizedBox(height: 8),
-        TextField(
+        _neuMultilineField(
           controller: _whatCouldImproveController,
+          hint: 'e.g. More practice, slower pace on harder parts…',
           maxLines: 3,
-          decoration: InputDecoration(
-            hintText: 'Example: More practice problems, slower pace on difficult topics...',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.softBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-          ),
         ),
       ],
     );
   }
 
   Widget _buildThreeOptionButton(String label, bool isSelected, VoidCallback onTap) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        side: BorderSide(
-          color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
-          width: isSelected ? 2 : 1,
-        ),
-        backgroundColor: isSelected
-            ? AppTheme.primaryColor.withOpacity(0.1)
-            : Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.poppins(
-          fontSize: 13,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-          color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppTheme.primaryColor.withOpacity(0.12)
+                : AppTheme.neutral50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryColor.withOpacity(0.45)
+                  : Colors.transparent,
+              width: 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: AppTheme.primaryColor.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(2, 3),
+                    ),
+                  ]
+                : _neuRaised,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+            ),
+          ),
         ),
       ),
     );
@@ -1590,25 +1518,44 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
 
   Widget _buildYesNoButton(bool yes, bool? currentValue, Function(bool) onChanged) {
     final isSelected = currentValue == yes;
-    return OutlinedButton(
-      onPressed: () => safeSetState(() => onChanged(yes)),
-      style: OutlinedButton.styleFrom(
-        side: BorderSide(
-          color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
-          width: isSelected ? 2 : 1,
-        ),
-        backgroundColor: isSelected
-            ? AppTheme.primaryColor.withOpacity(0.1)
-            : Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: Text(
-        yes ? 'Yes' : 'No',
-        style: GoogleFonts.poppins(
-          fontSize: 14,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-          color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => safeSetState(() => onChanged(yes)),
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppTheme.primaryColor.withOpacity(0.12)
+                : AppTheme.neutral50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryColor.withOpacity(0.45)
+                  : Colors.transparent,
+              width: 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: AppTheme.primaryColor.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(2, 3),
+                    ),
+                  ]
+                : _neuRaised,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            yes ? 'Yes' : 'No',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+            ),
+          ),
         ),
       ),
     );
@@ -1624,11 +1571,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       children: [
         Text(
           'Did this session take place as scheduled?',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
+          style: _fieldLabelStyle,
         ),
         const SizedBox(height: 8),
         Row(
@@ -1659,22 +1602,10 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        TextField(
+        _neuMultilineField(
           controller: _sessionTookPlaceNotesController,
+          hint: 'Brief detail if needed…',
           maxLines: 2,
-          decoration: InputDecoration(
-            hintText: 'Tell us what happened (e.g. tutor did not show, session was shorter, etc.)',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.softBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-          ),
         ),
       ],
     );
@@ -1702,60 +1633,49 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       }
     }
     
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      color: Colors.white,
-      child: Row(
-        children: [
-          // Location badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: isOnline 
-                  ? AppTheme.accentBlue.withOpacity(0.1)
-                  : AppTheme.accentGreen.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isOnline 
-                    ? AppTheme.accentBlue
-                    : AppTheme.accentGreen,
-                width: 1,
-              ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.neutral50,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: _neuRaised,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isOnline ? PhosphorIcons.monitor() : PhosphorIcons.mapPin(),
+              size: 18,
+              color: isOnline ? AppTheme.accentBlue : AppTheme.accentGreen,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isOnline ? PhosphorIcons.videoCamera() : PhosphorIcons.mapPin(),
-                  size: 14,
-                  color: isOnline ? AppTheme.accentBlue : AppTheme.accentGreen,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  isOnline ? 'Online' : 'Onsite',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isOnline ? AppTheme.accentBlue : AppTheme.accentGreen,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (dateTimeText.isNotEmpty) ...[
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                dateTimeText,
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppTheme.textMedium,
-                ),
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isOnline ? 'Online lesson' : 'Onsite session',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  if (dateTimeText.isNotEmpty)
+                    Text(
+                      dateTimeText,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: AppTheme.textMedium,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }

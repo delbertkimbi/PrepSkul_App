@@ -578,17 +578,10 @@ class TrialSessionService {
       final response = await query.order('created_at', ascending: false);
       final trials = (response as List)
           .map((json) {
-            // Debug: Log payment_status from DB
-            LogService.debug('DB payment_status for ${json['id']}: ${json['payment_status']}');
             return TrialSession.fromJson(json);
           })
           .toList();
-      
-      // Debug: Log after mapping
-      for (var trial in trials) {
-        LogService.debug('Mapped trial ${trial.id}: paymentStatus=${trial.paymentStatus}');
-      }
-      
+
       return trials;
     } catch (e) {
       throw Exception('Failed to fetch trial sessions: $e');

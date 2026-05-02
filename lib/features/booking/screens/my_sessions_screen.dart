@@ -12,6 +12,7 @@ import '../../../core/config/live_session_test_config.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
 import '../services/individual_session_service.dart';
+import '../services/recurring_session_service.dart';
 import '../services/session_feedback_service.dart';
 import 'session_feedback_flow_screen.dart';
 // TODO: Fix import path
@@ -31,9 +32,8 @@ import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
-import 'package:prepskul/features/payment/widgets/credits_balance_widget.dart';
-import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
+import 'package:prepskul/features/payment/services/session_points_service.dart';
 import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
 import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
@@ -645,6 +645,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     
     return {
       'id': trial.id,
+      'tutor_id': trial.tutorId,
+      'learner_id': trial.learnerId,
+      'parent_id': trial.parentId,
       'status': trial.status,
       'payment_status': trial.paymentStatus, // Include payment status for filtering
       'scheduled_date': trial.scheduledDate.toIso8601String(),
@@ -655,9 +658,16 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       'subject': trial.subject, // Add subject at top level too
       // Simulate the nested structure expected by UI
       'recurring_sessions': {
+        'tutor_id': trial.tutorId,
+        'learner_id': trial.learnerId,
         'tutor_name': tutorName,
         'tutor_avatar_url': tutorAvatarUrl,
         'subject': trial.subject,
+      },
+      'trial_sessions': {
+        'id': trial.id,
+        'tutor_id': trial.tutorId,
+        'learner_id': trial.learnerId,
       },
       // Add meeting link if available (generated after payment)
       'meeting_link': trial.meetLink,
@@ -1438,8 +1448,10 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   }
 
   Widget _buildCreditsHeader() {
+    // Same source as [CreditsBalanceScreen]: wallet balance from user_credits.
+    // Do not use upcoming-session count here — that caused mismatch with the credits screen.
     return FutureBuilder<int>(
-      future: _calculateSessionPoints(),
+      future: _getAvailableSessionPoints(),
       builder: (context, snapshot) {
         final points = snapshot.data ?? 0;
         final sessionsAvailable = _getSessionsFromPoints(points);
@@ -1489,7 +1501,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Session Points',
+                        'Credits balance',
                         style: GoogleFonts.poppins(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -1554,28 +1566,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
   }
 
-  Future<int> _getUserBalance() async {
+  Future<int> _getAvailableSessionPoints() async {
     try {
-      final userId = SupabaseService.currentUser?.id;
-      if (userId == null) return 0;
-      return await UserCreditsService.getUserBalance(userId);
+      return await SessionPointsService.getAvailableSessionPoints();
     } catch (e) {
-      LogService.error('Error getting user balance: $e');
-      return 0;
-    }
-  }
-
-  /// Session points (separate from wallet credits):
-  /// based on remaining upcoming sessions only.
-  Future<int> _calculateSessionPoints() async {
-    try {
-      final upcomingCount = _upcomingSessions.where((s) {
-        final status = s['status'] as String?;
-        return status == 'scheduled' || status == 'in_progress';
-      }).length;
-      return upcomingCount * 10;
-    } catch (e) {
-      LogService.error('Error calculating session points: $e');
+      LogService.error('Error getting session points: $e');
       return 0;
     }
   }
@@ -2320,6 +2315,178 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
   }
 
+  Future<void> _endRecurringBooking({
+    required String recurringSessionId,
+    required String roleLabel,
+  }) async {
+    final reasonController = TextEditingController();
+    String terminationMode = 'end_now';
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            'End recurring booking?',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This will stop upcoming sessions for both sides. Past/completed sessions stay unchanged.',
+                style: GoogleFonts.poppins(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'When stopping, choose what happens next:',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              StatefulBuilder(
+                builder: (context, setDialogState) => Column(
+                  children: [
+                    RadioListTile<String>(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: 'end_now',
+                      groupValue: terminationMode,
+                      onChanged: (v) => setDialogState(() => terminationMode = v ?? 'end_now'),
+                      title: Text(
+                        'Stop everything now',
+                        style: GoogleFonts.poppins(fontSize: 13),
+                      ),
+                      subtitle: Text(
+                        'Cancels all upcoming unstarted sessions.',
+                        style: GoogleFonts.poppins(fontSize: 12),
+                      ),
+                    ),
+                    RadioListTile<String>(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: 'complete_paid_sessions',
+                      groupValue: terminationMode,
+                      onChanged: (v) => setDialogState(
+                        () => terminationMode = v ?? 'complete_paid_sessions',
+                      ),
+                      title: Text(
+                        'Allow paid upcoming sessions only',
+                        style: GoogleFonts.poppins(fontSize: 13),
+                      ),
+                      subtitle: Text(
+                        'Keeps already-paid sessions; stops unpaid ones.',
+                        style: GoogleFonts.poppins(fontSize: 12),
+                      ),
+                    ),
+                    RadioListTile<String>(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: 'admin_refund_review',
+                      groupValue: terminationMode,
+                      onChanged: (v) => setDialogState(
+                        () => terminationMode = v ?? 'admin_refund_review',
+                      ),
+                      title: Text(
+                        'Request admin refund/intervention review',
+                        style: GoogleFonts.poppins(fontSize: 13),
+                      ),
+                      subtitle: Text(
+                        'Flags the case to admin while stopping unpaid upcoming sessions.',
+                        style: GoogleFonts.poppins(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: reasonController,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: 'Reason (optional)',
+                  hintText: 'E.g. Schedule conflict, goals achieved',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(
+                'Keep booking',
+                style: GoogleFonts.poppins(color: AppTheme.textMedium),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('End booking', style: GoogleFonts.poppins()),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (currentUserId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final result = await RecurringSessionService.endRecurringSession(
+        recurringSessionId: recurringSessionId,
+        endedByUserId: currentUserId,
+        terminationMode: terminationMode,
+        reason: reasonController.text.trim(),
+      );
+
+      if (!mounted) return;
+      final affected = result['cancelled_future_sessions'] as int? ?? 0;
+      final paidPreserved = result['paid_sessions_preserved'] as int? ?? 0;
+      final mode = result['termination_mode'] as String? ?? terminationMode;
+      final modeText = mode == 'admin_refund_review'
+          ? 'Admin review requested.'
+          : mode == 'complete_paid_sessions'
+              ? 'Paid upcoming sessions remain active.'
+              : 'All upcoming unstarted sessions were stopped.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Recurring booking ended by $roleLabel. '
+            '$affected upcoming session${affected == 1 ? '' : 's'} cancelled. '
+            '${paidPreserved > 0 ? '$paidPreserved paid session${paidPreserved == 1 ? '' : 's'} preserved. ' : ''}'
+            '$modeText',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: AppTheme.accentGreen,
+        ),
+      );
+      await _loadSessions();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      reasonController.dispose();
+    }
+  }
+
   void _showSessionDetails(Map<String, dynamic> session) async {
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
     final tutorName = recurringData?['tutor_name'] as String? ?? 'Tutor';
@@ -2344,6 +2511,15 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     } catch (e) {
       LogService.warning('Error getting user profile: \$e');
     }
+    final recurringSessionId =
+        recurringData?['id'] as String? ?? session['recurring_session_id'] as String?;
+    final canEndRecurring = recurringSessionId != null &&
+        (status == 'scheduled' || status == 'in_progress');
+    final roleLabel = userType == 'tutor'
+        ? 'Tutor'
+        : userType == 'parent'
+            ? 'Parent'
+            : 'Student';
 
     showDialog(
       context: context,
@@ -2502,6 +2678,38 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         elevation: 0,
                       ),
                     ),
+                    if (canEndRecurring)
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await _endRecurringBooking(
+                            recurringSessionId: recurringSessionId!,
+                            roleLabel: roleLabel,
+                          );
+                        },
+                        icon: Icon(
+                          PhosphorIcons.stopCircle(),
+                          size: 18,
+                          color: Colors.red[700],
+                        ),
+                        label: Text(
+                          'End Recurring',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red[700],
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.red[700],
+                          side: BorderSide(color: Colors.red[300]!, width: 1.5),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 16,
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -3173,7 +3381,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const SizedBox.shrink(), // Shimmer will show in the background
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
       );
 
       // Get or create conversation
@@ -3196,14 +3406,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       }
 
       // Get tutor ID from session
+      final trialData = session['trial_sessions'] as Map<String, dynamic>?;
       String? tutorId;
       String? studentId = currentUserId;
       
       final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-      if (recurringData != null) {
-        tutorId = recurringData['tutor_id'] as String?;
-        studentId = recurringData['learner_id'] as String? ?? currentUserId;
-      }
+      tutorId = recurringData?['tutor_id'] as String? ??
+          session['tutor_id'] as String? ??
+          trialData?['tutor_id'] as String?;
+      studentId = recurringData?['learner_id'] as String? ??
+          session['learner_id'] as String? ??
+          trialData?['learner_id'] as String? ??
+          currentUserId;
 
       if (tutorId == null) {
         if (mounted) {
@@ -3222,9 +3436,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       }
 
       // Get or create conversation
+      final isTrial = session['type'] == 'trial';
       final conversationData = await ConversationLifecycleService.getOrCreateConversation(
-        recurringSessionId: recurringData?['id'] as String?,
-        individualSessionId: session['id'] as String?,
+        recurringSessionId: isTrial ? null : recurringData?['id'] as String?,
+        individualSessionId: isTrial ? null : session['id'] as String?,
+        trialSessionId: isTrial ? (session['id'] as String?) : null,
         tutorId: tutorId,
         studentId: studentId,
       );
@@ -3313,8 +3529,10 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     } catch (e) {
       LogService.error('Error navigating to chat from session: $e');
       if (mounted) {
-        // Dismiss loading if still showing
-        Navigator.of(context, rootNavigator: true).popUntil((route) => !route.navigator!.canPop() || route.settings.name != null);
+        // Dismiss loading dialog if still open
+        if (Navigator.of(context, rootNavigator: true).canPop()) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

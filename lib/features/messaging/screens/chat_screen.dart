@@ -1216,7 +1216,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
             ),
           
-          // Message input - seamless single color like WhatsApp/Preply
+          // Message input — single continuous background
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(

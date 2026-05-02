@@ -302,14 +302,18 @@ class SessionDetailScreen extends StatelessWidget {
       }
 
       // Get tutor ID from session
+      final trialData = session['trial_sessions'] as Map<String, dynamic>?;
       String? tutorId;
       String? studentId = currentUserId;
       
       final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-      if (recurringData != null) {
-        tutorId = recurringData['tutor_id'] as String?;
-        studentId = recurringData['learner_id'] as String? ?? currentUserId;
-      }
+      tutorId = recurringData?['tutor_id'] as String? ??
+          session['tutor_id'] as String? ??
+          trialData?['tutor_id'] as String?;
+      studentId = recurringData?['learner_id'] as String? ??
+          session['learner_id'] as String? ??
+          trialData?['learner_id'] as String? ??
+          currentUserId;
 
       if (tutorId == null) {
         if (context.mounted) {

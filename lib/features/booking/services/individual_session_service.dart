@@ -10,6 +10,19 @@ import 'package:prepskul/features/sessions/services/meet_service.dart';
 /// Includes start/end tracking, Google Meet link generation, and status management
 class IndividualSessionService {
   static SupabaseClient get _supabase => SupabaseService.client;
+  static bool _legacyParticipantColumnWarningLogged = false;
+
+  static DateTime? _parseSessionStart(Map<String, dynamic> session) {
+    final dateStr = session['scheduled_date'] as String?;
+    final timeStr = session['scheduled_time'] as String?;
+    if (dateStr == null || dateStr.isEmpty) return null;
+    final safeTime = (timeStr == null || timeStr.isEmpty) ? '00:00:00' : timeStr;
+    try {
+      return DateTime.parse('${dateStr}T$safeTime');
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Get individual sessions for a recurring session
   static Future<List<Map<String, dynamic>>> getSessionsForRecurring(
@@ -187,23 +200,61 @@ class IndividualSessionService {
           .limit(limit * 2); // Fetch more to filter by payment status
 
       // Also fetch sessions where user is enrolled via classroom participants.
-      final participantRows = await _supabase
-          .from('session_participants')
-          .select('''
-            individual_session_id,
-            individual_sessions(
-              *,
-              recurring_sessions(
-                id,
-                tutor_name,
-                tutor_avatar_url,
-                tutor_id,
-                subject
+      // Support both schema variants:
+      // - new: session_participants.individual_session_id
+      // - legacy: session_participants.session_id
+      List<Map<String, dynamic>> participantRows = [];
+      try {
+        final rows = await _supabase
+            .from('session_participants')
+            .select('''
+              individual_session_id,
+              individual_sessions(
+                *,
+                recurring_sessions(
+                  id,
+                  tutor_name,
+                  tutor_avatar_url,
+                  tutor_id,
+                  subject
+                )
               )
-            )
-          ''')
-          .eq('user_id', userId)
-          .not('individual_session_id', 'is', null);
+            ''')
+            .eq('user_id', userId)
+            .not('individual_session_id', 'is', null);
+        participantRows = (rows as List).cast<Map<String, dynamic>>();
+      } catch (e) {
+        final error = e.toString();
+        if (error.contains('42703') &&
+            error.contains('session_participants.individual_session_id')) {
+          if (!_legacyParticipantColumnWarningLogged) {
+            _legacyParticipantColumnWarningLogged = true;
+            LogService.warning(
+              'session_participants uses legacy session_id column; falling back for participant lookup.',
+            );
+          }
+          final rows = await _supabase
+              .from('session_participants')
+              .select('''
+                session_id,
+                individual_sessions(
+                  *,
+                  recurring_sessions(
+                    id,
+                    tutor_name,
+                    tutor_avatar_url,
+                    tutor_id,
+                    subject
+                  )
+                )
+              ''')
+              .eq('user_id', userId)
+              .not('session_id', 'is', null);
+          participantRows = (rows as List).cast<Map<String, dynamic>>();
+        } else {
+          rethrow;
+        }
+      }
 
       // Build set of group-class session IDs with paid enrollment.
       final paidGroupEnrollmentRows = await _supabase
@@ -229,7 +280,7 @@ class IndividualSessionService {
           sessionsById[id] = session;
         }
       }
-      for (final row in (participantRows as List).cast<Map<String, dynamic>>()) {
+      for (final row in participantRows) {
         final session = row['individual_sessions'] as Map<String, dynamic>?;
         final id = session?['id'] as String?;
         if (session != null && id != null && id.isNotEmpty) {
@@ -281,7 +332,26 @@ class IndividualSessionService {
         }
       }
 
-      return paidSessions.take(limit).toList();
+      // Final classification by full local date+time so same-day already-held
+      // sessions do not remain in "Upcoming" due to date-only filtering.
+      final upcoming = paidSessions.where((session) {
+        final status = (session['status'] as String? ?? '').toLowerCase();
+        if (status == 'in_progress') return true;
+        final start = _parseSessionStart(session);
+        if (start == null) return true; // fail-open if data is malformed
+        return !start.isBefore(now);
+      }).toList();
+
+      upcoming.sort((a, b) {
+        final aStart = _parseSessionStart(a);
+        final bStart = _parseSessionStart(b);
+        if (aStart == null && bStart == null) return 0;
+        if (aStart == null) return 1;
+        if (bStart == null) return -1;
+        return aStart.compareTo(bStart);
+      });
+
+      return upcoming.take(limit).toList();
     } catch (e) {
       LogService.error('Error fetching student upcoming sessions: $e');
       rethrow;
@@ -324,23 +394,61 @@ class IndividualSessionService {
           .limit(limit * 2); // Fetch more to filter by payment status
 
       // Also fetch sessions where user is enrolled via classroom participants.
-      final participantRows = await _supabase
-          .from('session_participants')
-          .select('''
-            individual_session_id,
-            individual_sessions(
-              *,
-              recurring_sessions(
-                id,
-                tutor_name,
-                tutor_avatar_url,
-                tutor_id,
-                subject
+      // Support both schema variants:
+      // - new: session_participants.individual_session_id
+      // - legacy: session_participants.session_id
+      List<Map<String, dynamic>> participantRows = [];
+      try {
+        final rows = await _supabase
+            .from('session_participants')
+            .select('''
+              individual_session_id,
+              individual_sessions(
+                *,
+                recurring_sessions(
+                  id,
+                  tutor_name,
+                  tutor_avatar_url,
+                  tutor_id,
+                  subject
+                )
               )
-            )
-          ''')
-          .eq('user_id', userId)
-          .not('individual_session_id', 'is', null);
+            ''')
+            .eq('user_id', userId)
+            .not('individual_session_id', 'is', null);
+        participantRows = (rows as List).cast<Map<String, dynamic>>();
+      } catch (e) {
+        final error = e.toString();
+        if (error.contains('42703') &&
+            error.contains('session_participants.individual_session_id')) {
+          if (!_legacyParticipantColumnWarningLogged) {
+            _legacyParticipantColumnWarningLogged = true;
+            LogService.warning(
+              'session_participants uses legacy session_id column; falling back for participant lookup.',
+            );
+          }
+          final rows = await _supabase
+              .from('session_participants')
+              .select('''
+                session_id,
+                individual_sessions(
+                  *,
+                  recurring_sessions(
+                    id,
+                    tutor_name,
+                    tutor_avatar_url,
+                    tutor_id,
+                    subject
+                  )
+                )
+              ''')
+              .eq('user_id', userId)
+              .not('session_id', 'is', null);
+          participantRows = (rows as List).cast<Map<String, dynamic>>();
+        } else {
+          rethrow;
+        }
+      }
 
       // Build set of group-class session IDs with paid enrollment.
       final paidGroupEnrollmentRows = await _supabase
@@ -366,7 +474,7 @@ class IndividualSessionService {
           sessionsById[id] = session;
         }
       }
-      for (final row in (participantRows as List).cast<Map<String, dynamic>>()) {
+      for (final row in participantRows) {
         final session = row['individual_sessions'] as Map<String, dynamic>?;
         final id = session?['id'] as String?;
         if (session != null && id != null && id.isNotEmpty) {
@@ -418,7 +526,30 @@ class IndividualSessionService {
         }
       }
 
-      return paidSessions.take(limit).toList();
+      // Include sessions that are explicitly past by status OR by full date+time.
+      final past = paidSessions.where((session) {
+        final status = (session['status'] as String? ?? '').toLowerCase();
+        if (status == 'completed' ||
+            status == 'cancelled' ||
+            status == 'no_show_tutor' ||
+            status == 'no_show_learner') {
+          return true;
+        }
+        final start = _parseSessionStart(session);
+        if (start == null) return false;
+        return start.isBefore(now);
+      }).toList();
+
+      past.sort((a, b) {
+        final aStart = _parseSessionStart(a);
+        final bStart = _parseSessionStart(b);
+        if (aStart == null && bStart == null) return 0;
+        if (aStart == null) return 1;
+        if (bStart == null) return -1;
+        return bStart.compareTo(aStart);
+      });
+
+      return past.take(limit).toList();
     } catch (e) {
       LogService.error('Error fetching student past sessions: $e');
       rethrow;

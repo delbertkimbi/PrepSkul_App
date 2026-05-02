@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -9,6 +9,8 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
 class BeautifulLoginScreen extends StatefulWidget {
@@ -24,6 +26,31 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+
+  Future<void> _quickLogin({
+    required String phone,
+    required String password,
+  }) async {
+    if (phone.trim().isEmpty || password.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('QA preset is missing phone/password in env config.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    _phoneController.text = phone.trim();
+    _passwordController.text = password;
+    await _handleLogin();
+  }
+
+  String _phoneAliasEmail(String phoneNumber) {
+    final digitsOnly = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
+    return 'p$digitsOnly@phone.prepskul.local';
+  }
 
   @override
   void initState() {
@@ -43,17 +70,17 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Simple clean header background (no gradients)
+          // Curved gradient hero header
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: Container(
-              height: 132,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  bottom: BorderSide(color: AppTheme.softBorder, width: 1),
+            child: ClipPath(
+              clipper: WaveClipper(),
+              child: Container(
+                height: 190,
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
                 ),
               ),
             ),
@@ -65,18 +92,18 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
               children: [
                 // Header content
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 14.0),
+                  padding: const EdgeInsets.fromLTRB(24.0, 22.0, 24.0, 18.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 10),
                       Center(
                         child: Text(
                           t.authLogin,
                           style: GoogleFonts.poppins(
                             fontSize: 30,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme.primaryColor,
+                            color: Colors.white,
                           ),
                         ),
                       ),
@@ -88,7 +115,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                           style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
-                            color: AppTheme.textMedium,
+                            color: Colors.white.withOpacity(0.95),
                           ),
                         ),
                       ),
@@ -272,6 +299,68 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                 ),
                               ),
 
+                              if (AppConfig.enableQaQuickSwitch) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.amber.withOpacity(0.35),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'QA Quick Switch (dev)',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.textDark,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          OutlinedButton(
+                                            onPressed: _isLoading
+                                                ? null
+                                                : () => _quickLogin(
+                                                      phone: AppConfig.qaTutorPhone,
+                                                      password: AppConfig.qaTutorPassword,
+                                                    ),
+                                            child: const Text('Tutor QA'),
+                                          ),
+                                          OutlinedButton(
+                                            onPressed: _isLoading
+                                                ? null
+                                                : () => _quickLogin(
+                                                      phone: AppConfig.qaLearnerPhone,
+                                                      password: AppConfig.qaLearnerPassword,
+                                                    ),
+                                            child: const Text('Learner QA'),
+                                          ),
+                                          OutlinedButton(
+                                            onPressed: _isLoading
+                                                ? null
+                                                : () => _quickLogin(
+                                                      phone: AppConfig.qaObserverPhone,
+                                                      password: AppConfig.qaObserverPassword,
+                                                    ),
+                                            child: const Text('Unpaid QA'),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+
                               const SizedBox(height: 16),
 
                               // Forgot Password
@@ -437,69 +526,139 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
 
     safeSetState(() => _isLoading = true);
 
+    bool phoneExistsInProfiles = false;
+
     try {
-      if (!AppConfig.enablePhoneOtpVerification) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Phone sign-in is temporarily unavailable. Please use Email or Google sign-in.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: AppTheme.primaryColor,
-            ),
-          );
-        }
-        safeSetState(() => _isLoading = false);
-        return;
-      }
-
-      // Check if user exists in Supabase
-      final userProfile = await SupabaseService.getData(
-        table: 'profiles',
-        field: 'phone_number',
-        value: phoneNumber,
-      );
-
-      if (userProfile.isEmpty) {
-        // User doesn't exist
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'No account found with this phone number. Please sign up.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: AppTheme.primaryColor,
-            ),
-          );
-        }
-        safeSetState(() => _isLoading = false);
-        return;
-      }
-
-      // Send OTP via Supabase
-      await SupabaseService.sendPhoneOTP(phoneNumber);
-
-      // Navigate to OTP verification screen with login context
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => OTPVerificationScreen(
-              phoneNumber: phoneNumber,
-              fullName: userProfile[0]['full_name'] ?? '',
-              userRole: userProfile[0]['user_type'] ?? 'student',
-            ),
-          ),
+      if (kDebugMode) {
+        final existingProfiles = await SupabaseService.client
+            .from('profiles')
+            .select('id')
+            .eq('phone_number', phoneNumber)
+            .limit(1);
+        phoneExistsInProfiles = existingProfiles.isNotEmpty;
+        LogService.debug(
+          '[PHONE_LOGIN_DEBUG] phone=$phoneNumber exists_in_profiles=$phoneExistsInProfiles',
         );
       }
+
+      // Toggle OTP flow from AppConfig.
+      if (AppConfig.enablePhoneOtpVerification) {
+        await SupabaseService.sendPhoneOTP(phoneNumber);
+        final matchingProfiles = await SupabaseService.client
+            .from('profiles')
+            .select('full_name, user_type')
+            .eq('phone_number', phoneNumber)
+            .limit(1);
+        final profile = matchingProfiles.isNotEmpty ? matchingProfiles.first : null;
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => OTPVerificationScreen(
+                phoneNumber: phoneNumber,
+                fullName: profile?['full_name']?.toString() ?? '',
+                userRole: profile?['user_type']?.toString() ?? 'student',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Password-based phone login (OTP disabled).
+      // Preferred path: deterministic email alias auth.
+      final aliasEmail = _phoneAliasEmail(phoneNumber);
+      late final dynamic response;
+      try {
+        response = await SupabaseService.client.auth.signInWithPassword(
+          email: aliasEmail,
+          password: _passwordController.text,
+        );
+      } catch (e) {
+        // Backward compatibility for legacy accounts created with phone auth.
+        final error = e.toString().toLowerCase();
+        if (error.contains('invalid login credentials')) {
+          response = await SupabaseService.client.auth.signInWithPassword(
+            phone: phoneNumber,
+            password: _passwordController.text,
+          );
+        } else {
+          rethrow;
+        }
+      }
+
+      final user = response.user;
+      if (user == null) {
+        throw Exception('Login failed');
+      }
+
+      // Historical duplicates can exist for phone_number; prioritize the first
+      // (oldest) profile row for now instead of blocking login.
+      final matchingProfiles = await SupabaseService.client
+          .from('profiles')
+          .select('id, full_name, user_type, phone_number, survey_completed, created_at')
+          .eq('phone_number', phoneNumber)
+          .order('created_at', ascending: true)
+          .limit(50);
+      if (matchingProfiles.isEmpty) {
+        await SupabaseService.client.auth.signOut();
+        throw Exception(
+          'No profile is linked to this phone number. Please sign up first.',
+        );
+      }
+      final prioritizedProfile = matchingProfiles.first;
+
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      final effectiveProfile = profile ?? prioritizedProfile;
+      final userRole = effectiveProfile['user_type'] ?? 'learner';
+      final surveyCompleted = effectiveProfile['survey_completed'] ?? false;
+
+      await AuthService.saveSession(
+        userId: user.id,
+        userRole: userRole,
+        phone: effectiveProfile['phone_number'] ?? phoneNumber,
+        fullName: effectiveProfile['full_name'] ?? '',
+        surveyCompleted: surveyCompleted,
+        rememberMe: true,
+      );
+
+      if (mounted) {
+        final navService = NavigationService();
+        if (navService.isReady) {
+          final routeResult = await navService.determineInitialRoute();
+          await navService.navigateToRoute(
+            routeResult.route,
+            arguments: routeResult.arguments,
+            replace: true,
+          );
+        } else {
+          if (userRole == 'tutor') {
+            Navigator.pushReplacementNamed(context, '/tutor-nav');
+          } else if (userRole == 'parent') {
+            Navigator.pushReplacementNamed(context, '/parent-nav');
+          } else {
+            Navigator.pushReplacementNamed(context, '/student-nav');
+          }
+        }
+      }
     } catch (e) {
+      if (kDebugMode &&
+          e.toString().toLowerCase().contains('invalid login credentials') &&
+          phoneExistsInProfiles) {
+        LogService.debug(
+          '[PHONE_LOGIN_DEBUG] Phone exists, but Supabase rejected credentials. Most likely wrong password for this phone account.',
+        );
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Couldn’t start phone sign-in right now. Please use Email or Google sign-in.',
+              AuthService.parseAuthError(e),
               style: GoogleFonts.poppins(),
             ),
             backgroundColor: Colors.red,

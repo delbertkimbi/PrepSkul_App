@@ -219,7 +219,7 @@ class NavigationService {
             // If user_type exists and is valid (student, parent, or tutor), continue with normal flow
             // Don't redirect to role selection for email signups who already selected their role
 
-            // Preply-style: if user came from a shared tutor link, ALWAYS take them to that tutor
+            // If user came from a shared tutor link, take them to that tutor
             // after auth (even if survey/profile setup isn't completed yet).
             final pendingTutorId = await getAndClearPendingTutorLink();
             if (pendingTutorId != null) {

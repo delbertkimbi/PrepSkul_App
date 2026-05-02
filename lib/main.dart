@@ -53,6 +53,9 @@ import 'package:prepskul/features/skulmate/screens/character_selection_screen.da
 import 'package:prepskul/features/skulmate/screens/leaderboard_screen.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
+import 'package:prepskul/features/group_classes/services/group_class_api_service.dart';
+import 'package:prepskul/features/group_classes/screens/group_classes_discovery_screen.dart';
+import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
 import 'dart:async';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
@@ -61,6 +64,8 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 import 'package:prepskul/features/skulmate/services/skulmate_streak_reminder_service.dart';
 import 'package:prepskul/features/payment/services/payment_local_reminder_service.dart';
+import 'package:prepskul/core/services/startup_schema_service.dart';
+import 'package:prepskul/features/sessions/services/agora_service.dart';
 
 /// Set by password reset deep link handler before exchangeCodeForSession.
 /// Auth listener skips handleEmailConfirmation when true (recovery sign-in must go to reset-password screen).
@@ -197,6 +202,11 @@ void main() async {
       );
       LogService.info('App will continue without auth state listener');
     }
+
+    // Non-blocking startup schema diagnostics for critical tables/columns.
+    unawaited(StartupSchemaService.runChecks());
+    // Web hot-restart guard: ensure stale call capture/session is fully torn down.
+    unawaited(AgoraService().forceWebCleanupOnStartup());
 
     // Initialize push notifications in background (non-blocking)
     // Web-specific: Only initialize if not on web, or if on web and Firebase is available
@@ -721,7 +731,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     }
 
     // If a tutor id is present in query params, store it so post-auth can navigate
-    // to the tutor detail screen (Preply-style).
+    // to the tutor detail screen (direct tutor discovery link).
     if (tutorFromQuery != null && tutorFromQuery.trim().isNotEmpty) {
       try {
         await NavigationService.storePendingTutorLink(tutorFromQuery.trim());
@@ -736,7 +746,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     }
 
     // Handle tutor detail deep links: /tutor/{tutorId}
-    // These are public routes (like Preply) - anyone can view tutor profiles
+    // These are public routes — anyone can view tutor profiles
     if (path.startsWith('/tutor/') &&
         path != '/tutor' &&
         !path.startsWith('/tutor/profile') &&
@@ -820,6 +830,82 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       }
     }
 
+    // Handle optional group class join deep links: /join/class/{token}
+    if (path.startsWith('/join/class/')) {
+      if (!AppConfig.enableGroupClasses) {
+        LogService.debug('🔗 [DEEP_LINK] Group classes disabled by feature flag');
+        return;
+      }
+      final token = path.replaceFirst('/join/class/', '').trim().split('/').first;
+      if (token.isEmpty) return;
+
+      final navService = NavigationService();
+      final isAuthenticated = SupabaseService.isAuthenticated;
+      if (!isAuthenticated) {
+        if (navService.isReady) {
+          await navService.navigateToRoute('/auth-method-selection');
+        } else {
+          navService.queueDeepLink(Uri(path: '/auth-method-selection'));
+        }
+        return;
+      }
+
+      try {
+        final result = await GroupClassApiService.resolveJoinToken(token);
+        final allowed = result['allowed'] == true;
+        final sessionId = result['sessionId']?.toString();
+        final role = result['role']?.toString() ?? 'learner';
+
+        if (allowed && sessionId != null && sessionId.isNotEmpty) {
+          if (mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AgoraVideoSessionScreen(
+                  sessionId: sessionId,
+                  userRole: role == 'tutor' ? 'tutor' : 'learner',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+
+        if (navService.isReady) {
+          await navService.navigateToRoute('/find-tutors');
+        } else {
+          navService.queueDeepLink(Uri.parse('/find-tutors'));
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Class link validated, but join is unavailable right now. Open Group Classes to enroll.',
+              ),
+            ),
+          );
+        }
+        if (mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const GroupClassesDiscoveryScreen(),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Unable to use class link: $e')),
+          );
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const GroupClassesDiscoveryScreen(),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
     // List of protected routes that require authentication
     // These routes should redirect to email login if user is not authenticated
     final protectedRoutes = [
@@ -888,58 +974,23 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           }
         }
 
-        // Check if user has user_type set - if not, navigate to role (user type) selection
+        // Route directly using the single source of truth to avoid auth-screen
+        // flash and duplicate profile lookups during OAuth return.
         if (user != null) {
-          Map<String, dynamic>? profile;
-          try {
-            profile = await SupabaseService.client
-                .from('profiles')
-                .select('user_type')
-                .eq('id', user.id)
-                .maybeSingle()
-                .timeout(const Duration(milliseconds: 1400));
-          } catch (e) {
-            LogService.warning(
-              '🔐 [DEEP_LINK] Profile role fetch timed out/failed after Google OAuth: $e',
+          final navService = NavigationService();
+          if (navService.isReady) {
+            final routeResult = await navService.determineInitialRoute();
+            LogService.debug(
+              '🔐 [DEEP_LINK] Google OAuth resolved route: ${routeResult.route}',
+            );
+            await navService.navigateToRoute(
+              routeResult.route,
+              arguments: routeResult.arguments,
+              replace: true,
             );
           }
-
-          final userType = profile?['user_type'] as String?;
-
-          if (userType == null || userType.isEmpty) {
-            // First time after Google auth: send user to user type / role selection
-            LogService.debug(
-              '🔐 [DEEP_LINK] User has no role, navigating to /role-selection',
-            );
-            final navService = NavigationService();
-            if (navService.isReady) {
-              await navService.navigateToRoute(
-                '/role-selection',
-                replace: true,
-              );
-            } else {
-              navService.queueDeepLink(Uri.parse('/role-selection'));
-            }
-            // Google sign-in flow is complete once we leave auth.
-            AuthService.isGoogleSignInInProgress = false;
-            return;
-          } else {
-            // Returning Google user with role set - use normal navigation flow
-            LogService.debug(
-              '🔐 [DEEP_LINK] User has role: $userType, determining initial route',
-            );
-            final navService = NavigationService();
-            if (navService.isReady) {
-              final routeResult = await navService.determineInitialRoute();
-              await navService.navigateToRoute(
-                routeResult.route,
-                arguments: routeResult.arguments,
-                replace: true,
-              );
-            }
-            AuthService.isGoogleSignInInProgress = false;
-            return;
-          }
+          AuthService.isGoogleSignInInProgress = false;
+          return;
         }
 
         // Session never became available — do not fall through to navigateToRoute(path)
@@ -1688,6 +1739,20 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
   bool _isNavigating = false;
   bool _navigationComplete = false;
 
+  bool _hasPendingAuthCallback() {
+    if (!kIsWeb) return false;
+    final uri = Uri.base;
+    final type = uri.queryParameters['type'];
+    final code = uri.queryParameters['code'];
+    final hasAuthError =
+        uri.queryParameters['error'] != null ||
+        uri.queryParameters['error_code'] != null;
+    final path = uri.path.toLowerCase();
+    final isEmailLoginPath = path.contains('email-login');
+    final isAuthType = type == 'signup' || type == 'email' || type == 'recovery';
+    return (code != null && isAuthType) || hasAuthError || isEmailLoginPath;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1712,6 +1777,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     // Safety timeout - ensure loading screen is replaced after maximum 5 seconds
     Future.delayed(const Duration(seconds: 5), () async {
       if (mounted && !_navigationComplete) {
+        if (_hasPendingAuthCallback()) {
+          LogService.info(
+            '[INIT_LOAD] Auth callback detected - skipping timeout fallback',
+          );
+          return;
+        }
         LogService.warning(
           '[INIT_LOAD] Navigation timeout - forcing fallback navigation',
         );
@@ -1763,7 +1834,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     if (_isNavigating || _navigationComplete) return;
     _isNavigating = true;
 
-    // Preply-style: If app was opened via tutor link, store pending tutor BEFORE determining route
+    // If app was opened via tutor link, store pending tutor BEFORE determining route
     // so we land on tutor detail after auth with no transitional UI.
     try {
       // On web, getInitialLink() often returns null when user opens the URL directly (no link event).
@@ -1881,6 +1952,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             waitedMs += 50;
           }
         } else if (!cachedIsLoggedIn) {
+          if (_hasPendingAuthCallback()) {
+            LogService.info(
+              '[INIT_LOAD] Auth callback detected - skipping offline auth fallback',
+            );
+            return;
+          }
           // No cached session - can't proceed offline, show auth immediately
           LogService.info(
             '[INIT_LOAD] No cached session - showing auth screen immediately',
@@ -2023,6 +2100,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     // Determine and navigate to route
     if (mounted) {
       try {
+        if (!SupabaseService.isAuthenticated && _hasPendingAuthCallback()) {
+          LogService.info(
+            '[INIT_LOAD] Pending auth callback on startup - waiting for deep link handler',
+          );
+          return;
+        }
         final navService = NavigationService();
         if (navService.isReady) {
           final result = await navService.determineInitialRoute();
@@ -2069,11 +2152,11 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
 
   /// Navigate instantly to route without animation
   /// This prevents the "white flash" issue during the initial transition.
-  /// For /tutor/xxx we preload tutor in background (Preply-style) and show detail in one shot.
+  /// For /tutor/xxx we preload tutor in background and show detail in one shot.
   Future<void> _navigateInstant(String routeName, Object? arguments) async {
     if (!mounted) return;
 
-    // Preply-style: /tutor/xxx — keep loading screen, preload tutor, then show detail (no "Loading Tutor…" step)
+    // /tutor/xxx — keep loading screen, preload tutor, then show detail (no "Loading Tutor…" step)
     final isTutorDetailRoute =
         routeName.startsWith('/tutor/') &&
         routeName != '/tutor' &&

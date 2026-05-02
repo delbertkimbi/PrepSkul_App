@@ -87,8 +87,9 @@ class AuthService {
       await logout();
       // #region agent log
       try {
-        http
-            .post(
+        Future<void>(() async {
+          try {
+            await http.post(
               Uri.parse(
                   'http://127.0.0.1:7242/ingest/e6cc2b0e-750a-413c-b251-261549698526'),
               headers: {'Content-Type': 'application/json'},
@@ -106,8 +107,9 @@ class AuthService {
                   'hadSupabaseSession': hasSupabaseSession,
                 },
               }),
-            )
-            .catchError((_) {});
+            );
+          } catch (_) {}
+        });
       } catch (_) {}
       // #endregion agent log
       return false;
@@ -116,8 +118,9 @@ class AuthService {
     final result = isLogged && hasSupabaseSession;
     // #region agent log
     try {
-      http
-          .post(
+      Future<void>(() async {
+        try {
+          await http.post(
             Uri.parse(
                 'http://127.0.0.1:7242/ingest/e6cc2b0e-750a-413c-b251-261549698526'),
             headers: {'Content-Type': 'application/json'},
@@ -135,8 +138,9 @@ class AuthService {
                 'result': result,
               },
             }),
-          )
-          .catchError((_) {});
+          );
+        } catch (_) {}
+      });
     } catch (_) {}
     // #endregion agent log
 
@@ -823,9 +827,9 @@ class AuthService {
         OAuthProvider.google,
         redirectTo: redirectUrl,
         // No explicit Calendar scopes – rely on basic profile/email scopes
-        authScreenLaunchMode: kIsWeb
-            ? LaunchMode.platformDefault
-            : LaunchMode.externalApplication,
+        // Use platform default on mobile to prefer in-app auth session UX.
+        // This reduces hard app switching and Safari breadcrumb persistence on iOS.
+        authScreenLaunchMode: LaunchMode.platformDefault,
       );
       
       LogService.success('Google Sign In initiated: $response');
@@ -1176,7 +1180,7 @@ class AuthService {
       }
       // For invalid_credentials, it could be either wrong password or non-existent user
       // Provide a message that covers both cases
-      return 'The email or password is incorrect. If you don\'t have an account, please sign up first.';
+      return 'The phone/email or password is incorrect. If you don\'t have an account, please sign up first.';
     }
 
     if (errorString.contains('password') && errorString.contains('weak')) {

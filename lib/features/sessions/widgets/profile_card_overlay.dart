@@ -13,8 +13,12 @@ class ProfileCardOverlay extends StatelessWidget {
   final bool userLeft; // true if user left the call (for remote users)
   final bool screenOff; // true if user's screen is off (for remote users)
   final bool cameraOff; // true when remote camera is off (for remote users)
-  final bool isSpeaking; // true when this user's audio is above threshold (talking indicator)
-  final bool reconnecting; // true when connection unstable - show "Reconnecting" (independent of camera/screen state)
+  final bool
+  isSpeaking; // true when this user's audio is above threshold (talking indicator)
+  final bool
+  reconnecting; // true when connection unstable - show "Reconnecting" (independent of camera/screen state)
+  /// Remote tile: joined but first decoded frame not ready yet (avoid generic “unavailable”).
+  final bool waitingForVideo;
 
   const ProfileCardOverlay({
     Key? key,
@@ -27,6 +31,7 @@ class ProfileCardOverlay extends StatelessWidget {
     this.cameraOff = false,
     this.isSpeaking = false,
     this.reconnecting = false,
+    this.waitingForVideo = false,
   }) : super(key: key);
 
   /// Get initials from name
@@ -51,22 +56,61 @@ class ProfileCardOverlay extends StatelessWidget {
     }
   }
 
-  /// Build one or more status lines (camera off, screen off, reconnecting) independently
+  /// Build one or more status lines (connecting, camera off, screen off, reconnecting).
   List<Widget> _buildStatusLines() {
     final lines = <Widget>[];
+    if (waitingForVideo && !userLeft && !isLocal) {
+      lines.add(_connectingVideoRow());
+    }
     if (cameraOff) {
-      lines.add(_statusRow(Icons.videocam_off, 'Camera is off', AppTheme.softYellow));
+      lines.add(
+        _statusRow(Icons.videocam_off, 'Camera is off', AppTheme.softYellow),
+      );
     }
     if (screenOff) {
-      lines.add(_statusRow(Icons.phone_android, 'Screen is off', AppTheme.primaryColor));
+      lines.add(
+        _statusRow(Icons.phone_android, 'Screen is off', AppTheme.primaryColor),
+      );
     }
-    if (reconnecting) {
-      lines.add(_statusRow(Icons.sync, 'Video is reconnecting…', AppTheme.softYellow));
+    if (reconnecting && !userLeft) {
+      lines.add(
+        _statusRow(Icons.sync, 'Video is reconnecting…', AppTheme.softYellow),
+      );
     }
-    if (lines.isEmpty) {
-      lines.add(_statusRow(Icons.videocam_off, 'Video is temporarily unavailable', AppTheme.softYellow));
+    if (lines.isEmpty && !userLeft && !isLocal) {
+      lines.add(
+        _statusRow(
+          Icons.videocam_off,
+          'Video is temporarily unavailable',
+          AppTheme.softYellow,
+        ),
+      );
     }
     return lines;
+  }
+
+  Widget _connectingVideoRow() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppTheme.primaryColor.withOpacity(0.95),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'Connecting video…',
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.white70),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _statusRow(IconData icon, String label, Color color) {
@@ -88,6 +132,13 @@ class ProfileCardOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final isShortHeight = media.size.height < 720;
+    final avatarSize = isShortHeight ? 108.0 : 150.0;
+    final nameFontSize = isShortHeight ? 18.0 : 24.0;
+    final roleFontSize = isShortHeight ? 10.0 : 12.0;
+    final cardPadding = isShortHeight ? 16.0 : 32.0;
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -100,121 +151,135 @@ class ProfileCardOverlay extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.all(32),
-          constraints: const BoxConstraints(
-            maxWidth: 400,
-            maxHeight: 500,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Profile picture or initials
-              Container(
-                width: 150,
-                height: 150,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _getRoleColor().withOpacity(0.2),
-                  border: Border.all(
-                    color: _getRoleColor().withOpacity(0.5),
-                    width: 3,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Container(
+            padding: EdgeInsets.all(cardPadding),
+            constraints: BoxConstraints(
+              maxWidth: 400,
+              maxHeight: isShortHeight ? 420 : 500,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Profile picture or initials
+                Container(
+                  width: avatarSize,
+                  height: avatarSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _getRoleColor().withOpacity(0.2),
+                    border: Border.all(
+                      color: _getRoleColor().withOpacity(0.5),
+                      width: 3,
+                    ),
                   ),
-                ),
-                child: avatarUrl != null && avatarUrl!.isNotEmpty
-                    ? ClipOval(
-                        child: CachedNetworkImage(
-                          imageUrl: avatarUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Center(
-                            child: CircularProgressIndicator(
-                              color: _getRoleColor(),
-                            ),
-                          ),
-                          errorWidget: (context, url, error) => Center(
-                            child: Text(
-                              _getInitials(name),
-                              style: GoogleFonts.poppins(
-                                fontSize: 48,
-                                fontWeight: FontWeight.bold,
+                  child: avatarUrl != null && avatarUrl!.isNotEmpty
+                      ? ClipOval(
+                          child: CachedNetworkImage(
+                            imageUrl: avatarUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Center(
+                              child: CircularProgressIndicator(
                                 color: _getRoleColor(),
                               ),
                             ),
+                            errorWidget: (context, url, error) => Center(
+                              child: Text(
+                                _getInitials(name),
+                                style: GoogleFonts.poppins(
+                                  fontSize: avatarSize * 0.32,
+                                  fontWeight: FontWeight.bold,
+                                  color: _getRoleColor(),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            _getInitials(name),
+                            style: GoogleFonts.poppins(
+                              fontSize: avatarSize * 0.32,
+                              fontWeight: FontWeight.bold,
+                              color: _getRoleColor(),
+                            ),
                           ),
                         ),
-                      )
-                    : Center(
-                        child: Text(
-                          _getInitials(name),
-                          style: GoogleFonts.poppins(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: _getRoleColor(),
-                          ),
-                        ),
-                      ),
-              ),
-              const SizedBox(height: 24),
-              // Name
-              Text(
-                name,
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              // Role badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: _getRoleColor().withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: AppTheme.primaryColor.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  role.toUpperCase(),
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: _getRoleColor(),
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ),
-              if (!isLocal && userLeft) ...[
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.person_off, color: Colors.redAccent, size: 16),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Left the call',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.redAccent,
-                      ),
+                SizedBox(height: isShortHeight ? 14 : 24),
+                // Name
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(
+                    name,
+                    style: GoogleFonts.poppins(
+                      fontSize: nameFontSize,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
-                  ],
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                SizedBox(height: isShortHeight ? 6 : 8),
+                // Role badge
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isShortHeight ? 12 : 16,
+                    vertical: isShortHeight ? 6 : 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getRoleColor().withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppTheme.primaryColor.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    role.toUpperCase(),
+                    style: GoogleFonts.poppins(
+                      fontSize: roleFontSize,
+                      fontWeight: FontWeight.w600,
+                      color: _getRoleColor(),
+                      letterSpacing: isShortHeight ? 1.0 : 1.2,
+                    ),
+                  ),
+                ),
+                if (!isLocal && userLeft) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.person_off,
+                        color: Colors.redAccent,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Left the call',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.redAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (!isLocal && !userLeft) ...[
+                  // Show status lines independently: camera off, screen off, and reconnecting can all be shown when true
+                  const SizedBox(height: 16),
+                  ..._buildStatusLines(),
+                ],
               ],
-              if (!isLocal && !userLeft) ...[
-                // Show status lines independently: camera off, screen off, and reconnecting can all be shown when true
-                const SizedBox(height: 16),
-                ..._buildStatusLines(),
-              ],
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 }
-

@@ -3,16 +3,17 @@ import 'dart:convert'; // For UTF-8 encoding/decoding of emojis
 import 'dart:typed_data';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:prepskul/core/config/app_config.dart';
-import 'package:flutter/foundation.dart' show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
-import 'package:prepskul/core/utils/platform_utils_stub.dart'
-    if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 import 'package:prepskul/features/sessions/services/agora_token_service.dart';
 import 'package:prepskul/features/sessions/models/agora_session_state.dart';
 import 'package:prepskul/features/sessions/domain/quality_controller.dart';
+import 'package:prepskul/features/sessions/domain/speaking_uid_debouncer.dart';
 import 'package:prepskul/features/sessions/domain/reconnect_grace_policy.dart';
 import 'package:prepskul/features/sessions/domain/stream_priority_policy.dart';
+import 'package:prepskul/features/sessions/domain/network_quality_combine.dart';
 import 'package:prepskul/features/sessions/services/qoe_telemetry_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -36,73 +37,120 @@ class AgoraService {
   bool _isVideoEnabled = false; // Track video state manually - starts OFF
   bool _isAudioEnabled = false; // Track audio state manually - starts OFF
   Timer? _videoCheckTimer; // Periodic check to ensure video stays unmuted
+  DateTime? _lastEnsureVideoUnmutedAt;
+  static const Duration _ensureVideoUnmutedCooldown = Duration(seconds: 2);
   int? _dataStreamId; // Data stream ID for sending screen sharing notifications
-  RealtimeChannel? _reactionChannel; // Supabase Realtime fallback for reactions (web / when Agora data stream fails)
-  
+  RealtimeChannel?
+  _reactionChannel; // Supabase Realtime fallback for reactions (web / when Agora data stream fails)
+
   // Network quality adaptation state
-  QualityType? _lastNetworkQuality;
+  /// Latest TX quality from [RtcEngineEventHandler.onNetworkQuality] (remoteUid == 0).
+  QualityType? _lastObservedTxQuality;
+
+  bool _tokenRenewInFlight = false;
   final QualityController _qualityController = QualityController();
-  final ReconnectGracePolicy _reconnectGracePolicy = const ReconnectGracePolicy();
-  final StreamPriorityPolicy _streamPriorityPolicy = const StreamPriorityPolicy();
+  final SpeakingUidDebouncer _speakingDebouncer = SpeakingUidDebouncer();
+  final ReconnectGracePolicy _reconnectGracePolicy =
+      const ReconnectGracePolicy();
+  final StreamPriorityPolicy _streamPriorityPolicy =
+      const StreamPriorityPolicy();
   final Set<int> _remoteParticipantUids = <int>{};
   int? _spotlightRemoteUid;
-  String? _currentQualityTier; // Track current quality tier: '1080p', '720p', '480p'
+  /// Gallery-only: pinned tile requests HIGH dual-stream alongside speaker spotlight.
+  int? _dualStreamPinnedRemoteUid;
+
+  /// Last effective visible-remote set for gallery paging (`muteRemoteVideoStream`).
+  Set<int>? _galleryPagingLastEffectiveVisible;
+  String?
+  _currentQualityTier; // Track current quality tier: '1080p', '720p', '480p'
   String? _qoeCorrelationId;
   bool _reconnectTelemetryActive = false;
   final Map<int, DateTime> _freezeStartedAt = <int, DateTime>{};
-  final Map<int, VideoStreamType> _lastAppliedRemoteStreamType = <int, VideoStreamType>{};
-  
+  final Map<int, VideoStreamType> _lastAppliedRemoteStreamType =
+      <int, VideoStreamType>{};
+
   // Video recovery state - reduced aggressiveness to prevent flickering
   final Map<int, int> _videoRecoveryAttempts = {}; // remoteUid -> attempt count
-  static const _maxRecoveryAttempts = 2; // Reduced from 3 to prevent excessive recovery attempts
-  final Map<int, DateTime> _lastRecoveryAttempt = {}; // remoteUid -> last attempt time
-  static const _recoveryCooldown = Duration(seconds: 20); // Plan: reduce aggressive recovery, prevent blackouts
-  
+  static const _maxRecoveryAttempts =
+      2; // Reduced from 3 to prevent excessive recovery attempts
+  final Map<int, DateTime> _lastRecoveryAttempt =
+      {}; // remoteUid -> last attempt time
+  static const _recoveryCooldown = Duration(
+    seconds: 20,
+  ); // Plan: reduce aggressive recovery, prevent blackouts
+
   // Camera recovery state
   bool _isRecoveringCamera = false;
   int _cameraRecoveryAttempts = 0;
   static const _maxCameraRecoveryAttempts = 3;
   DateTime? _lastCameraRecoveryAttempt;
-  
+
   // Connection resilience state
   bool _isReconnecting = false;
   int _reconnectionAttempts = 0;
   static const _maxReconnectionAttempts = 5;
   DateTime? _lastReconnectionAttempt;
   static const _reconnectionCooldown = Duration(seconds: 3);
+  bool _joinInProgress = false;
+  bool _supportsDualStreamMode = true;
+  bool _supportsRemoteStreamTypeControl = true;
+  bool _supportsRemoteDefaultStreamTypeControl = true;
+  DateTime? _lastRemoteStreamPriorityAppliedAt;
   String? _lastSessionId;
   String? _lastUserId;
   String? _lastUserRole;
   bool _lastInitialCameraEnabled = false;
   bool _lastInitialMicEnabled = false;
-  
+
   // Screen sharing state (so we don't double-start and can reset UI on cancel)
   bool _isPublishingScreen = false;
   int? _screenShareOwnerUid;
   bool get isPublishingScreen => _isPublishingScreen;
   int? get screenShareOwnerUid => _screenShareOwnerUid;
-  
+
   // Health check state - increased interval to reduce resource usage
   Timer? _videoHealthCheckTimer;
-  static const _healthCheckInterval = Duration(seconds: 30); // Reduced polling for phone heating
+  static const _healthCheckInterval = Duration(
+    seconds: 30,
+  ); // Reduced polling for phone heating
   DateTime? _lastRemoteVideoActivity; // Track last time remote video was active
   int? _lastActiveRemoteUid;
-  
+
   // Event streams
   final _stateController = StreamController<AgoraSessionState>.broadcast();
   final _userJoinedController = StreamController<int>.broadcast();
   final _userOfflineController = StreamController<int>.broadcast();
-  final _connectionStateController = StreamController<ConnectionStateType>.broadcast();
+  final _connectionStateController =
+      StreamController<ConnectionStateType>.broadcast();
   final _errorController = StreamController<String>.broadcast();
-  
+
   // Remote state tracking streams
-  final _remoteVideoMutedController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, muted: bool}
-  final _remoteVideoFrameController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, ready: bool}
-  final _remoteAudioMutedController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, muted: bool}
-  final _screenSharingController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, sharing: bool}
-  final _userLeftController = StreamController<int>.broadcast(); // uid of user who left
-  final _remoteNetworkQualityController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, quality: QualityType, isUnstable: bool}
-  final _reactionController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, emoji: String}
+  final _remoteVideoMutedController =
+      StreamController<
+        Map<String, dynamic>
+      >.broadcast(); // {uid: int, muted: bool}
+  final _remoteVideoFrameController =
+      StreamController<
+        Map<String, dynamic>
+      >.broadcast(); // {uid: int, ready: bool}
+  final _remoteAudioMutedController =
+      StreamController<
+        Map<String, dynamic>
+      >.broadcast(); // {uid: int, muted: bool}
+  final _screenSharingController =
+      StreamController<
+        Map<String, dynamic>
+      >.broadcast(); // {uid: int, sharing: bool}
+  final _userLeftController =
+      StreamController<int>.broadcast(); // uid of user who left
+  final _remoteNetworkQualityController =
+      StreamController<
+        Map<String, dynamic>
+      >.broadcast(); // {uid: int, quality: QualityType, isUnstable: bool}
+  final _reactionController =
+      StreamController<
+        Map<String, dynamic>
+      >.broadcast(); // {uid: int, emoji: String}
 
   bool _isValidRemoteUid(int uid) {
     // Agora uses 0 for local in some callbacks; never treat it as a remote participant.
@@ -112,26 +160,143 @@ class AgoraService {
     if (selfUid != null && uid == selfUid) return false;
     return true;
   }
-  final _remoteScreenOffController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, screenOff: bool}
+
+  final _remoteScreenOffController =
+      StreamController<
+        Map<String, dynamic>
+      >.broadcast(); // {uid: int, screenOff: bool}
   /// UIDs currently speaking (volume above threshold). Used for talking indicator UI.
   final _speakingController = StreamController<Set<int>>.broadcast();
   Stream<Set<int>> get speakingStream => _speakingController.stream;
   static const int _speakingVolumeThreshold = 25;
-  
+
+  /// Volume briefly crosses threshold while [isAudioEnabled] is false (mic muted in PrepSkul).
+  DateTime? _lastMutedMicSpeechHintAt;
+  static const Duration _mutedMicSpeechHintCooldown = Duration(seconds: 12);
+  final _mutedMicSpeechHintController = StreamController<void>.broadcast();
+
+  /// Hint when Agora reports local speech energy but the mic is muted (single listener shows SnackBar).
+  Stream<void> get mutedMicSpeechHintStream =>
+      _mutedMicSpeechHintController.stream;
+
+  void _resetCallMediaPolicyState() {
+    _qualityController.reset();
+    _speakingDebouncer.reset();
+    _lastMutedMicSpeechHintAt = null;
+    _dualStreamPinnedRemoteUid = null;
+    unawaited(clearGalleryPagingVideoSubscriptions());
+    if (_speakingController.hasListener) {
+      _speakingController.add(<int>{});
+    }
+  }
+
+  /// PrepSkul multi-page gallery: subscribe remote video only for visible tiles (+ pin + spotlight).
+  Future<void> syncGalleryVisibleRemoteVideoSubscriptions(
+    Set<int> visibleRemoteUidsOnPage,
+  ) async {
+    if (_engine == null || !_isInChannel) return;
+    if (_remoteParticipantUids.isEmpty) return;
+
+    final effective = Set<int>.from(visibleRemoteUidsOnPage);
+    final pin = _dualStreamPinnedRemoteUid;
+    if (pin != null && _remoteParticipantUids.contains(pin)) {
+      effective.add(pin);
+    }
+    final spot = _spotlightRemoteUid;
+    if (spot != null && _remoteParticipantUids.contains(spot)) {
+      effective.add(spot);
+    }
+
+    if (_galleryPagingLastEffectiveVisible != null &&
+        _galleryPagingLastEffectiveVisible!.length == effective.length &&
+        _galleryPagingLastEffectiveVisible!.containsAll(effective) &&
+        effective.containsAll(_galleryPagingLastEffectiveVisible!)) {
+      return;
+    }
+    _galleryPagingLastEffectiveVisible = Set<int>.from(effective);
+
+    for (final uid in List<int>.from(_remoteParticipantUids)) {
+      final mute = !effective.contains(uid);
+      try {
+        await _engine!.muteRemoteVideoStream(uid: uid, mute: mute);
+      } catch (e) {
+        LogService.debug(
+          '[GALLERY_PAGE] muteRemoteVideoStream uid=$uid mute=$mute: $e',
+        );
+      }
+    }
+  }
+
+  /// Undo gallery paging video mutes (spotlight/side-by-side or below paging threshold).
+  Future<void> clearGalleryPagingVideoSubscriptions() async {
+    _galleryPagingLastEffectiveVisible = null;
+    final engine = _engine;
+    if (engine == null || !_isInChannel) return;
+    for (final uid in List<int>.from(_remoteParticipantUids)) {
+      try {
+        await engine.muteRemoteVideoStream(uid: uid, mute: false);
+      } catch (e) {
+        LogService.debug('[GALLERY_PAGE] unmute paging uid=$uid: $e');
+      }
+    }
+  }
+
+  /// Sync pinned gallery participant into dual-stream priority (native multi-party only).
+  void setDualStreamPinnedRemoteUid(int? uid) {
+    if (_dualStreamPinnedRemoteUid == uid) return;
+    _dualStreamPinnedRemoteUid = uid;
+    _lastRemoteStreamPriorityAppliedAt = null;
+    unawaited(_applyRemoteStreamPriority());
+  }
+
+  void _considerMutedMicSpeechHint(List<AudioVolumeInfo> speakers) {
+    if (!_isInChannel || _isAudioEnabled || _currentUID == null) return;
+    final self = _currentUID!;
+    for (final s in speakers) {
+      final uid = s.uid ?? 0;
+      final vol = s.volume ?? 0;
+      if (vol <= _speakingVolumeThreshold) continue;
+      if (uid != 0 && uid != self) continue;
+      final now = DateTime.now();
+      if (_lastMutedMicSpeechHintAt != null &&
+          now.difference(_lastMutedMicSpeechHintAt!) <
+              _mutedMicSpeechHintCooldown) {
+        return;
+      }
+      _lastMutedMicSpeechHintAt = now;
+      if (_mutedMicSpeechHintController.hasListener) {
+        _mutedMicSpeechHintController.add(null);
+      }
+      return;
+    }
+  }
+
   // Remote network quality tracking
-  final Map<int, QualityType> _remoteNetworkQualities = {}; // remoteUid -> quality
-  final Map<int, DateTime> _remoteNetworkQualityTimestamps = {}; // remoteUid -> last update time
-  final Map<int, int> _remotePoorQualityCount = {}; // remoteUid -> consecutive poor quality counts
-  
+  final Map<int, QualityType> _remoteNetworkQualities =
+      {}; // remoteUid -> quality
+  final Map<int, DateTime> _remoteNetworkQualityTimestamps =
+      {}; // remoteUid -> last update time
+  final Map<int, int> _remotePoorQualityCount =
+      {}; // remoteUid -> consecutive poor quality counts
+
   // Connection state tracking for accurate user left detection
-  final Map<int, DateTime> _userOfflineTimestamps = {}; // remoteUid -> when they went offline
-  final Map<int, Timer?> _userLeftGracePeriodTimers = {}; // remoteUid -> grace period timer
-  final Map<int, bool> _userConfirmedLeft = {}; // remoteUid -> confirmed left (not just poor connection)
-  final Map<int, int> _userOfflineCount = {}; // remoteUid -> consecutive offline events
-  static const _userLeftGracePeriod = Duration(seconds: 15); // Backward-compat fallback
-  static const _maxOfflineEvents = 3; // Number of offline events before confirming left
-  DateTime? _lastLocalVideoMuteTime; // On web, Agora can fire spurious userOffline when local mutes - ignore if within window
+  final Map<int, DateTime> _userOfflineTimestamps =
+      {}; // remoteUid -> when they went offline
+  final Map<int, Timer?> _userLeftGracePeriodTimers =
+      {}; // remoteUid -> grace period timer
+  final Map<int, bool> _userConfirmedLeft =
+      {}; // remoteUid -> confirmed left (not just poor connection)
+  final Map<int, int> _userOfflineCount =
+      {}; // remoteUid -> consecutive offline events
+  static const _userLeftGracePeriod = Duration(
+    seconds: 15,
+  ); // Backward-compat fallback
+  static const _maxOfflineEvents =
+      3; // Number of offline events before confirming left
+  DateTime?
+  _lastLocalVideoMuteTime; // On web, Agora can fire spurious userOffline when local mutes - ignore if within window
   static const _webMuteOfflineIgnoreWindow = Duration(seconds: 5);
+
   /// On web for Quit, keep a slightly longer grace to absorb transient mobile-web
   /// reconnect glitches that can otherwise look like a hard leave.
   static const _webQuitGracePeriod = Duration(seconds: 12);
@@ -139,19 +304,27 @@ class AgoraService {
   /// True if local user muted video within the short ignore window. Used by UI to suppress "remote left" on mobile web when Agora fires spurious Quit.
   bool get didLocalUserMuteVideoRecently {
     if (_lastLocalVideoMuteTime == null) return false;
-    return DateTime.now().difference(_lastLocalVideoMuteTime!) < _webMuteOfflineIgnoreWindow;
+    return DateTime.now().difference(_lastLocalVideoMuteTime!) <
+        _webMuteOfflineIgnoreWindow;
   }
-  
+
   // Screen-off detection state
-  final Map<int, DateTime> _remoteVideoStoppedTimestamps = {}; // remoteUid -> when video stopped
-  final Map<int, Timer?> _screenOffDetectionTimers = {}; // remoteUid -> screen-off detection timer
+  final Map<int, DateTime> _remoteVideoStoppedTimestamps =
+      {}; // remoteUid -> when video stopped
+  final Map<int, Timer?> _screenOffDetectionTimers =
+      {}; // remoteUid -> screen-off detection timer
   final Map<int, bool> _remoteScreenOff = {}; // remoteUid -> screen is off
-  final Map<int, bool> _remoteAudioActive = {}; // remoteUid -> audio is still active (helps detect screen-off)
-  static const _screenOffDetectionDelay = Duration(seconds: 5); // Wait 5 seconds before detecting screen-off
+  final Map<int, bool> _remoteAudioActive =
+      {}; // remoteUid -> audio is still active (helps detect screen-off)
+  static const _screenOffDetectionDelay = Duration(
+    seconds: 5,
+  ); // Wait 5 seconds before detecting screen-off
 
   // Provisional "stopped" handling: avoid immediate ready=false on transient renegotiation (e.g. web)
   final Map<int, Timer?> _remoteVideoStoppedProvisionalTimers = {};
-  static const _remoteVideoStoppedProvisionalDelay = Duration(milliseconds: 800);
+  static const _remoteVideoStoppedProvisionalDelay = Duration(
+    milliseconds: 800,
+  );
 
   // Quality tier configurations
   static const _quality1080p = VideoEncoderConfiguration(
@@ -163,7 +336,7 @@ class AgoraService {
     degradationPreference: DegradationPreference.maintainQuality,
     mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
   );
-  
+
   static const _quality720p = VideoEncoderConfiguration(
     dimensions: VideoDimensions(width: 1280, height: 720),
     frameRate: 30,
@@ -173,7 +346,7 @@ class AgoraService {
     degradationPreference: DegradationPreference.maintainQuality,
     mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
   );
-  
+
   static const _quality720pLowFps = VideoEncoderConfiguration(
     dimensions: VideoDimensions(width: 1280, height: 720),
     frameRate: 15,
@@ -183,7 +356,7 @@ class AgoraService {
     degradationPreference: DegradationPreference.maintainFramerate,
     mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
   );
-  
+
   static const _quality480p = VideoEncoderConfiguration(
     dimensions: VideoDimensions(width: 640, height: 480),
     frameRate: 15,
@@ -209,23 +382,39 @@ class AgoraService {
   Stream<AgoraSessionState> get stateStream => _stateController.stream;
   Stream<int> get userJoinedStream => _userJoinedController.stream;
   Stream<int> get userOfflineStream => _userOfflineController.stream;
-  Stream<ConnectionStateType> get connectionStateStream => _connectionStateController.stream;
+  Stream<ConnectionStateType> get connectionStateStream =>
+      _connectionStateController.stream;
   Stream<String> get errorStream => _errorController.stream;
-  Stream<Map<String, dynamic>> get remoteVideoMutedStream => _remoteVideoMutedController.stream;
-  Stream<Map<String, dynamic>> get remoteVideoFrameStream => _remoteVideoFrameController.stream;
-  Stream<Map<String, dynamic>> get remoteAudioMutedStream => _remoteAudioMutedController.stream;
-  Stream<Map<String, dynamic>> get screenSharingStream => _screenSharingController.stream;
+  Stream<Map<String, dynamic>> get remoteVideoMutedStream =>
+      _remoteVideoMutedController.stream;
+  Stream<Map<String, dynamic>> get remoteVideoFrameStream =>
+      _remoteVideoFrameController.stream;
+  Stream<Map<String, dynamic>> get remoteAudioMutedStream =>
+      _remoteAudioMutedController.stream;
+  Stream<Map<String, dynamic>> get screenSharingStream =>
+      _screenSharingController.stream;
   Stream<int> get userLeftStream => _userLeftController.stream;
-  Stream<Map<String, dynamic>> get remoteNetworkQualityStream => _remoteNetworkQualityController.stream;
+  Stream<Map<String, dynamic>> get remoteNetworkQualityStream =>
+      _remoteNetworkQualityController.stream;
   Stream<Map<String, dynamic>> get reactionStream => _reactionController.stream;
-  Stream<Map<String, dynamic>> get remoteScreenOffStream => _remoteScreenOffController.stream;
-  
+  Stream<Map<String, dynamic>> get remoteScreenOffStream =>
+      _remoteScreenOffController.stream;
+
   AgoraSessionState get state => _state;
   bool get isInitialized => _isInitialized;
   bool get isInChannel => _isInChannel;
   String? get currentChannelName => _currentChannelName;
   int? get currentUID => _currentUID;
   RtcConnection? get currentConnection => _currentConnection;
+
+  /// Latest uplink (TX) sample from `onNetworkQuality` when `remoteUid == 0`.
+  QualityType? get lastObservedUplinkQuality => _lastObservedTxQuality;
+
+  /// Snapshot of per-remote uplink quality for diagnostics surfaces.
+  Map<int, QualityType> get snapshotRemoteNetworkQuality =>
+      Map<int, QualityType>.unmodifiable(
+        Map<int, QualityType>.from(_remoteNetworkQualities),
+      );
 
   /// Initialize Agora RTC Engine
   ///
@@ -252,34 +441,36 @@ class AgoraService {
         _engine = createAgoraRtcEngine();
       } catch (e) {
         // If engine creation fails on web, it's likely SDK not loaded
-        if (kIsWeb && (e.toString().contains('createIrisApiEngine') || 
-                       e.toString().contains('undefined'))) {
+        if (kIsWeb &&
+            (e.toString().contains('createIrisApiEngine') ||
+                e.toString().contains('undefined'))) {
           throw Exception(
             'Agora iris-web-rtc SDK not loaded. '
             'Please ensure iris-web-rtc.js script is included in index.html and loads before Flutter initializes. '
-            'Error: $e'
+            'Error: $e',
           );
         }
         rethrow;
       }
-      
+
       // Get App ID from environment or token (will be set properly in joinChannel)
       // For now, initialize with empty - will be updated when we get token
       await _engine!
           .initialize(
-        RtcEngineContext(
-          appId: '', // Will be set from token response
-          channelProfile: ChannelProfileType.channelProfileCommunication,
-          // Add area code for better connection (optional)
-          // areaCode: AreaCode.areaCodeGlob,
-        ),
+            RtcEngineContext(
+              appId: '', // Will be set from token response
+              channelProfile: ChannelProfileType.channelProfileCommunication,
+              // Add area code for better connection (optional)
+              // areaCode: AreaCode.areaCodeGlob,
+            ),
           )
           // In unit/widget tests (and some bad device states) engine init can hang.
           // Keep a hard timeout so the app can recover gracefully.
           .timeout(const Duration(seconds: 5));
 
       // Configure video quality: 480p on mobile (reduce heating), 720p on web/desktop
-      final isMobile = !kIsWeb &&
+      final isMobile =
+          !kIsWeb &&
           (defaultTargetPlatform == TargetPlatform.iOS ||
               defaultTargetPlatform == TargetPlatform.android);
       final initialConfig = isMobile
@@ -298,7 +489,8 @@ class AgoraService {
             .setVideoEncoderConfiguration(initialConfig)
             .timeout(const Duration(seconds: 3));
         LogService.success(
-            '✅ Video encoder configured: ${isMobile ? "480p (mobile)" : "720p"}');
+          '✅ Video encoder configured: ${isMobile ? "480p (mobile)" : "720p"}',
+        );
       } catch (e) {
         LogService.warning('Could not set video encoder configuration: $e');
       }
@@ -307,8 +499,9 @@ class AgoraService {
       try {
         await _engine!
             .setAudioProfile(
-          profile: AudioProfileType.audioProfileSpeechStandard,
-        ).timeout(const Duration(seconds: 3));
+              profile: AudioProfileType.audioProfileSpeechStandard,
+            )
+            .timeout(const Duration(seconds: 3));
         LogService.success('✅ Audio profile configured for speech / education');
       } catch (e) {
         LogService.warning('Could not set audio profile: $e');
@@ -320,26 +513,39 @@ class AgoraService {
         // Disable smooth streaming to prevent catch-up playback
         await _engine!.setParameters('{"rtc.video.playout_delay_max": 0}');
         await _engine!.setParameters('{"rtc.audio.playout_delay_max": 0}');
-        
+
         // Minimize jitter buffer for real-time experience
         await _engine!.setParameters('{"che.video.jitterBuffer": 50}');
         await _engine!.setParameters('{"che.audio.jitterBuffer": 50}');
-        
+
         // Configure low‑bitrate stream defaults for dual‑stream and fallback.
-        await _engine!.setParameters('{"che.video.lowBitRateStreamParameter":{"width":480,"height":360,"frameRate":15,"bitRate":400}}');
-        
-        LogService.success('✅ Low-latency mode configured (no catch-up playback)');
+        await _engine!.setParameters(
+          '{"che.video.lowBitRateStreamParameter":{"width":480,"height":360,"frameRate":15,"bitRate":400}}',
+        );
+
+        LogService.success(
+          '✅ Low-latency mode configured (no catch-up playback)',
+        );
       } catch (e) {
         LogService.warning('Could not configure low-latency parameters: $e');
       }
 
       // Enable dual‑stream so we can dynamically switch remote quality.
-      if (AppConfig.enableClassroomDualStream) {
+      if (AppConfig.enableClassroomDualStream &&
+          !kIsWeb &&
+          _supportsDualStreamMode) {
         try {
           await _engine!.enableDualStreamMode(enabled: true);
           LogService.success('✅ Dual stream mode enabled');
         } catch (e) {
-          LogService.warning('Could not enable dual stream mode: $e');
+          if (_isAgoraNotSupported(e)) {
+            _supportsDualStreamMode = false;
+            LogService.info(
+              '[NET] Dual stream mode not supported on this platform; disabling further dual-stream attempts.',
+            );
+          } else {
+            LogService.warning('Could not enable dual stream mode: $e');
+          }
         }
       } else {
         LogService.info('[NET] Dual stream disabled by feature flag');
@@ -358,21 +564,23 @@ class AgoraService {
       // If init fails, do NOT keep a half-created engine around. It can cause
       // later calls (switchCamera/toggleAudio/dispose) to hang in tests/devices.
       await _safeReleaseEngine(reason: 'initialize() failed');
-      
+
       // Provide helpful error message
       String errorMessage = 'Failed to initialize: $e';
       if (kIsWeb) {
-        if (e.toString().contains('createIrisApiEngine') || 
+        if (e.toString().contains('createIrisApiEngine') ||
             e.toString().contains('undefined') ||
             e.toString().contains('iris-web-rtc')) {
-          errorMessage = 'Agora iris-web-rtc SDK not loaded. '
+          errorMessage =
+              'Agora iris-web-rtc SDK not loaded. '
               'Please ensure iris-web-rtc.js script is included in index.html. Error: $e';
         } else {
-          errorMessage = 'Failed to initialize video service on web. '
+          errorMessage =
+              'Failed to initialize video service on web. '
               'Please ensure your browser supports WebRTC and has necessary permissions. Error: $e';
         }
       }
-      
+
       _errorController.add(errorMessage);
       rethrow;
     }
@@ -400,6 +608,79 @@ class AgoraService {
     await _safeReleaseEngine(reason: 'user left');
   }
 
+  /// Web hot-restart safety: aggressively stop camera/mic capture and release stale engine/session.
+  /// Non-throwing by design so startup/retry flows stay resilient.
+  Future<void> forceWebCleanupOnStartup() async {
+    if (!kIsWeb) return;
+    try {
+      await _forceStopMediaAndReset(reason: 'web startup/hot-restart cleanup');
+    } catch (e) {
+      LogService.warning('forceWebCleanupOnStartup failed: $e');
+    }
+  }
+
+  /// Ensure a fresh RTC state before a new join attempt.
+  Future<void> prepareFreshJoinState() async {
+    try {
+      await _forceStopMediaAndReset(reason: 'prepare fresh join');
+    } catch (e) {
+      LogService.warning('prepareFreshJoinState failed: $e');
+    }
+  }
+
+  Future<void> _forceStopMediaAndReset({required String reason}) async {
+    final engine = _engine;
+    if (engine != null) {
+      try {
+        await engine
+            .muteLocalAudioStream(true)
+            .timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await engine
+            .muteLocalVideoStream(true)
+            .timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await engine.stopPreview().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await engine.disableVideo().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        await engine.disableAudio().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      try {
+        if (_isInChannel) {
+          await engine.leaveChannel().timeout(const Duration(seconds: 3));
+        }
+      } catch (_) {}
+    }
+
+    _isInChannel = false;
+    _currentChannelName = null;
+    _currentUID = null;
+    _currentConnection = null;
+    _spotlightRemoteUid = null;
+    _isPublishingScreen = false;
+    _screenShareOwnerUid = null;
+    _isReconnecting = false;
+    _joinInProgress = false;
+    _reconnectionAttempts = 0;
+    _lastSessionId = null;
+    _lastUserId = null;
+    _lastUserRole = null;
+    _lastInitialCameraEnabled = false;
+    _lastInitialMicEnabled = false;
+    _isVideoEnabled = false;
+    _isAudioEnabled = false;
+    _lastObservedTxQuality = null;
+
+    await _safeReleaseEngine(reason: reason);
+    _updateState(AgoraSessionState.disconnected);
+    LogService.info('Agora fresh-state reset complete ($reason)');
+  }
+
   bool _preJoinInitInProgress = false;
 
   /// Start local camera preview only (for pre-join screen). Does not join a channel.
@@ -421,7 +702,10 @@ class AgoraService {
         await _engine!.muteLocalVideoStream(false);
         if (kIsWeb) {
           await _engine!.setupLocalVideo(
-            const VideoCanvas(uid: 0, sourceType: VideoSourceType.videoSourceCamera),
+            const VideoCanvas(
+              uid: 0,
+              sourceType: VideoSourceType.videoSourceCamera,
+            ),
           );
           await _engine!.startPreview();
           await Future.delayed(const Duration(milliseconds: 300));
@@ -467,13 +751,20 @@ class AgoraService {
       await _engine!.muteLocalVideoStream(false);
       // Enable volume indication so pre-join and in-call can show talking indicator
       try {
-        await _engine!.enableAudioVolumeIndication(interval: 500, smooth: 3, reportVad: true);
+        await _engine!.enableAudioVolumeIndication(
+          interval: 500,
+          smooth: 3,
+          reportVad: true,
+        );
       } catch (e) {
         LogService.warning('Pre-join enableAudioVolumeIndication: $e');
       }
       if (kIsWeb) {
         await _engine!.setupLocalVideo(
-          const VideoCanvas(uid: 0, sourceType: VideoSourceType.videoSourceCamera),
+          const VideoCanvas(
+            uid: 0,
+            sourceType: VideoSourceType.videoSourceCamera,
+          ),
         );
         await _engine!.startPreview();
         await Future.delayed(const Duration(milliseconds: 300));
@@ -497,7 +788,9 @@ class AgoraService {
     if (kIsWeb || _engine == null || _isInChannel) return;
     try {
       await _engine!.startPreview();
-      LogService.info('Pre-join preview capture started (view already in tree)');
+      LogService.info(
+        'Pre-join preview capture started (view already in tree)',
+      );
     } catch (e) {
       LogService.warning('startPreJoinPreviewCapture failed: $e');
     }
@@ -509,23 +802,35 @@ class AgoraService {
     try {
       _isVideoEnabled = enabled;
       if (enabled) {
-        if (kIsWeb) {
-          await _engine!.setupLocalVideo(
-            const VideoCanvas(uid: 0, sourceType: VideoSourceType.videoSourceCamera),
-          );
-          await _engine!.muteLocalVideoStream(false);
-        } else {
-          await _engine!.startPreview();
-          await _engine!.muteLocalVideoStream(false);
-        }
+        // Re-enable camera capture and preview.
+        await _engine!.enableVideo();
+        await _engine!.setupLocalVideo(
+          const VideoCanvas(
+            uid: 0,
+            sourceType: VideoSourceType.videoSourceCamera,
+          ),
+        );
+        await _engine!.startPreview();
+        await _engine!.muteLocalVideoStream(false);
       } else {
+        // Explicitly stop capture so browser webcam indicator/light turns off.
         await _engine!.muteLocalVideoStream(true);
-        if (!kIsWeb) {
-          await _engine!.stopPreview();
-        }
+        await _engine!.stopPreview();
+        await _engine!.disableVideo();
       }
     } catch (e) {
       LogService.warning('setPreJoinCameraEnabled failed: $e');
+    }
+  }
+
+  /// Update pre-join mic state while not in a channel.
+  Future<void> setPreJoinMicEnabled(bool enabled) async {
+    if (_engine == null || _isInChannel) return;
+    try {
+      _isAudioEnabled = enabled;
+      await _engine!.muteLocalAudioStream(!enabled);
+    } catch (e) {
+      LogService.warning('setPreJoinMicEnabled failed: $e');
     }
   }
 
@@ -558,26 +863,36 @@ class AgoraService {
     _lastUserRole = userRole;
     _lastInitialCameraEnabled = initialCameraEnabled;
     _lastInitialMicEnabled = initialMicEnabled;
-    
+
     // Reset reconnection attempts on new join
     _reconnectionAttempts = 0;
     if (_isInChannel) {
       LogService.warning('Already in channel: $_currentChannelName');
       return;
     }
+    if (_joinInProgress) {
+      LogService.warning(
+        'Join already in progress, skipping duplicate join request',
+      );
+      return;
+    }
 
     try {
+      _joinInProgress = true;
+      _resetCallMediaPolicyState();
       _updateState(AgoraSessionState.joining);
 
       // Fetch token from backend FIRST to get appId
       final tokenData = await AgoraTokenService.fetchToken(sessionId);
-      
+
       _currentChannelName = tokenData['channelName'] as String;
       _currentUID = tokenData['uid'] as int;
       final token = tokenData['token'] as String;
       final appId = tokenData['appId'] as String?;
-      
-      LogService.info('📊 Channel Info: channelName=$_currentChannelName, UID=$_currentUID, role=$userRole');
+
+      LogService.info(
+        '📊 Channel Info: channelName=$_currentChannelName, UID=$_currentUID, role=$userRole',
+      );
 
       // CRITICAL: If appId is provided and engine not initialized or initialized with empty appId, reinitialize
       if (appId != null && appId.isNotEmpty) {
@@ -594,7 +909,7 @@ class AgoraService {
             _engine = null;
             _isInitialized = false;
           }
-          
+
           // Create new engine with proper appId
           _engine = createAgoraRtcEngine();
           await _engine!.initialize(
@@ -603,7 +918,7 @@ class AgoraService {
               channelProfile: ChannelProfileType.channelProfileCommunication,
             ),
           );
-          
+
           // Re-register event handlers
           _registerEventHandlers();
           _isInitialized = true;
@@ -628,23 +943,38 @@ class AgoraService {
 
         // Ensure dual‑stream is active inside the channel as well (some platforms
         // require calling this after join).
-        try {
-          await _engine!.enableDualStreamMode(enabled: true);
-          LogService.info('[NET] Dual stream mode confirmed in joinChannel');
-        } catch (e) {
-          LogService.warning('[NET] enableDualStreamMode in joinChannel failed: $e');
+        if (AppConfig.enableClassroomDualStream &&
+            !kIsWeb &&
+            _supportsDualStreamMode) {
+          try {
+            await _engine!.enableDualStreamMode(enabled: true);
+            LogService.info('[NET] Dual stream mode confirmed in joinChannel');
+          } catch (e) {
+            if (_isAgoraNotSupported(e)) {
+              _supportsDualStreamMode = false;
+              LogService.info(
+                '[NET] Dual stream mode not supported in join flow; disabling further attempts.',
+              );
+            } else {
+              LogService.warning(
+                '[NET] enableDualStreamMode in joinChannel failed: $e',
+              );
+            }
+          }
         }
-        
+
         // Set initial camera and mic state from pre-join screen
         _isVideoEnabled = initialCameraEnabled;
         _isAudioEnabled = initialMicEnabled;
-        
+
         // Apply initial states
         await _engine!.muteLocalVideoStream(!initialCameraEnabled);
         await _engine!.muteLocalAudioStream(!initialMicEnabled);
-        
-        LogService.info('📹 Initial state: Camera=${initialCameraEnabled ? "ON" : "OFF"}, Mic=${initialMicEnabled ? "ON" : "OFF"}');
-        
+
+        LogService.info(
+          '📹 Initial state: Camera=${initialCameraEnabled ? "ON" : "OFF"}, Mic=${initialMicEnabled ? "ON" : "OFF"}',
+        );
+
         // If camera is enabled, set up local video view
         if (initialCameraEnabled) {
           if (kIsWeb) {
@@ -690,21 +1020,23 @@ class AgoraService {
           channelProfile: ChannelProfileType.channelProfileCommunication,
         ),
       );
-      
+
       // CRITICAL: Configure low-latency after joining channel
       // This ensures real-time communication without buffering missed content
       try {
         // Default to high stream; we will dynamically switch to low when we
         // detect sustained poor network quality.
-        await _engine!.setRemoteDefaultVideoStreamType(VideoStreamType.videoStreamHigh);
-        
+        await _engine!.setRemoteDefaultVideoStreamType(
+          VideoStreamType.videoStreamHigh,
+        );
+
         // Disable automatic catch-up of missed frames
         await _engine!.setParameters('{"rtc.video.playout_delay_max": 0}');
         await _engine!.setParameters('{"rtc.audio.playout_delay_max": 0}');
-        
+
         // Set minimal buffer for real-time experience
         await _engine!.setParameters('{"che.video.render.fps": 30}');
-        
+
         LogService.info('✅ Channel low-latency settings applied');
       } catch (e) {
         LogService.warning('Could not apply channel low-latency settings: $e');
@@ -714,8 +1046,9 @@ class AgoraService {
       // The event handler will update the state when connection is actually established
       LogService.info('Join channel request sent, waiting for connection...');
     } catch (e) {
+      _joinInProgress = false;
       LogService.error('Failed to join channel: $e');
-      
+
       // Check for permission errors specifically
       final errorStr = e.toString().toLowerCase();
       if (errorStr.contains('notallowederror') ||
@@ -724,17 +1057,21 @@ class AgoraService {
           (errorStr.contains('permission') && errorStr.contains('denied'))) {
         LogService.error('❌ Permission denied when joining channel');
         LogService.error('💡 Camera/microphone access was blocked by browser');
-        LogService.error('💡 To fix: Click camera/mic icon in address bar → Set to "Allow" → Refresh page');
-        _errorController.add('Camera and Microphone Permission Required\n\n'
-            'Your browser is blocking camera and microphone access.\n\n'
-            'To fix:\n'
-            '1. Click the camera/microphone icon in the address bar\n'
-            '2. Set both "Camera" and "Microphone" to "Allow"\n'
-            '3. Refresh this page and try again');
+        LogService.error(
+          '💡 To fix: Click camera/mic icon in address bar → Set to "Allow" → Refresh page',
+        );
+        _errorController.add(
+          'Camera and Microphone Permission Required\n\n'
+          'Your browser is blocking camera and microphone access.\n\n'
+          'To fix:\n'
+          '1. Click the camera/microphone icon in the address bar\n'
+          '2. Set both "Camera" and "Microphone" to "Allow"\n'
+          '3. Refresh this page and try again',
+        );
         _updateState(AgoraSessionState.error);
         rethrow;
       }
-      
+
       _updateState(AgoraSessionState.error);
       _errorController.add('Failed to join: $e');
       rethrow;
@@ -750,12 +1087,40 @@ class AgoraService {
         _videoCheckTimer = null;
         return;
       }
-      
-      // Periodically ensure video is unmuted (silently - don't log every time)
-      _engine!.muteLocalVideoStream(false).catchError((e) {
-        // Silently fail - video might already be unmuted
-      });
+      // Avoid periodic unmute chatter when user is alone in-room.
+      if (_remoteParticipantUids.isEmpty) {
+        return;
+      }
+
+      // Periodically ensure video is unmuted (rate-limited to avoid thrash).
+      _ensureVideoUnmuted(reason: 'periodic_check');
     });
+  }
+
+  Future<void> _ensureVideoUnmuted({
+    required String reason,
+    bool force = false,
+    bool logOnSuccess = false,
+  }) async {
+    if (_engine == null || !_isInChannel || !_isVideoEnabled) return;
+    // While screen sharing is active, avoid repeatedly forcing camera unmute.
+    if (_isPublishingScreen) return;
+    final now = DateTime.now();
+    if (!force &&
+        _lastEnsureVideoUnmutedAt != null &&
+        now.difference(_lastEnsureVideoUnmutedAt!) <
+            _ensureVideoUnmutedCooldown) {
+      return;
+    }
+    _lastEnsureVideoUnmutedAt = now;
+    try {
+      await _engine!.muteLocalVideoStream(false);
+      if (logOnSuccess) {
+        LogService.info('✅ Ensured local video unmuted ($reason)');
+      }
+    } catch (e) {
+      LogService.warning('Could not ensure video unmuted ($reason): $e');
+    }
   }
 
   /// Stop periodic video check
@@ -771,7 +1136,9 @@ class AgoraService {
     if (sessionId == null || sessionId.isEmpty || _currentUID == null) return;
     try {
       _reactionChannel?.unsubscribe();
-      _reactionChannel = SupabaseService.client.channel('session_reactions_$sessionId');
+      _reactionChannel = SupabaseService.client.channel(
+        'session_reactions_$sessionId',
+      );
       _reactionChannel!.onBroadcast(
         event: 'reaction',
         callback: (payload, [ref]) {
@@ -779,12 +1146,16 @@ class AgoraService {
           final emoji = payload['emoji'] as String?;
           if (fromUid == null || emoji == null || emoji.isEmpty) return;
           if (fromUid == _currentUID) return; // don't show own reaction again
-          LogService.info('🎭 [EMOJI] Received reaction via Realtime: fromUid=$fromUid, emoji="$emoji"');
+          LogService.info(
+            '🎭 [EMOJI] Received reaction via Realtime: fromUid=$fromUid, emoji="$emoji"',
+          );
           _reactionController.add({'uid': fromUid, 'emoji': emoji});
         },
       );
       _reactionChannel!.subscribe();
-      LogService.success('✅ Reaction Realtime channel subscribed: session_reactions_$sessionId');
+      LogService.success(
+        '✅ Reaction Realtime channel subscribed: session_reactions_$sessionId',
+      );
     } catch (e) {
       LogService.warning('Could not set up reaction Realtime channel: $e');
       _reactionChannel = null;
@@ -803,6 +1174,7 @@ class AgoraService {
       _reactionChannel?.unsubscribe();
       _reactionChannel = null;
       _qoeCorrelationId = null;
+      _resetCallMediaPolicyState();
       _updateState(AgoraSessionState.disconnected);
       return;
     }
@@ -810,29 +1182,32 @@ class AgoraService {
     if (!_isInChannel) {
       // Already left
       _qoeCorrelationId = null;
+      _resetCallMediaPolicyState();
       _updateState(AgoraSessionState.disconnected);
       return;
     }
 
     try {
       _updateState(AgoraSessionState.leaving);
-      
+
       // Stop periodic checks
       _stopVideoCheckTimer();
-      
+
       // Stop video health check
       _stopVideoHealthCheck();
-      
+
       // Reset optimization state
       _reconnectionAttempts = 0;
       _isReconnecting = false;
+      _joinInProgress = false;
       _qoeCorrelationId = null;
       _videoRecoveryAttempts.clear();
       _lastRecoveryAttempt.clear();
       _cameraRecoveryAttempts = 0;
       _isRecoveringCamera = false;
-      _lastNetworkQuality = null;
+      _lastObservedTxQuality = null;
       _currentQualityTier = null;
+      _resetCallMediaPolicyState();
       _reconnectTelemetryActive = false;
       _freezeStartedAt.clear();
       _lastAppliedRemoteStreamType.clear();
@@ -841,7 +1216,7 @@ class AgoraService {
       _remoteNetworkQualities.clear();
       _remoteNetworkQualityTimestamps.clear();
       _remotePoorQualityCount.clear();
-      
+
       // Clean up connection state tracking
       for (var timer in _userLeftGracePeriodTimers.values) {
         timer?.cancel();
@@ -850,7 +1225,7 @@ class AgoraService {
       _userOfflineTimestamps.clear();
       _userOfflineCount.clear();
       _userConfirmedLeft.clear();
-      
+
       // Clean up screen-off detection
       for (var timer in _screenOffDetectionTimers.values) {
         timer?.cancel();
@@ -863,43 +1238,53 @@ class AgoraService {
         t?.cancel();
       }
       _remoteVideoStoppedProvisionalTimers.clear();
-      
+
       // CRITICAL: IMMEDIATELY update state flags BEFORE any async operations
       // This ensures UI and other parts of the app know tracks are off right away
       final wasVideoEnabled = _isVideoEnabled;
       final wasAudioEnabled = _isAudioEnabled;
       _isVideoEnabled = false; // Update immediately (synchronously)
       _isAudioEnabled = false; // Update immediately (synchronously)
-      
+
       // CRITICAL: Mute audio and video IMMEDIATELY (in parallel) before leaving
       // This ensures the call stops immediately even if network is poor
       try {
         // Fire both mute operations in parallel for faster shutdown
         await Future.wait([
           if (wasVideoEnabled)
-            _engine!.muteLocalVideoStream(true).timeout(
-              const Duration(seconds: 1), // Shorter timeout for immediate response
-              onTimeout: () {
-                LogService.warning('Mute video timeout - continuing');
-              },
-            ).catchError((e) {
-              LogService.warning('Mute video error (continuing): $e');
-            }),
+            _engine!
+                .muteLocalVideoStream(true)
+                .timeout(
+                  const Duration(
+                    seconds: 1,
+                  ), // Shorter timeout for immediate response
+                  onTimeout: () {
+                    LogService.warning('Mute video timeout - continuing');
+                  },
+                )
+                .catchError((e) {
+                  LogService.warning('Mute video error (continuing): $e');
+                }),
           if (wasAudioEnabled)
-            _engine!.muteLocalAudioStream(true).timeout(
-              const Duration(seconds: 1), // Shorter timeout for immediate response
-              onTimeout: () {
-                LogService.warning('Mute audio timeout - continuing');
-              },
-            ).catchError((e) {
-              LogService.warning('Mute audio error (continuing): $e');
-            }),
+            _engine!
+                .muteLocalAudioStream(true)
+                .timeout(
+                  const Duration(
+                    seconds: 1,
+                  ), // Shorter timeout for immediate response
+                  onTimeout: () {
+                    LogService.warning('Mute audio timeout - continuing');
+                  },
+                )
+                .catchError((e) {
+                  LogService.warning('Mute audio error (continuing): $e');
+                }),
         ], eagerError: false); // Don't fail if one times out
         LogService.info('✅ Audio and video muted before leaving channel');
       } catch (e) {
         LogService.warning('Error muting before leave (continuing anyway): $e');
       }
-      
+
       // Try to leave channel with timeout and error handling
       try {
         await _engine!.leaveChannel().timeout(
@@ -916,15 +1301,17 @@ class AgoraService {
       } catch (e) {
         // Handle mutex errors and other leave channel errors gracefully
         final errorStr = e.toString().toLowerCase();
-        if (errorStr.contains('mutex') || 
-            errorStr.contains('already') || 
+        if (errorStr.contains('mutex') ||
+            errorStr.contains('already') ||
             errorStr.contains('not in channel')) {
-          LogService.warning('Channel already left or mutex error (this is okay): $e');
+          LogService.warning(
+            'Channel already left or mutex error (this is okay): $e',
+          );
         } else {
           LogService.warning('Error leaving channel (continuing anyway): $e');
         }
       }
-      
+
       // CRITICAL: Force stop all media tracks to ensure call ends completely
       // This is especially important for poor network conditions and mobile devices
       try {
@@ -940,7 +1327,7 @@ class AgoraService {
           // Screen capture might not be active - this is okay
           LogService.debug('Screen capture not active or already stopped: $e');
         }
-        
+
         // On Web (especially iOS Safari/Chrome), calling disableVideo/disableAudio after muting can throw:
         // "cannot set enabled while the track is muted". Leaving the channel already tears down tracks, so
         // we skip capability disabling on web to avoid noisy errors and UI glitches.
@@ -948,46 +1335,59 @@ class AgoraService {
           // Disable video and audio capabilities to stop all media tracks
           // Do these in parallel for faster shutdown
           await Future.wait([
-            _engine!.disableVideo().timeout(
-              const Duration(seconds: 2),
-              onTimeout: () {
-                LogService.warning('Disable video timeout - continuing');
-              },
-            ).catchError((e) {
-              LogService.warning('Disable video error (continuing): $e');
-            }),
-            _engine!.disableAudio().timeout(
-              const Duration(seconds: 2),
-              onTimeout: () {
-                LogService.warning('Disable audio timeout - continuing');
-              },
-            ).catchError((e) {
-              LogService.warning('Disable audio error (continuing): $e');
-            }),
+            _engine!
+                .disableVideo()
+                .timeout(
+                  const Duration(seconds: 2),
+                  onTimeout: () {
+                    LogService.warning('Disable video timeout - continuing');
+                  },
+                )
+                .catchError((e) {
+                  LogService.warning('Disable video error (continuing): $e');
+                }),
+            _engine!
+                .disableAudio()
+                .timeout(
+                  const Duration(seconds: 2),
+                  onTimeout: () {
+                    LogService.warning('Disable audio timeout - continuing');
+                  },
+                )
+                .catchError((e) {
+                  LogService.warning('Disable audio error (continuing): $e');
+                }),
           ], eagerError: false); // Don't fail if one times out
 
           // CRITICAL: On mobile, also stop preview if it was started
           try {
             // On mobile, stop preview if it was started
-            await _engine!.stopPreview().timeout(
-              const Duration(seconds: 1),
-              onTimeout: () {
-                LogService.warning('Stop preview timeout - continuing');
-              },
-            ).catchError((e) {
-              // Preview might not be active - this is okay
-              LogService.debug('Preview not active: $e');
-            });
+            await _engine!
+                .stopPreview()
+                .timeout(
+                  const Duration(seconds: 1),
+                  onTimeout: () {
+                    LogService.warning('Stop preview timeout - continuing');
+                  },
+                )
+                .catchError((e) {
+                  // Preview might not be active - this is okay
+                  LogService.debug('Preview not active: $e');
+                });
           } catch (e) {
-            LogService.warning('Error stopping preview (continuing anyway): $e');
+            LogService.warning(
+              'Error stopping preview (continuing anyway): $e',
+            );
           }
         }
-        
+
         LogService.info('✅ All media tracks stopped and capabilities disabled');
       } catch (e) {
-        LogService.warning('Error disabling capabilities (continuing anyway): $e');
+        LogService.warning(
+          'Error disabling capabilities (continuing anyway): $e',
+        );
       }
-      
+
       // Always update state even if leaveChannel throws
       _isInChannel = false;
       _currentChannelName = null;
@@ -997,11 +1397,13 @@ class AgoraService {
       _reactionChannel?.unsubscribe();
       _reactionChannel = null;
       _updateState(AgoraSessionState.disconnected);
-      
+
       LogService.success('Left Agora channel');
     } catch (e) {
       // Even if there's an error, mark as disconnected
-      LogService.warning('Error during leave channel (marking as disconnected): $e');
+      LogService.warning(
+        'Error during leave channel (marking as disconnected): $e',
+      );
       _isInChannel = false;
       _currentChannelName = null;
       _currentUID = null;
@@ -1010,6 +1412,7 @@ class AgoraService {
       _reactionChannel?.unsubscribe();
       _reactionChannel = null;
       _stopVideoHealthCheck();
+      _resetCallMediaPolicyState();
       _updateState(AgoraSessionState.disconnected);
       // Don't add to error controller - user is leaving anyway
     }
@@ -1021,11 +1424,11 @@ class AgoraService {
 
     try {
       _isVideoEnabled = !_isVideoEnabled;
-      
+
       if (_isVideoEnabled) {
         // Enabling camera - set up local video view and unmute
         LogService.info('📹 Enabling camera...');
-        
+
         // Set up local video view (required for web to access camera)
         if (kIsWeb) {
           try {
@@ -1052,9 +1455,9 @@ class AgoraService {
             LogService.warning('Could not start preview: $e');
           }
         }
-        
-        // Unmute video stream and explicitly enable publishing
-        await _engine!.muteLocalVideoStream(false);
+
+        // Unmute video stream and explicitly enable publishing.
+        await _ensureVideoUnmuted(reason: 'toggle_video_on', force: true);
         if (_isInChannel) {
           try {
             await _engine!.updateChannelMediaOptions(
@@ -1066,27 +1469,24 @@ class AgoraService {
                 publishMicrophoneTrack: _isAudioEnabled,
               ),
             );
-            LogService.info('📹 Channel media options updated: publishCameraTrack=true');
+            LogService.info(
+              '📹 Channel media options updated: publishCameraTrack=true',
+            );
           } catch (e) {
-            LogService.warning('Could not update channel media options on unmute: $e');
+            LogService.warning(
+              'Could not update channel media options on unmute: $e',
+            );
           }
         }
         LogService.info('✅ Video enabled - should be visible to remote users');
-        
-        // CRITICAL: Aggressively ensure video is unmuted (try multiple times)
-        for (int i = 0; i < 3; i++) {
-          try {
-            await _engine!.muteLocalVideoStream(false);
-            LogService.info('✅ Verified video stream is unmuted (publishing) - attempt ${i + 1}');
-            // Small delay between attempts
-            if (i < 2) {
-              await Future.delayed(const Duration(milliseconds: 200));
-            }
-          } catch (e) {
-            LogService.warning('Could not verify video is unmuted (attempt ${i + 1}): $e');
-          }
-        }
-        
+
+        // One immediate verification is enough; avoid rapid repeated unmute thrash.
+        await _ensureVideoUnmuted(
+          reason: 'toggle_video_on_verify',
+          force: true,
+          logOnSuccess: true,
+        );
+
         // On web, also try setupLocalVideo again after unmuting
         if (kIsWeb) {
           try {
@@ -1097,34 +1497,40 @@ class AgoraService {
             LogService.warning('Could not re-setup local video: $e');
           }
         }
-        
+
         if (kIsWeb) {
           _lastLocalVideoMuteTime = null;
-          LogService.info('[VIDEO_MUTE] local video muted=false, _lastLocalVideoMuteTime cleared');
-          debugPrint('[VIDEO_MUTE] local video muted=false, _lastLocalVideoMuteTime cleared');
+          LogService.info(
+            '[VIDEO_MUTE] local video muted=false, _lastLocalVideoMuteTime cleared',
+          );
+          debugPrint(
+            '[VIDEO_MUTE] local video muted=false, _lastLocalVideoMuteTime cleared',
+          );
         }
         // Restart periodic check
         if (_isInChannel) {
           _startVideoCheckTimer();
         }
-        
-        // Also schedule a check after a delay to ensure it stays unmuted
+
+        // Also schedule a check after a delay to ensure it stays unmuted.
         Future.delayed(const Duration(seconds: 2), () async {
           if (_engine != null && _isInChannel && _isVideoEnabled) {
-            try {
-              await _engine!.muteLocalVideoStream(false);
-              LogService.info('✅ Final check: Video stream is unmuted');
-            } catch (e) {
-              LogService.warning('Final check failed: $e');
-            }
+            await _ensureVideoUnmuted(
+              reason: 'toggle_video_on_final_check',
+              logOnSuccess: true,
+            );
           }
         });
       } else {
         // Disabling camera - mute video stream and explicitly stop publishing
         if (kIsWeb) {
           _lastLocalVideoMuteTime = DateTime.now();
-          LogService.info('[VIDEO_MUTE] local video muted=true, _lastLocalVideoMuteTime set to $_lastLocalVideoMuteTime');
-          debugPrint('[VIDEO_MUTE] local video muted=true, _lastLocalVideoMuteTime set');
+          LogService.info(
+            '[VIDEO_MUTE] local video muted=true, _lastLocalVideoMuteTime set to $_lastLocalVideoMuteTime',
+          );
+          debugPrint(
+            '[VIDEO_MUTE] local video muted=true, _lastLocalVideoMuteTime set',
+          );
         }
         await _engine!.muteLocalVideoStream(true);
         // Explicitly stop publishing camera track so remote reliably sees camera off
@@ -1139,14 +1545,30 @@ class AgoraService {
                 publishMicrophoneTrack: _isAudioEnabled,
               ),
             );
-            LogService.info('📹 Channel media options updated: publishCameraTrack=false');
+            LogService.info(
+              '📹 Channel media options updated: publishCameraTrack=false',
+            );
           } catch (e) {
-            LogService.warning('Could not update channel media options on mute: $e');
+            LogService.warning(
+              'Could not update channel media options on mute: $e',
+            );
           }
           // Send camera state on every mute so remote UI updates even if Agora callbacks are delayed
           await sendCameraState(false);
         }
         LogService.info('📹 Video disabled - not visible to remote users');
+        // On web, also stop local capture so browser webcam indicator/light turns off.
+        if (kIsWeb) {
+          try {
+            await _engine!.stopPreview();
+            await _engine!.disableVideo();
+            LogService.info(
+              '📹 Web capture stopped (preview + video disabled)',
+            );
+          } catch (e) {
+            LogService.warning('Could not fully stop web camera capture: $e');
+          }
+        }
         // Stop periodic check when video is disabled
         _stopVideoCheckTimer();
         // On web, retry mute after short delay so second toggle reliably applies (desktop mute reliability)
@@ -1165,7 +1587,9 @@ class AgoraService {
                 ),
               );
               await sendCameraState(false);
-              LogService.info('📹 Mute retry applied: publishCameraTrack=false');
+              LogService.info(
+                '📹 Mute retry applied: publishCameraTrack=false',
+              );
             } catch (e) {
               LogService.warning('Mute retry failed: $e');
             }
@@ -1227,7 +1651,9 @@ class AgoraService {
 
   /// Ensure local video track is actively published and preview is started when needed.
   /// Keeps engine details out of screen widgets.
-  Future<void> ensureLocalVideoPublishing({bool startPreviewOnWeb = true}) async {
+  Future<void> ensureLocalVideoPublishing({
+    bool startPreviewOnWeb = true,
+  }) async {
     if (_engine == null || !_isInChannel || !_isVideoEnabled) return;
     try {
       if (kIsWeb && startPreviewOnWeb) {
@@ -1275,25 +1701,26 @@ class AgoraService {
         await _engine!.startScreenCapture(
           const ScreenCaptureParameters2(
             captureVideo: true,
-            captureAudio: false, // Audio may not be supported on all mobile platforms
+            captureAudio:
+                false, // Audio may not be supported on all mobile platforms
             videoParams: ScreenVideoParameters(
-              dimensions: VideoDimensions(width: 1280, height: 720), // Lower resolution for mobile
+              dimensions: VideoDimensions(
+                width: 1280,
+                height: 720,
+              ), // Lower resolution for mobile
               frameRate: 15,
               bitrate: 1000, // Lower bitrate for mobile networks
             ),
           ),
         );
       }
-      
+
       // CRITICAL: Set up local video view with screen source
       // This ensures the screen sharing stream is properly published
       await _engine!.setupLocalVideo(
-        VideoCanvas(
-          uid: 0,
-          sourceType: VideoSourceType.videoSourceScreen,
-        ),
+        VideoCanvas(uid: 0, sourceType: VideoSourceType.videoSourceScreen),
       );
-      
+
       // CRITICAL: Update channel media options to publish screen track
       // Without this, the screen sharing stream may not be published correctly
       try {
@@ -1302,24 +1729,30 @@ class AgoraService {
         } else {
           await _engine!.updateChannelMediaOptions(
             ChannelMediaOptions(
-              publishCameraTrack: false,  // Disable camera track
-              publishScreenTrack: true,   // Enable screen track
+              publishCameraTrack: false, // Disable camera track
+              publishScreenTrack: true, // Enable screen track
               publishScreenCaptureVideo: true,
               publishScreenCaptureAudio: kIsWeb, // Audio capture only on web
-              publishMicrophoneTrack: _isAudioEnabled,  // Keep mic state
+              publishMicrophoneTrack: _isAudioEnabled, // Keep mic state
             ),
           );
-          LogService.success('✅ Channel media options updated for screen sharing (publishScreenTrack=true, publishCameraTrack=false)');
+          LogService.success(
+            '✅ Channel media options updated for screen sharing (publishScreenTrack=true, publishCameraTrack=false)',
+          );
         }
       } catch (e) {
-        LogService.warning('Could not update channel media options for screen sharing: $e');
+        LogService.warning(
+          'Could not update channel media options for screen sharing: $e',
+        );
         // Continue anyway - some SDK versions may handle this automatically
       }
-      
+
       _isPublishingScreen = true;
       _screenShareOwnerUid = _currentUID;
       LogService.success('✅ Screen sharing started');
-      LogService.info('📺 Screen sharing stream is now active - remote users should see your screen');
+      LogService.info(
+        '📺 Screen sharing stream is now active - remote users should see your screen',
+      );
       _screenSharingController.add({
         'uid': _currentUID,
         'sharing': true,
@@ -1337,16 +1770,23 @@ class AgoraService {
     } catch (e) {
       // Check if user cancelled the browser/device prompt (avoid error dialog and frozen "connecting" state)
       final errorStr = e.toString().toLowerCase();
-      final isUserCancel = errorStr.contains('user') && (errorStr.contains('cancel') || errorStr.contains('canceled')) ||
-          errorStr.contains('canceled') || errorStr.contains('cancelled') || errorStr.contains('abort');
-      final isPermissionDenied = errorStr.contains('notallowed') || errorStr.contains('not allowed') ||
-          errorStr.contains('permission') || errorStr.contains('denied');
+      final isUserCancel =
+          errorStr.contains('user') &&
+              (errorStr.contains('cancel') || errorStr.contains('canceled')) ||
+          errorStr.contains('canceled') ||
+          errorStr.contains('cancelled') ||
+          errorStr.contains('abort');
+      final isPermissionDenied =
+          errorStr.contains('notallowed') ||
+          errorStr.contains('not allowed') ||
+          errorStr.contains('permission') ||
+          errorStr.contains('denied');
       if (isUserCancel || isPermissionDenied) {
         LogService.info('Screen sharing cancelled or denied by user');
         _screenSharingController.add({'uid': _currentUID, 'sharing': false});
         return;
       }
-      
+
       LogService.warning('Screen sharing error (not showing to user): $e');
       _screenSharingController.add({'uid': _currentUID, 'sharing': false});
     }
@@ -1358,7 +1798,7 @@ class AgoraService {
 
     try {
       await _engine!.stopScreenCapture();
-      
+
       // CRITICAL: Update channel media options to disable screen track
       // This ensures the screen sharing stream is properly stopped
       try {
@@ -1367,34 +1807,37 @@ class AgoraService {
         } else {
           await _engine!.updateChannelMediaOptions(
             ChannelMediaOptions(
-              publishCameraTrack: _isVideoEnabled,  // Restore camera track
-              publishScreenTrack: false,            // Disable screen track
+              publishCameraTrack: _isVideoEnabled, // Restore camera track
+              publishScreenTrack: false, // Disable screen track
               publishScreenCaptureVideo: false,
               publishScreenCaptureAudio: false,
-              publishMicrophoneTrack: _isAudioEnabled,  // Keep mic state
+              publishMicrophoneTrack: _isAudioEnabled, // Keep mic state
             ),
           );
-          LogService.success('✅ Channel media options updated to stop screen sharing (publishScreenTrack=false, publishCameraTrack=$_isVideoEnabled)');
+          LogService.success(
+            '✅ Channel media options updated to stop screen sharing (publishScreenTrack=false, publishCameraTrack=$_isVideoEnabled)',
+          );
         }
       } catch (e) {
-        LogService.warning('Could not update channel media options to stop screen sharing: $e');
+        LogService.warning(
+          'Could not update channel media options to stop screen sharing: $e',
+        );
         // Continue anyway - some SDK versions may handle this automatically
       }
-      
+
       // CRITICAL: Restore camera video stream when screen sharing stops
       // Switch back to camera source
       if (_isVideoEnabled) {
-        LogService.info('📹 Restoring camera video stream after screen sharing');
+        LogService.info(
+          '📹 Restoring camera video stream after screen sharing',
+        );
         await _engine!.setupLocalVideo(
-          VideoCanvas(
-            uid: 0,
-            sourceType: VideoSourceType.videoSourceCamera,
-          ),
+          VideoCanvas(uid: 0, sourceType: VideoSourceType.videoSourceCamera),
         );
         await _engine!.muteLocalVideoStream(false);
         LogService.info('✅ Camera video stream restored');
       }
-      
+
       _isPublishingScreen = false;
       _screenShareOwnerUid = null;
       LogService.success('[SCREEN_SHARE] ✅ Screen sharing stopped');
@@ -1421,7 +1864,9 @@ class AgoraService {
   /// Notify remote users about screen sharing state via data stream
   Future<void> _notifyRemoteUsersScreenSharing(bool isSharing) async {
     if (_dataStreamId == null || _engine == null || !_isInChannel) {
-      LogService.warning('Cannot send screen sharing notification: dataStreamId=$_dataStreamId, engine=${_engine != null}, inChannel=$_isInChannel');
+      LogService.warning(
+        'Cannot send screen sharing notification: dataStreamId=$_dataStreamId, engine=${_engine != null}, inChannel=$_isInChannel',
+      );
       return;
     }
 
@@ -1429,7 +1874,7 @@ class AgoraService {
       final message = isSharing ? 'screen_share_start' : 'screen_share_stop';
       final messageBytes = message.codeUnits;
       final data = Uint8List.fromList(messageBytes);
-      
+
       await _engine!.sendStreamMessage(
         streamId: _dataStreamId!,
         data: data,
@@ -1443,9 +1888,13 @@ class AgoraService {
 
   /// Send emoji reaction to remote users via Agora data stream and/or Supabase Realtime (Realtime works on web when data stream is unavailable).
   Future<void> sendReaction(String emoji) async {
-    LogService.info('🎭 [EMOJI] sendReaction called: emoji="$emoji", dataStreamId=$_dataStreamId, inChannel=$_isInChannel, hasRealtimeChannel=${_reactionChannel != null}');
+    LogService.info(
+      '🎭 [EMOJI] sendReaction called: emoji="$emoji", dataStreamId=$_dataStreamId, inChannel=$_isInChannel, hasRealtimeChannel=${_reactionChannel != null}',
+    );
     if (!_isInChannel || _engine == null) {
-      LogService.warning('Cannot send reaction: not in channel or engine null. emoji="$emoji"');
+      LogService.warning(
+        'Cannot send reaction: not in channel or engine null. emoji="$emoji"',
+      );
       return;
     }
 
@@ -1455,7 +1904,9 @@ class AgoraService {
         final message = 'reaction:$emoji';
         final messageBytes = utf8.encode(message);
         final data = Uint8List.fromList(messageBytes);
-        LogService.info('📤 Sending reaction via Agora: emoji="$emoji", streamId=$_dataStreamId');
+        LogService.info(
+          '📤 Sending reaction via Agora: emoji="$emoji", streamId=$_dataStreamId',
+        );
         await _engine!.sendStreamMessage(
           streamId: _dataStreamId!,
           data: data,
@@ -1466,7 +1917,9 @@ class AgoraService {
         LogService.error('❌ Failed to send reaction via Agora: $e');
       }
     } else {
-      LogService.info('📤 Agora data stream not available (e.g. web); using Realtime fallback if available.');
+      LogService.info(
+        '📤 Agora data stream not available (e.g. web); using Realtime fallback if available.',
+      );
     }
 
     // 2) Send via Realtime fallback so web can send and mobile can receive from web
@@ -1476,7 +1929,9 @@ class AgoraService {
           event: 'reaction',
           payload: {'fromUid': _currentUID, 'emoji': emoji},
         );
-        LogService.success('✅ [EMOJI] Sent reaction via Realtime fallback: $emoji');
+        LogService.success(
+          '✅ [EMOJI] Sent reaction via Realtime fallback: $emoji',
+        );
       } catch (e) {
         LogService.warning('Failed to send reaction via Realtime: $e');
       }
@@ -1492,7 +1947,9 @@ class AgoraService {
   /// This is a fallback for when onRemoteVideoStateChanged doesn't fire reliably
   Future<void> sendCameraState(bool isEnabled) async {
     if (_dataStreamId == null || _engine == null || !_isInChannel) {
-      LogService.warning('📹 Cannot send camera state: dataStreamId=$_dataStreamId, engine=${_engine != null}, inChannel=$_isInChannel');
+      LogService.warning(
+        '📹 Cannot send camera state: dataStreamId=$_dataStreamId, engine=${_engine != null}, inChannel=$_isInChannel',
+      );
       return;
     }
 
@@ -1500,7 +1957,7 @@ class AgoraService {
       final message = isEnabled ? 'camera_on' : 'camera_off';
       final messageBytes = message.codeUnits;
       final data = Uint8List.fromList(messageBytes);
-      
+
       await _engine!.sendStreamMessage(
         streamId: _dataStreamId!,
         data: data,
@@ -1511,12 +1968,14 @@ class AgoraService {
       LogService.warning('📹 Failed to send camera state: $e');
     }
   }
-  
+
   /// Manually detect remote screen sharing
   /// Call this when setting up remote video view with VideoSourceType.videoSourceScreen
   /// Since onUserPublished is not available in this SDK version, we use manual detection
   void detectRemoteScreenSharing(int remoteUid, bool isSharing) {
-    LogService.info('📺 Manual screen sharing detection: UID=$remoteUid, sharing=$isSharing');
+    LogService.info(
+      '📺 Manual screen sharing detection: UID=$remoteUid, sharing=$isSharing',
+    );
     _screenSharingController.add({'uid': remoteUid, 'sharing': isSharing});
   }
 
@@ -1539,14 +1998,14 @@ class AgoraService {
   Future<void> dispose() async {
     try {
       await leaveChannel();
-      
+
       if (_engine != null) {
         await _safeReleaseEngine(reason: 'dispose()');
       }
 
       _isInitialized = false;
       _updateState(AgoraSessionState.disconnected);
-      
+
       await _stateController.close();
       await _userJoinedController.close();
       await _userOfflineController.close();
@@ -1561,7 +2020,7 @@ class AgoraService {
       _reactionChannel?.unsubscribe();
       _reactionChannel = null;
       await _reactionController.close();
-      
+
       LogService.success('Agora engine disposed');
     } catch (e) {
       LogService.error('Error disposing Agora engine: $e');
@@ -1571,8 +2030,6 @@ class AgoraService {
   /// Adapt video (encoder + remote stream type) based on network conditions.
   Future<void> _adaptVideoQuality(QualityType quality) async {
     if (_engine == null || !_isInChannel) return;
-
-    _lastNetworkQuality = quality;
 
     final decision = _qualityController.onSample(
       network: quality,
@@ -1603,99 +2060,149 @@ class AgoraService {
 
       // Pair encoder tier with appropriate remote stream type so we do not
       // waste bandwidth on extremely poor networks.
-      try {
-        if (targetTier == 'high-720p') {
-          await _engine!.setRemoteDefaultVideoStreamType(VideoStreamType.videoStreamHigh);
-        } else {
-          await _engine!.setRemoteDefaultVideoStreamType(VideoStreamType.videoStreamLow);
+      if (!kIsWeb && _supportsRemoteDefaultStreamTypeControl) {
+        try {
+          if (targetTier == 'high-720p') {
+            await _engine!.setRemoteDefaultVideoStreamType(
+              VideoStreamType.videoStreamHigh,
+            );
+          } else {
+            await _engine!.setRemoteDefaultVideoStreamType(
+              VideoStreamType.videoStreamLow,
+            );
+          }
+        } catch (e) {
+          if (_isAgoraNotSupported(e)) {
+            _supportsRemoteDefaultStreamTypeControl = false;
+            LogService.warning(
+              '[NET] Remote default stream type control unsupported; disabling further default-stream API calls.',
+            );
+          } else {
+            LogService.warning(
+              '[NET] Failed to update remote default stream type: $e',
+            );
+          }
         }
-      } catch (e) {
-        LogService.warning('[NET] Failed to update remote default stream type: $e');
       }
 
       _currentQualityTier = targetTier;
-      LogService.info('[NET] Video quality adapted to $targetTier (network: $quality)');
+      LogService.info(
+        '[NET] Video quality adapted to $targetTier (network: $quality)',
+      );
       if (previousTier != targetTier) {
-        _emitQoe(
-          'quality_tier_changed',
-          <String, dynamic>{
-            'from_tier': previousTier,
-            'to_tier': targetTier,
-            'network_quality': quality.name,
-          },
-        );
+        _emitQoe('quality_tier_changed', <String, dynamic>{
+          'from_tier': previousTier,
+          'to_tier': targetTier,
+          'network_quality': quality.name,
+        });
       }
       final dims = targetConfig.dimensions;
       if (dims != null) {
-        LogService.info('📊 Quality config: ${dims.width}x${dims.height} @ ${targetConfig.frameRate}fps, ${targetConfig.bitrate}kbps');
+        LogService.info(
+          '📊 Quality config: ${dims.width}x${dims.height} @ ${targetConfig.frameRate}fps, ${targetConfig.bitrate}kbps',
+        );
       } else {
-        LogService.info('📊 Quality config: @ ${targetConfig.frameRate}fps, ${targetConfig.bitrate}kbps');
+        LogService.info(
+          '📊 Quality config: @ ${targetConfig.frameRate}fps, ${targetConfig.bitrate}kbps',
+        );
       }
     } catch (e) {
       LogService.warning('Failed to adapt video quality: $e');
     }
   }
 
-  Future<void> _applyRemoteStreamPriority({Set<int> speakingUids = const <int>{}}) async {
+  Future<void> _applyRemoteStreamPriority({
+    Set<int> speakingUids = const <int>{},
+  }) async {
     if (_engine == null || !_isInChannel) return;
     if (!AppConfig.enableClassroomDualStream) return;
+    if (kIsWeb || !_supportsRemoteStreamTypeControl) return;
+    // For 1:1 calls, always keep the single remote at default/high quality and
+    // avoid stream-type thrash. Prioritization is only needed for multi-user rooms.
+    if (_remoteParticipantUids.length <= 1) return;
+    final now = DateTime.now();
+    if (_lastRemoteStreamPriorityAppliedAt != null &&
+        now.difference(_lastRemoteStreamPriorityAppliedAt!) <
+            const Duration(seconds: 2)) {
+      return;
+    }
+    _lastRemoteStreamPriorityAppliedAt = now;
     final decision = _streamPriorityPolicy.decide(
       remoteUids: _remoteParticipantUids,
       speakingUids: speakingUids,
       currentSpotlightUid: _spotlightRemoteUid,
+      pinnedRemoteUid: _dualStreamPinnedRemoteUid,
     );
     _spotlightRemoteUid = decision.spotlightUid;
 
     for (final uid in decision.highPriorityUids) {
       try {
         final previous = _lastAppliedRemoteStreamType[uid];
+        if (previous == VideoStreamType.videoStreamHigh) continue;
         await _engine!.setRemoteVideoStreamType(
           uid: uid,
           streamType: VideoStreamType.videoStreamHigh,
         );
         if (previous != VideoStreamType.videoStreamHigh) {
           _lastAppliedRemoteStreamType[uid] = VideoStreamType.videoStreamHigh;
-          _emitQoe(
-            'remote_stream_type_changed',
-            <String, dynamic>{
-              'uid': uid,
-              'stream_type': 'high',
-              'spotlight_uid': _spotlightRemoteUid,
-            },
-          );
+          _emitQoe('remote_stream_type_changed', <String, dynamic>{
+            'uid': uid,
+            'stream_type': 'high',
+            'spotlight_uid': _spotlightRemoteUid,
+          });
         }
       } catch (e) {
+        if (_isAgoraNotSupported(e)) {
+          _supportsRemoteStreamTypeControl = false;
+          LogService.warning(
+            '[NET] Remote stream type control not supported on this platform; disabling further stream-priority API calls.',
+          );
+          break;
+        }
         LogService.warning('[NET] Failed to set HIGH stream for uid=$uid: $e');
       }
     }
     for (final uid in decision.lowPriorityUids) {
       try {
         final previous = _lastAppliedRemoteStreamType[uid];
+        if (previous == VideoStreamType.videoStreamLow) continue;
         await _engine!.setRemoteVideoStreamType(
           uid: uid,
           streamType: VideoStreamType.videoStreamLow,
         );
         if (previous != VideoStreamType.videoStreamLow) {
           _lastAppliedRemoteStreamType[uid] = VideoStreamType.videoStreamLow;
-          _emitQoe(
-            'remote_stream_type_changed',
-            <String, dynamic>{
-              'uid': uid,
-              'stream_type': 'low',
-              'spotlight_uid': _spotlightRemoteUid,
-            },
-          );
+          _emitQoe('remote_stream_type_changed', <String, dynamic>{
+            'uid': uid,
+            'stream_type': 'low',
+            'spotlight_uid': _spotlightRemoteUid,
+          });
         }
       } catch (e) {
+        if (_isAgoraNotSupported(e)) {
+          _supportsRemoteStreamTypeControl = false;
+          LogService.warning(
+            '[NET] Remote stream type control not supported on this platform; disabling further stream-priority API calls.',
+          );
+          break;
+        }
         LogService.warning('[NET] Failed to set LOW stream for uid=$uid: $e');
       }
     }
   }
-  
+
+  bool _isAgoraNotSupported(Object error) {
+    final value = error.toString().toLowerCase();
+    return value.contains('not supported') || value.contains('(-4');
+  }
+
   /// Attempt to recover remote video stream
-  Future<void> _attemptVideoRecovery(int remoteUid, RtcConnection connection) async {
+  Future<void> _attemptVideoRecovery(
+    int remoteUid,
+    RtcConnection connection,
+  ) async {
     if (_engine == null || !_isInChannel) return;
-    
+
     // Check cooldown
     final lastAttempt = _lastRecoveryAttempt[remoteUid];
     if (lastAttempt != null) {
@@ -1704,68 +2211,80 @@ class AgoraService {
         return; // Too soon to retry
       }
     }
-    
+
     // Check max attempts
     final attempts = _videoRecoveryAttempts[remoteUid] ?? 0;
     if (attempts >= _maxRecoveryAttempts) {
-      LogService.warning('⚠️ Max video recovery attempts reached for UID=$remoteUid');
+      LogService.warning(
+        '⚠️ Max video recovery attempts reached for UID=$remoteUid',
+      );
       return;
     }
-    
+
     _videoRecoveryAttempts[remoteUid] = attempts + 1;
     _lastRecoveryAttempt[remoteUid] = DateTime.now();
-    
+
     try {
-      LogService.info('[RECOVERY] Attempting video recovery for UID=$remoteUid (attempt ${attempts + 1}/$_maxRecoveryAttempts)');
-      
+      LogService.info(
+        '[RECOVERY] Attempting video recovery for UID=$remoteUid (attempt ${attempts + 1}/$_maxRecoveryAttempts)',
+      );
+
       // Note: Agora SDK automatically handles video subscription
       // Video recovery is primarily handled by the SDK's automatic reconnection
       // We log the recovery attempt and let the SDK handle the actual resubscription
       // The onRemoteVideoStateChanged event will fire when video becomes active again
-      
+
       // Wait a bit to allow SDK to recover
       await Future.delayed(const Duration(milliseconds: 1000));
-      
+
       LogService.info('✅ Video recovery attempt completed for UID=$remoteUid');
-      LogService.info('💡 Video stream should recover automatically via Agora SDK');
-      
+      LogService.info(
+        '💡 Video stream should recover automatically via Agora SDK',
+      );
+
       // Reset attempts on successful recovery (will be reset when video becomes active)
     } catch (e) {
-      LogService.warning('Video recovery attempt failed for UID=$remoteUid: $e');
+      LogService.warning(
+        'Video recovery attempt failed for UID=$remoteUid: $e',
+      );
     }
   }
-  
+
   /// Public entry to trigger camera recovery (e.g. after user taps Retry on error).
   Future<void> tryRecoverCamera() async {
     await _recoverCamera();
   }
-  
+
   /// Recover local camera after interruption
   Future<void> _recoverCamera() async {
     if (_engine == null || !_isInChannel || !_isVideoEnabled) return;
     if (_isRecoveringCamera) return;
-    
+
     // Check cooldown
     if (_lastCameraRecoveryAttempt != null) {
-      final timeSinceLastAttempt = DateTime.now().difference(_lastCameraRecoveryAttempt!);
+      final timeSinceLastAttempt = DateTime.now().difference(
+        _lastCameraRecoveryAttempt!,
+      );
       if (timeSinceLastAttempt < _recoveryCooldown) {
         return;
       }
     }
-    
+
     // Check max attempts
     if (_cameraRecoveryAttempts >= _maxCameraRecoveryAttempts) {
       LogService.warning('⚠️ Max camera recovery attempts reached');
       return;
     }
-    
+
     _isRecoveringCamera = true;
     _cameraRecoveryAttempts++;
     _lastCameraRecoveryAttempt = DateTime.now();
-    
+
     try {
-      LogService.info('🔄 Attempting camera recovery (attempt $_cameraRecoveryAttempts/$_maxCameraRecoveryAttempts)');
-      
+      LogService.info(
+        '🔄 Attempting camera recovery (attempt $_cameraRecoveryAttempts/$_maxCameraRecoveryAttempts)',
+      );
+
       if (kIsWeb) {
         // Reinitialize local video with camera source
         await _engine!.setupLocalVideo(
@@ -1780,7 +2299,7 @@ class AgoraService {
         // On mobile, restart preview
         await _engine!.startPreview();
       }
-      
+
       LogService.success('✅ Camera recovery completed');
       _cameraRecoveryAttempts = 0; // Reset on success
     } catch (e) {
@@ -1789,56 +2308,63 @@ class AgoraService {
       _isRecoveringCamera = false;
     }
   }
-  
+
   /// Handle reconnection logic
   Future<void> _handleReconnection(RtcConnection connection) async {
     if (_isReconnecting) return;
-    
+
     _isReconnecting = true;
     LogService.info('🔄 Handling reconnection...');
-    
+
     // Update connection if valid
     if (connection.channelId != null) {
       _currentConnection = connection;
     }
-    
+
     _isReconnecting = false;
   }
-  
+
   /// Attempt to rejoin channel after disconnection
   Future<void> _attemptReconnection() async {
     if (_isReconnecting) return;
-    if (!_isInChannel && _lastSessionId == null) return; // No session to reconnect to
-    
+    if (_joinInProgress) return;
+    if (!_isInChannel && _lastSessionId == null)
+      return; // No session to reconnect to
+
     // Check cooldown
     if (_lastReconnectionAttempt != null) {
-      final timeSinceLastAttempt = DateTime.now().difference(_lastReconnectionAttempt!);
+      final timeSinceLastAttempt = DateTime.now().difference(
+        _lastReconnectionAttempt!,
+      );
       if (timeSinceLastAttempt < _reconnectionCooldown) {
         return;
       }
     }
-    
+
     // Check max attempts
     if (_reconnectionAttempts >= _maxReconnectionAttempts) {
       LogService.error('❌ Max reconnection attempts reached');
-      _errorController.add('Connection lost. Please refresh the page to reconnect.');
-      _emitQoe(
-        'reconnect_exhausted',
-        <String, dynamic>{
-          'max_attempts': _maxReconnectionAttempts,
-        },
+      _errorController.add(
+        'Connection lost. Please refresh the page to reconnect.',
       );
+      _emitQoe('reconnect_exhausted', <String, dynamic>{
+        'max_attempts': _maxReconnectionAttempts,
+      });
       return;
     }
-    
+
     _isReconnecting = true;
     _reconnectionAttempts++;
     _lastReconnectionAttempt = DateTime.now();
-    
+
     try {
-      LogService.info('🔄 Attempting to reconnect (attempt $_reconnectionAttempts/$_maxReconnectionAttempts)');
-      
-      if (_lastSessionId != null && _lastUserId != null && _lastUserRole != null) {
+      LogService.info(
+        '🔄 Attempting to reconnect (attempt $_reconnectionAttempts/$_maxReconnectionAttempts)',
+      );
+
+      if (_lastSessionId != null &&
+          _lastUserId != null &&
+          _lastUserRole != null) {
         await joinChannel(
           sessionId: _lastSessionId!,
           userId: _lastUserId!,
@@ -1846,67 +2372,69 @@ class AgoraService {
           initialCameraEnabled: _lastInitialCameraEnabled,
           initialMicEnabled: _lastInitialMicEnabled,
         );
-        
+
         LogService.success('✅ Reconnection attempt completed');
         _reconnectionAttempts = 0; // Reset on success
       }
     } catch (e) {
       LogService.warning('Reconnection attempt failed: $e');
-      _emitQoe(
-        'reconnect_attempt_error',
-        <String, dynamic>{
-          'attempt_count': _reconnectionAttempts,
-          'error': e.toString(),
-        },
-      );
+      _emitQoe('reconnect_attempt_error', <String, dynamic>{
+        'attempt_count': _reconnectionAttempts,
+        'error': e.toString(),
+      });
     } finally {
       _isReconnecting = false;
     }
   }
-  
+
   /// Track remote user's network quality and detect instability
   void _trackRemoteNetworkQuality(int remoteUid, QualityType quality) {
     _remoteNetworkQualities[remoteUid] = quality;
     _remoteNetworkQualityTimestamps[remoteUid] = DateTime.now();
-    
+
     // Determine if connection is unstable
     // Unstable = poor, bad, or down quality
     // Note: QualityType enum values: qualityExcellent(0), qualityGood(1), qualityPoor(2), qualityBad(3), qualityDown(5), qualityUnsupported(6)
     // Note: Some SDK versions may not have qualityVeryBad, so we only check for the standard values
-    final isUnstable = quality == QualityType.qualityPoor ||
+    final isUnstable =
+        quality == QualityType.qualityPoor ||
         quality == QualityType.qualityBad ||
         quality == QualityType.qualityDown;
-    
+
     // Track consecutive poor quality reports
     if (isUnstable) {
-      _remotePoorQualityCount[remoteUid] = (_remotePoorQualityCount[remoteUid] ?? 0) + 1;
+      _remotePoorQualityCount[remoteUid] =
+          (_remotePoorQualityCount[remoteUid] ?? 0) + 1;
     } else {
       // Reset count on good quality
       _remotePoorQualityCount[remoteUid] = 0;
     }
-    
+
     // Emit unstable sooner: 1–2 consecutive poor reports (faster "Poor connection" / "Reconnecting" feedback)
     final consecutivePoorCount = _remotePoorQualityCount[remoteUid] ?? 0;
     final shouldWarn = isUnstable && consecutivePoorCount >= 1;
-    
+
     // Emit network quality event
     _remoteNetworkQualityController.add({
       'uid': remoteUid,
       'quality': quality,
       'isUnstable': shouldWarn,
     });
-    
+
     if (shouldWarn) {
-      LogService.warning('⚠️ Remote user UID=$remoteUid has unstable connection (quality: $quality, consecutive poor: $consecutivePoorCount)');
+      LogService.warning(
+        '⚠️ Remote user UID=$remoteUid has unstable connection (quality: $quality, consecutive poor: $consecutivePoorCount)',
+      );
     }
     // Avoid logging "stable" on every callback - reduces log spam and CPU
   }
-  
+
   /// Calculate optimal buffer size based on network quality
   int _calculateBufferSize(QualityType quality) {
     // Buffer size in milliseconds
     // Note: QualityType enum: excellent(0), good(1), poor(2), bad(3), veryBad(4), down(5), unsupported(6)
-    if (quality == QualityType.qualityExcellent || quality == QualityType.qualityGood) {
+    if (quality == QualityType.qualityExcellent ||
+        quality == QualityType.qualityGood) {
       return 1000; // 1 second buffer for good networks
     } else if (quality == QualityType.qualityPoor) {
       return 1500; // 1.5 seconds for poor networks
@@ -1914,35 +2442,42 @@ class AgoraService {
       return 2000; // 2 seconds for bad/very bad networks
     }
   }
-  
+
   /// Perform video stream health check
   Future<void> _performVideoHealthCheck() async {
     if (_engine == null || !_isInChannel) return;
-    
+
     // Check if remote video has been inactive for too long
     if (_lastRemoteVideoActivity != null && _lastActiveRemoteUid != null) {
-      final timeSinceLastActivity = DateTime.now().difference(_lastRemoteVideoActivity!);
+      final timeSinceLastActivity = DateTime.now().difference(
+        _lastRemoteVideoActivity!,
+      );
       if (timeSinceLastActivity > const Duration(seconds: 30)) {
-        LogService.warning('⚠️ Remote video inactive for ${timeSinceLastActivity.inSeconds}s');
-        
+        LogService.warning(
+          '⚠️ Remote video inactive for ${timeSinceLastActivity.inSeconds}s',
+        );
+
         // Attempt recovery if video should be active
         if (_lastActiveRemoteUid != null && _currentConnection != null) {
-          await _attemptVideoRecovery(_lastActiveRemoteUid!, _currentConnection!);
+          await _attemptVideoRecovery(
+            _lastActiveRemoteUid!,
+            _currentConnection!,
+          );
         }
       }
     }
-    
+
     // Verify local video is still publishing if enabled
-    if (_isVideoEnabled) {
+    if (_isVideoEnabled && _remoteParticipantUids.isNotEmpty) {
       try {
-        // Ensure video is unmuted
-        await _engine!.muteLocalVideoStream(false);
+        // Ensure video is unmuted only when peers are present.
+        await _ensureVideoUnmuted(reason: 'health_check');
       } catch (e) {
         LogService.warning('Health check: Could not verify local video: $e');
       }
     }
   }
-  
+
   /// Start video health check timer
   void _startVideoHealthCheck() {
     _stopVideoHealthCheck();
@@ -1951,11 +2486,56 @@ class AgoraService {
     });
     LogService.info('✅ Video health check started');
   }
-  
+
   /// Stop video health check timer
   void _stopVideoHealthCheck() {
     _videoHealthCheckTimer?.cancel();
     _videoHealthCheckTimer = null;
+  }
+
+  /// Fetch a fresh token and call [RtcEngine.renewToken] (single-flight).
+  Future<void> _renewRtcToken({required String trigger}) async {
+    if (_tokenRenewInFlight) {
+      LogService.debug('[CALL] Token renew already in progress ($trigger)');
+      return;
+    }
+    _tokenRenewInFlight = true;
+    try {
+      final sessionId = _lastSessionId;
+      if (sessionId == null ||
+          sessionId.isEmpty ||
+          _engine == null ||
+          !_isInChannel) {
+        LogService.warning(
+          '[CALL] Cannot refresh token ($trigger): no session or not in channel',
+        );
+        return;
+      }
+      LogService.info('[CALL] Refreshing RTC token ($trigger)');
+      final tokenData = await AgoraTokenService.fetchToken(sessionId);
+      final newToken = tokenData['token'] as String?;
+      if (newToken == null || newToken.isEmpty) {
+        LogService.warning(
+          '[CALL] Token refresh returned empty token ($trigger)',
+        );
+        _emitQoe('token_renew_failed', <String, dynamic>{
+          'trigger': trigger,
+          'reason': 'empty_token',
+        });
+        return;
+      }
+      await _engine!.renewToken(newToken);
+      LogService.info('[CALL] Token renewed successfully ($trigger)');
+      _emitQoe('token_renewed', <String, dynamic>{'trigger': trigger});
+    } catch (e) {
+      LogService.warning('[CALL] Token refresh failed ($trigger): $e');
+      _emitQoe('token_renew_failed', <String, dynamic>{
+        'trigger': trigger,
+        'error': e.toString(),
+      });
+    } finally {
+      _tokenRenewInFlight = false;
+    }
   }
 
   /// Register event handlers
@@ -1966,20 +2546,29 @@ class AgoraService {
     _engine!.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) async {
-          LogService.success('Successfully joined channel (elapsed: ${elapsed}ms)');
-          LogService.info('Channel: ${connection.channelId}, Local UID: ${connection.localUid}');
+          LogService.success(
+            'Successfully joined channel (elapsed: ${elapsed}ms)',
+          );
+          LogService.info(
+            'Channel: ${connection.channelId}, Local UID: ${connection.localUid}',
+          );
           LogService.info('Current UID in channel: ${_currentUID}');
-          LogService.info('📹 Storing connection for video views: channelId=${connection.channelId}, localUid=${connection.localUid}');
+          LogService.info(
+            '📹 Storing connection for video views: channelId=${connection.channelId}, localUid=${connection.localUid}',
+          );
           _isInChannel = true;
+          _joinInProgress = false;
           _currentConnection = connection; // Store connection for video views
-          LogService.info('✅ Connection stored - remote video views can now use this connection');
-          
+          LogService.info(
+            '✅ Connection stored - remote video views can now use this connection',
+          );
+
           // Reset reconnection attempts on successful join
           _reconnectionAttempts = 0;
-          
+
           // Start video health check
           _startVideoHealthCheck();
-          
+
           // Enable volume indication for talking indicator (interval 300ms, smooth 3)
           try {
             await _engine!.enableAudioVolumeIndication(
@@ -1990,10 +2579,10 @@ class AgoraService {
           } catch (e) {
             LogService.warning('enableAudioVolumeIndication failed: $e');
           }
-          
+
           // Realtime fallback for reactions (works on web when Agora data stream returns 0; both peers subscribe so delivery works)
           _setupReactionRealtimeChannel();
-          
+
           // CRITICAL: Create data stream for reactions, screen share notifications, camera state
           // Retry up to 2 times (helps on web where first attempt can fail)
           // On web, defer creation to avoid callback timing issues (emoji reactions regression)
@@ -2005,12 +2594,18 @@ class AgoraService {
                 );
                 if (streamId > 0) {
                   _dataStreamId = streamId;
-                  LogService.success('Data stream created: streamId=$_dataStreamId (reactions, camera state, screen share sync) [attempt $attempt]');
+                  LogService.success(
+                    'Data stream created: streamId=$_dataStreamId (reactions, camera state, screen share sync) [attempt $attempt]',
+                  );
                   return;
                 }
-                LogService.warning('createDataStream attempt $attempt returned invalid id: $streamId');
+                LogService.warning(
+                  'createDataStream attempt $attempt returned invalid id: $streamId',
+                );
               } catch (e) {
-                LogService.warning('createDataStream attempt $attempt failed: $e');
+                LogService.warning(
+                  'createDataStream attempt $attempt failed: $e',
+                );
               }
               if (attempt < 2 && _engine != null && _isInChannel) {
                 await Future<void>.delayed(const Duration(milliseconds: 800));
@@ -2022,6 +2617,7 @@ class AgoraService {
               'On web this is a known SDK limitation (createDataStream returns 0).',
             );
           }
+
           if (kIsWeb) {
             Future<void>.delayed(const Duration(milliseconds: 400), () async {
               if (_engine != null && _isInChannel) await tryCreateDataStream();
@@ -2029,9 +2625,9 @@ class AgoraService {
           } else {
             await tryCreateDataStream();
           }
-          
+
           _updateState(AgoraSessionState.connected);
-          
+
           // CRITICAL: Ensure video is publishing after joining (especially important for web)
           // Try multiple times with delays to ensure video publishes
           Future.delayed(const Duration(milliseconds: 500), () async {
@@ -2039,39 +2635,55 @@ class AgoraService {
               try {
                 // Explicitly unmute video stream
                 await _engine!.muteLocalVideoStream(false);
-                LogService.info('✅ Verified local video stream is unmuted (publishing) after join');
-                LogService.info('📹 Your video should now be visible to remote users');
-                
+                LogService.info(
+                  '✅ Verified local video stream is unmuted (publishing) after join',
+                );
+                LogService.info(
+                  '📹 Your video should now be visible to remote users',
+                );
+
                 // Try again after a short delay to ensure it sticks
                 Future.delayed(const Duration(milliseconds: 1000), () async {
                   if (_engine != null && _isInChannel && _isVideoEnabled) {
                     try {
                       await _engine!.muteLocalVideoStream(false);
-                      LogService.info('✅ Double-checked: Video stream is unmuted');
+                      LogService.info(
+                        '✅ Double-checked: Video stream is unmuted',
+                      );
                     } catch (e) {
                       LogService.warning('Could not double-check video: $e');
                     }
                   }
                 });
-                
+
                 // Start periodic check to ensure video stays unmuted
                 _startVideoCheckTimer();
               } catch (e) {
                 LogService.warning('Could not verify video publishing: $e');
               }
             } else {
-              LogService.warning('⚠️ Cannot verify video publishing: engine=${_engine != null}, inChannel=$_isInChannel, videoEnabled=$_isVideoEnabled');
+              LogService.warning(
+                '⚠️ Cannot verify video publishing: engine=${_engine != null}, inChannel=$_isInChannel, videoEnabled=$_isVideoEnabled',
+              );
             }
           });
-          
+
           // After joining, check for existing remote users
           // Note: onUserJoined only fires for users who join AFTER you
           // If both users join simultaneously, we need to wait for video events
-          LogService.info('Waiting for remote user detection via video events...');
-          LogService.info('💡 TIP: Make sure BOTH users (tutor AND learner) have joined the session');
-          LogService.info('💡 TIP: Check that both users have different UIDs in their logs');
-          LogService.info('💡 TIP: Remote user will be detected when they publish video/audio');
-          
+          LogService.info(
+            'Waiting for remote user detection via video events...',
+          );
+          LogService.info(
+            '💡 TIP: Make sure BOTH users (tutor AND learner) have joined the session',
+          );
+          LogService.info(
+            '💡 TIP: Check that both users have different UIDs in their logs',
+          );
+          LogService.info(
+            '💡 TIP: Remote user will be detected when they publish video/audio',
+          );
+
           // Schedule a check after a delay to provide diagnostic info
           Future.delayed(const Duration(seconds: 5), () {
             if (_isInChannel) {
@@ -2080,23 +2692,39 @@ class AgoraService {
               LogService.info('   - Current UID: $_currentUID');
               LogService.info('   - Channel: $_currentChannelName');
               LogService.info('   - Video enabled: $_isVideoEnabled');
-              LogService.info('   - Connection stored: ${_currentConnection != null}');
+              LogService.info(
+                '   - Connection stored: ${_currentConnection != null}',
+              );
               LogService.info('💡 If no remote user detected, verify:');
-              LogService.info('   1. Both users have joined (check both browser logs)');
+              LogService.info(
+                '   1. Both users have joined (check both browser logs)',
+              );
               LogService.info('   2. Both users have different UIDs');
-              LogService.info('   3. Both users granted camera/mic permissions');
+              LogService.info(
+                '   3. Both users granted camera/mic permissions',
+              );
               LogService.info('   4. Both users are in the same channel');
               LogService.info('   5. Both users have cameras enabled');
             }
           });
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-          LogService.info('[CALL] Remote user joined: UID=$remoteUid (elapsed: ${elapsed}ms)');
-          LogService.info('Connection details: channelId=${connection.channelId}, localUid=${connection.localUid}');
-          LogService.info('💡 Remote video is automatically subscribed by default');
-          LogService.info('📹 Current stored connection: channelId=${_currentConnection?.channelId}, localUid=${_currentConnection?.localUid}');
+          LogService.info(
+            '[CALL] Remote user joined: UID=$remoteUid (elapsed: ${elapsed}ms)',
+          );
+          LogService.info(
+            'Connection details: channelId=${connection.channelId}, localUid=${connection.localUid}',
+          );
+          LogService.info(
+            '💡 Remote video is automatically subscribed by default',
+          );
+          LogService.info(
+            '📹 Current stored connection: channelId=${_currentConnection?.channelId}, localUid=${_currentConnection?.localUid}',
+          );
           if (!_isValidRemoteUid(remoteUid)) {
-            LogService.debug('Ignoring onUserJoined for non-remote uid=$remoteUid (self=$_currentUID)');
+            LogService.debug(
+              'Ignoring onUserJoined for non-remote uid=$remoteUid (self=$_currentUID)',
+            );
             return;
           }
           // Ensure connection is stored (in case onJoinChannelSuccess didn't fire yet)
@@ -2104,27 +2732,37 @@ class AgoraService {
             _currentConnection = connection;
             LogService.info('✅ Connection stored from onUserJoined event');
           }
-          
+
           // CRITICAL: Reset offline tracking when user rejoins
           _resetUserOfflineTracking(remoteUid);
           _remoteParticipantUids.add(remoteUid);
           unawaited(_applyRemoteStreamPriority());
-          
+
           _userJoinedController.add(remoteUid);
         },
         onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
           LogService.info('User offline: $remoteUid, reason: $reason');
-          debugPrint('[userOffline] remoteUid=$remoteUid reason=$reason kIsWeb=$kIsWeb _lastLocalVideoMuteTime=$_lastLocalVideoMuteTime');
+          debugPrint(
+            '[userOffline] remoteUid=$remoteUid reason=$reason kIsWeb=$kIsWeb _lastLocalVideoMuteTime=$_lastLocalVideoMuteTime',
+          );
           if (!_isValidRemoteUid(remoteUid)) {
-            LogService.debug('Ignoring onUserOffline for non-remote uid=$remoteUid (self=$_currentUID)');
+            LogService.debug(
+              'Ignoring onUserOffline for non-remote uid=$remoteUid (self=$_currentUID)',
+            );
             return;
           }
           // On web (desktop and mobile), Agora can fire spurious userOffline(Quit) when LOCAL user mutes video.
           // Ignore Quit only within 5s of our own mute; after that treat refresh/close as "user left".
-          if (kIsWeb && reason == UserOfflineReasonType.userOfflineQuit && _lastLocalVideoMuteTime != null) {
-            final sinceMute = DateTime.now().difference(_lastLocalVideoMuteTime!);
+          if (kIsWeb &&
+              reason == UserOfflineReasonType.userOfflineQuit &&
+              _lastLocalVideoMuteTime != null) {
+            final sinceMute = DateTime.now().difference(
+              _lastLocalVideoMuteTime!,
+            );
             if (sinceMute < _webMuteOfflineIgnoreWindow) {
-              LogService.warning('⚠️ [WEB] IGNORED (within 5s of local mute) userOffline(Quit) UID=$remoteUid');
+              LogService.warning(
+                '⚠️ [WEB] IGNORED (within 5s of local mute) userOffline(Quit) UID=$remoteUid',
+              );
               return;
             }
           }
@@ -2149,43 +2787,58 @@ class AgoraService {
             reason: reason,
             isWeb: kIsWeb,
           );
-          
+
           LogService.info(
             '📤 Remote user offline: UID=$remoteUid ($reasonText, definitive: ${graceDecision.confirmLeaveImmediately}, grace=${graceDecision.graceDuration.inSeconds}s)',
           );
-          
+
           // Track offline timestamp
           _userOfflineTimestamps[remoteUid] = DateTime.now();
-          _userOfflineCount[remoteUid] = (_userOfflineCount[remoteUid] ?? 0) + 1;
-          
+          _userOfflineCount[remoteUid] =
+              (_userOfflineCount[remoteUid] ?? 0) + 1;
+
           // Cancel any existing grace period timer for this user
           _userLeftGracePeriodTimers[remoteUid]?.cancel();
-          
+
           // If user explicitly quit (and not on web), confirm immediately
           if (graceDecision.confirmLeaveImmediately) {
-            LogService.info('[userOffline] CONFIRMED user left (definitive) remoteUid=$remoteUid reason=$reasonText');
+            LogService.info(
+              '[userOffline] CONFIRMED user left (definitive) remoteUid=$remoteUid reason=$reasonText',
+            );
             _confirmUserLeft(remoteUid);
           } else {
             // For transient disconnects use grace period before confirming leave.
             final graceDuration = graceDecision.graceDuration == Duration.zero
                 ? _userLeftGracePeriod
                 : graceDecision.graceDuration;
-            debugPrint('[userOffline] GRACE started ${graceDuration.inSeconds}s for remoteUid=$remoteUid');
-            LogService.info('[userOffline] GRACE started (${graceDuration.inSeconds}s) for remoteUid=$remoteUid');
+            debugPrint(
+              '[userOffline] GRACE started ${graceDuration.inSeconds}s for remoteUid=$remoteUid',
+            );
+            LogService.info(
+              '[userOffline] GRACE started (${graceDuration.inSeconds}s) for remoteUid=$remoteUid',
+            );
             _userLeftGracePeriodTimers[remoteUid] = Timer(graceDuration, () {
               final offlineTime = _userOfflineTimestamps[remoteUid];
               if (offlineTime != null) {
                 final timeSinceOffline = DateTime.now().difference(offlineTime);
                 if (timeSinceOffline >= graceDuration &&
-                    (_userOfflineCount[remoteUid] ?? 0) >= (kIsWeb && reason == UserOfflineReasonType.userOfflineQuit ? 1 : _maxOfflineEvents)) {
-                  LogService.info('[userOffline] CONFIRMED user left after grace remoteUid=$remoteUid reason=$reasonText');
+                    (_userOfflineCount[remoteUid] ?? 0) >=
+                        (kIsWeb &&
+                                reason == UserOfflineReasonType.userOfflineQuit
+                            ? 1
+                            : _maxOfflineEvents)) {
+                  LogService.info(
+                    '[userOffline] CONFIRMED user left after grace remoteUid=$remoteUid reason=$reasonText',
+                  );
                   _confirmUserLeft(remoteUid);
                 } else {
-                  LogService.info('⏳ User $remoteUid still offline but may be reconnecting...');
+                  LogService.info(
+                    '⏳ User $remoteUid still offline but may be reconnecting...',
+                  );
                 }
               }
             });
-            
+
             // Emit connection unstable event instead of user left
             _remoteNetworkQualityController.add({
               'uid': remoteUid,
@@ -2194,553 +2847,809 @@ class AgoraService {
               'message': 'Connection dropped - reconnecting...',
             });
           }
-          
+
           _userOfflineController.add(remoteUid);
         },
         // Detect when remote video is first decoded (user might already be in channel)
         // This is CRITICAL for detecting users who joined before you
-        onFirstRemoteVideoDecoded: (RtcConnection connection, int remoteUid, int width, int height, int elapsed) {
-          LogService.info('[MEDIA] Remote video decoded: UID=$remoteUid (${width}x${height}, elapsed: ${elapsed}ms)');
-          LogService.info('This indicates a remote user is in the channel and publishing video');
-          LogService.info('💡 Video stream is automatically subscribed - video should display now');
-          LogService.info('📹 Connection for video view: channelId=${connection.channelId}, localUid=${connection.localUid}');
-          if (!_isValidRemoteUid(remoteUid)) {
-            LogService.debug('Ignoring onFirstRemoteVideoDecoded for non-remote uid=$remoteUid (self=$_currentUID)');
-            return;
-          }
-          // Ensure connection is stored
-          if (_currentConnection == null && connection.channelId != null) {
-            _currentConnection = connection;
-            LogService.info('✅ Connection stored from onFirstRemoteVideoDecoded event');
-          }
-          
-          // CRITICAL: Reset offline tracking when video is decoded (user is active)
-          _resetUserOfflineTracking(remoteUid);
-          _cancelRemoteVideoStoppedProvisional(remoteUid);
-          
-          _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
-          _remoteVideoFrameController.add({'uid': remoteUid, 'ready': true});
-        },
-        // Also detect when remote audio is first decoded (do not emit userJoined - join is from onUserJoined only)
-        onFirstRemoteAudioDecoded: (RtcConnection connection, int remoteUid, int elapsed) {
-          LogService.success('✅ Remote audio decoded: UID=$remoteUid (elapsed: ${elapsed}ms)');
-          LogService.info('This indicates a remote user is in the channel and publishing audio');
-          if (!_isValidRemoteUid(remoteUid)) {
-            LogService.debug('Ignoring onFirstRemoteAudioDecoded for non-remote uid=$remoteUid (self=$_currentUID)');
-          }
-        },
-        // Who is speaking (for talking indicator UI)
-        onAudioVolumeIndication: (RtcConnection connection, List<AudioVolumeInfo> speakers, int speakerNumber, int totalVolume) {
-          try {
-            final speaking = <int>{};
-            for (final s in speakers) {
-              if (s.volume != null && s.volume! > _speakingVolumeThreshold) {
-                final uid = s.uid ?? 0;
-                if (uid != 0 && _isValidRemoteUid(uid)) {
-                  speaking.add(uid);
-                }
-              }
-            }
-            if (_speakingController.hasListener) {
-              _speakingController.add(speaking);
-            }
-            unawaited(_applyRemoteStreamPriority(speakingUids: speaking));
-          } catch (e) {
-            LogService.warning('onAudioVolumeIndication error: $e');
-          }
-        },
-        // Detect remote video state changes
-        onRemoteVideoStateChanged: (RtcConnection connection, int remoteUid, RemoteVideoState state, RemoteVideoStateReason reason, int elapsed) {
-          LogService.info('Remote video state changed: UID=$remoteUid, state=$state, reason=$reason');
-          if (!_isValidRemoteUid(remoteUid)) {
-            LogService.debug('Ignoring onRemoteVideoStateChanged for non-remote uid=$remoteUid (self=$_currentUID)');
-            return;
-          }
-          if (state == RemoteVideoState.remoteVideoStateStarting || 
-              state == RemoteVideoState.remoteVideoStateDecoding) {
-            // Video is starting/decoding - user is active and camera is ON
-            LogService.info('✅ Remote video is active for UID=$remoteUid');
-            LogService.info('💡 Video stream is automatically subscribed - video should display');
-            
-            // Track video activity for health check
-            _lastRemoteVideoActivity = DateTime.now();
-            _lastActiveRemoteUid = remoteUid;
-            
-            // Reset recovery attempts on successful video activity
-            _videoRecoveryAttempts.remove(remoteUid);
-            _lastRecoveryAttempt.remove(remoteUid);
-            
-            // Reset screen-off detection when video becomes active
-            _resetScreenOffDetection(remoteUid);
-            _cancelRemoteVideoStoppedProvisional(remoteUid);
-            
-            _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
-            _remoteVideoFrameController.add({'uid': remoteUid, 'ready': true});
-            final freezeStartedAt = _freezeStartedAt.remove(remoteUid);
-            if (freezeStartedAt != null) {
-              _emitQoe(
-                'remote_freeze_end',
-                <String, dynamic>{
-                  'uid': remoteUid,
-                  'freeze_duration_ms':
-                      DateTime.now().difference(freezeStartedAt).inMilliseconds,
-                },
+        onFirstRemoteVideoDecoded:
+            (
+              RtcConnection connection,
+              int remoteUid,
+              int width,
+              int height,
+              int elapsed,
+            ) {
+              LogService.info(
+                '[MEDIA] Remote video decoded: UID=$remoteUid (${width}x${height}, elapsed: ${elapsed}ms)',
               );
-            }
-          } else if (state == RemoteVideoState.remoteVideoStateStopped) {
-            LogService.info('Remote video stopped for UID=$remoteUid (reason: $reason)');
-            _remoteVideoMutedController.add({'uid': remoteUid, 'muted': true});
-
-            if (reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted) {
-              LogService.info('📹 Remote camera OFF (remote muted): UID=$remoteUid');
-              _resetScreenOffDetection(remoteUid);
-              _remoteVideoFrameController.add({'uid': remoteUid, 'ready': false});
-            } else {
-              _freezeStartedAt.putIfAbsent(remoteUid, () => DateTime.now());
-              _emitQoe(
-                'remote_freeze_start',
-                <String, dynamic>{
-                  'uid': remoteUid,
-                  'reason': reason.name,
-                },
+              LogService.info(
+                'This indicates a remote user is in the channel and publishing video',
               );
-              // Provisional: avoid immediate ready=false on transient renegotiation (e.g. web)
-              _cancelRemoteVideoStoppedProvisional(remoteUid);
-              _remoteVideoStoppedProvisionalTimers[remoteUid] = Timer(_remoteVideoStoppedProvisionalDelay, () {
-                _remoteVideoStoppedProvisionalTimers.remove(remoteUid);
-                _remoteVideoFrameController.add({'uid': remoteUid, 'ready': false});
-                LogService.info('Provisional stopped confirmed for UID=$remoteUid (no decode recovery)');
-              });
-
-              _remoteVideoStoppedTimestamps[remoteUid] = DateTime.now();
-              final audioActive = _remoteAudioActive[remoteUid] ?? false;
-              if (audioActive) {
-                LogService.info('📱 Remote video stopped but audio active - possible screen-off detected');
-                _startScreenOffDetection(remoteUid);
-              } else {
-                LogService.warning('⚠️ Remote video stopped and audio inactive - attempting recovery');
-                _attemptVideoRecovery(remoteUid, connection);
-              }
-            }
-          }
-        },
-        // Detect remote audio state changes
-        onRemoteAudioStateChanged: (RtcConnection connection, int remoteUid, RemoteAudioState state, RemoteAudioStateReason reason, int elapsed) {
-          LogService.info('Remote audio state changed: UID=$remoteUid, state=$state, reason=$reason');
-          if (!_isValidRemoteUid(remoteUid)) {
-            LogService.debug('Ignoring onRemoteAudioStateChanged for non-remote uid=$remoteUid (self=$_currentUID)');
-            return;
-          }
-          if (state == RemoteAudioState.remoteAudioStateStarting ||
-              state == RemoteAudioState.remoteAudioStateDecoding) {
-            LogService.info('Remote audio is active for UID=$remoteUid');
-            _remoteAudioActive[remoteUid] = true;
-            _remoteAudioMutedController.add({'uid': remoteUid, 'muted': false});
-            
-            // If video is stopped but audio is active, check for screen-off
-            if (_remoteVideoStoppedTimestamps.containsKey(remoteUid)) {
-              final videoStoppedTime = _remoteVideoStoppedTimestamps[remoteUid]!;
-              final timeSinceVideoStopped = DateTime.now().difference(videoStoppedTime);
-              if (timeSinceVideoStopped < _screenOffDetectionDelay) {
-                // Video just stopped but audio is active - likely screen-off
-                LogService.info('📱 Audio active but video stopped - possible screen-off for UID=$remoteUid');
-                _startScreenOffDetection(remoteUid);
-              }
-            }
-          } else if (state == RemoteAudioState.remoteAudioStateStopped) {
-            _remoteAudioActive[remoteUid] = false;
-            if (reason == RemoteAudioStateReason.remoteAudioReasonRemoteMuted) {
-              LogService.info('Remote user mic is muted for UID=$remoteUid');
-              // Emit audio muted event
-              _remoteAudioMutedController.add({'uid': remoteUid, 'muted': true});
-            }
-            // Reset screen-off detection if audio also stopped
-            _resetScreenOffDetection(remoteUid);
-          }
-        },
-        // Track local video publishing state (important for debugging)
-        onLocalVideoStateChanged: (VideoSourceType sourceType, LocalVideoStreamState state, LocalVideoStreamReason reason) {
-          LogService.info('📹 Local video state changed: sourceType=$sourceType, state=$state, reason=$reason');
-          final isScreenSource = sourceType == VideoSourceType.videoSourceScreen ||
-              sourceType == VideoSourceType.videoSourceScreenPrimary ||
-              sourceType.toString().toLowerCase().contains('screen');
-          if (state == LocalVideoStreamState.localVideoStreamStateCapturing) {
-            LogService.success('✅ Local video is capturing (camera active)');
-            // Only force-unmute when user expects camera ON. Respect explicit camera mute.
-            if (!isScreenSource && _engine != null && _isInChannel && _isVideoEnabled) {
-              _engine!.muteLocalVideoStream(false).catchError((e) {
-                LogService.warning('Could not unmute video after capturing: $e');
-              });
-            }
-          } else if (state == LocalVideoStreamState.localVideoStreamStateEncoding) {
-            LogService.success('✅ Local video is encoding (publishing to remote users)');
-            // Only force-unmute when user expects camera ON. Respect explicit camera mute.
-            if (!isScreenSource && _engine != null && _isInChannel && _isVideoEnabled) {
-              _engine!.muteLocalVideoStream(false).catchError((e) {
-                LogService.warning('Could not ensure video is unmuted: $e');
-              });
-            }
-          } else if (state == LocalVideoStreamState.localVideoStreamStateFailed) {
-            LogService.info('📹 [VIDEO] Local video failed: sourceType=$sourceType, reason=$reason, isPublishingScreen=$_isPublishingScreen');
-            final isScreenSource = sourceType == VideoSourceType.videoSourceScreen ||
-                sourceType == VideoSourceType.videoSourceScreenPrimary ||
-                sourceType.toString().toLowerCase().contains('screen');
-            if (_isPublishingScreen || isScreenSource) {
-              LogService.info('📹 [SCREEN_SHARE] Cancel/deny – restoring camera (no error dialog)');
-              _isPublishingScreen = false;
-              _screenSharingController.add({'uid': _currentUID, 'sharing': false});
-              Future.microtask(() async {
-                if (_engine == null) return;
-                try {
-                  await _engine!.stopScreenCapture();
-                } catch (_) { /* ignore – capture may never have started */ }
-                try {
-                  if (_isInChannel) {
-                    await _engine!.updateChannelMediaOptions(
-                      ChannelMediaOptions(
-                        publishCameraTrack: _isVideoEnabled,
-                        publishScreenTrack: false,
-                        publishScreenCaptureVideo: false,
-                        publishScreenCaptureAudio: false,
-                        publishMicrophoneTrack: _isAudioEnabled,
-                      ),
-                    );
-                  }
-                  if (_isVideoEnabled) {
-                    await _engine!.setupLocalVideo(
-                      VideoCanvas(uid: 0, sourceType: VideoSourceType.videoSourceCamera),
-                    );
-                    await _engine!.muteLocalVideoStream(false);
-                    LogService.info('📹 [SCREEN_SHARE] Camera restored after cancel');
-                  }
-                } catch (e) {
-                  LogService.warning('Restore camera after screen cancel: $e');
-                }
-              });
-              return;
-            }
-            final reasonStr = reason.toString().toLowerCase();
-            if (reasonStr.contains('permission') || 
-                reasonStr.contains('denied') || 
-                reasonStr.contains('notallowed')) {
-              LogService.error('❌ Camera permission denied or not granted');
-              _errorController.add(kIsWeb
-                  ? 'Camera permission denied. Please allow camera access in browser settings and refresh.'
-                  : 'Camera permission denied. Please allow camera access for this app in your device Settings.');
-              _updateState(AgoraSessionState.error);
-            } else {
-              if (!_isRecoveringCamera && _isVideoEnabled && !_isPublishingScreen) {
-              LogService.warning('⚠️ Camera failed (reason: $reason) - attempting recovery');
-                _recoverCamera();
-              }
-            }
-          } else if (state == LocalVideoStreamState.localVideoStreamStateStopped) {
-            final isScreenSource = sourceType == VideoSourceType.videoSourceScreen ||
-                sourceType == VideoSourceType.videoSourceScreenPrimary ||
-                sourceType.toString().toLowerCase().contains('screen');
-            if (isScreenSource && _isPublishingScreen) {
-              // User stopped screen sharing (e.g. from browser "Stop sharing" button)
-              LogService.info('📹 [SCREEN_SHARE] Local screen stream stopped – restoring camera');
-              _isPublishingScreen = false;
-              _screenSharingController.add({'uid': _currentUID, 'sharing': false});
-              Future.microtask(() async {
-                if (_engine == null) return;
-                try {
-                  if (_isInChannel) {
-                    await _engine!.updateChannelMediaOptions(
-                      ChannelMediaOptions(
-                        publishCameraTrack: _isVideoEnabled,
-                        publishScreenTrack: false,
-                        publishScreenCaptureVideo: false,
-                        publishScreenCaptureAudio: false,
-                        publishMicrophoneTrack: _isAudioEnabled,
-                      ),
-                    );
-                  }
-                  if (_isVideoEnabled) {
-                    await _engine!.setupLocalVideo(
-                      VideoCanvas(uid: 0, sourceType: VideoSourceType.videoSourceCamera),
-                    );
-                    await _engine!.muteLocalVideoStream(false);
-                    LogService.info('📹 [SCREEN_SHARE] Camera restored after screen stopped');
-                  }
-                  await _notifyRemoteUsersScreenSharing(false);
-                } catch (e) {
-                  LogService.warning('Restore camera after screen stopped: $e');
-                }
-              });
-              return;
-            }
-            if (!isScreenSource) {
-            LogService.warning('⚠️ Local video stopped - not publishing to remote users');
-              if (_isVideoEnabled && !_isPublishingScreen && _engine != null && _isInChannel) {
-              Future.delayed(const Duration(milliseconds: 500), () async {
-                  if (_engine != null && _isInChannel && _isVideoEnabled && !_isPublishingScreen) {
-                  try {
-                    await _engine!.muteLocalVideoStream(false);
-                    LogService.info('✅ Attempted to unmute video after it stopped');
-                  } catch (e) {
-                    LogService.warning('Could not unmute video after stop: $e');
-                  }
-                }
-              });
-              }
-            }
-          } else {
-            LogService.info('📹 Local video state: $state (reason: $reason)');
-          }
-        },
-        onConnectionStateChanged: (RtcConnection connection, ConnectionStateType state, ConnectionChangedReasonType reason) {
-          LogService.info('[VIDEO] Connection state: $state, reason: $reason');
-          LogService.info('[VIDEO] Connection details: channelId=${connection.channelId}, localUid=${connection.localUid}');
-          _connectionStateController.add(state);
-          
-          // Update connection when we have valid channelId
-          if (connection.channelId != null) {
-            _currentConnection = connection;
-          }
-          
-            // Handle banned by server - this is critical
-            if (reason == ConnectionChangedReasonType.connectionChangedBannedByServer) {
-              LogService.error('❌ Connection banned by server! This may indicate:');
-              LogService.error('   - Duplicate UID in channel');
-              LogService.error('   - Invalid token');
-              LogService.error('   - Network/firewall issues');
-              LogService.error('   - Agora service restrictions');
-              _errorController.add('Connection was rejected by server. Please try again.');
-              _isInChannel = false;
-              _currentConnection = null; // Clear connection on ban
-              _stopVideoHealthCheck();
-              _updateState(AgoraSessionState.error);
-              return;
-            }
-          
-          // Update session state based on connection state
-          // Note: onJoinChannelSuccess is the primary indicator of successful join
-          if (state == ConnectionStateType.connectionStateConnected) {
-            // Update connection when state changes to connected (if channelId is set)
-            if (connection.channelId != null && _currentConnection == null) {
-              _currentConnection = connection;
-            }
-            // Only update if we're not already connected (onJoinChannelSuccess handles this)
-            if (_state != AgoraSessionState.connected) {
-              _updateState(AgoraSessionState.connected);
-            }
-            if (_reconnectTelemetryActive) {
-              _emitQoe(
-                'reconnect_success',
-                <String, dynamic>{
-                  'attempt_count': _reconnectionAttempts,
-                },
+              LogService.info(
+                '💡 Video stream is automatically subscribed - video should display now',
               );
-              _reconnectTelemetryActive = false;
-            }
-            LogService.info('[VIDEO] ✅ Connection established - waiting for remote user...');
-          } else if (state == ConnectionStateType.connectionStateDisconnected) {
-            _isInChannel = false;
-            _currentConnection = null; // Clear connection on disconnect
-            _stopVideoHealthCheck();
-            // Don't set disconnected if we were banned (error state already set)
-            if (reason != ConnectionChangedReasonType.connectionChangedBannedByServer) {
-              _updateState(AgoraSessionState.disconnected);
-              // Do NOT reconnect when user intentionally left - fixes audio continuing after leave
-              if (reason != ConnectionChangedReasonType.connectionChangedLeaveChannel) {
-              if (_reconnectTelemetryActive) {
-                _emitQoe(
-                  'reconnect_failed',
-                  <String, dynamic>{
-                    'reason': reason.name,
-                    'attempt_count': _reconnectionAttempts,
-                  },
+              LogService.info(
+                '📹 Connection for video view: channelId=${connection.channelId}, localUid=${connection.localUid}',
+              );
+              if (!_isValidRemoteUid(remoteUid)) {
+                LogService.debug(
+                  'Ignoring onFirstRemoteVideoDecoded for non-remote uid=$remoteUid (self=$_currentUID)',
                 );
-                _reconnectTelemetryActive = false;
+                return;
               }
-              _attemptReconnection();
+              // Ensure connection is stored
+              if (_currentConnection == null && connection.channelId != null) {
+                _currentConnection = connection;
+                LogService.info(
+                  '✅ Connection stored from onFirstRemoteVideoDecoded event',
+                );
+              }
+
+              // CRITICAL: Reset offline tracking when video is decoded (user is active)
+              _resetUserOfflineTracking(remoteUid);
+              _cancelRemoteVideoStoppedProvisional(remoteUid);
+
+              _remoteVideoMutedController.add({
+                'uid': remoteUid,
+                'muted': false,
+              });
+              _remoteVideoFrameController.add({
+                'uid': remoteUid,
+                'ready': true,
+              });
+            },
+        // Also detect when remote audio is first decoded (do not emit userJoined - join is from onUserJoined only)
+        onFirstRemoteAudioDecoded:
+            (RtcConnection connection, int remoteUid, int elapsed) {
+              LogService.success(
+                '✅ Remote audio decoded: UID=$remoteUid (elapsed: ${elapsed}ms)',
+              );
+              LogService.info(
+                'This indicates a remote user is in the channel and publishing audio',
+              );
+              if (!_isValidRemoteUid(remoteUid)) {
+                LogService.debug(
+                  'Ignoring onFirstRemoteAudioDecoded for non-remote uid=$remoteUid (self=$_currentUID)',
+                );
+              }
+            },
+        // Who is speaking (for talking indicator UI)
+        onAudioVolumeIndication:
+            (
+              RtcConnection connection,
+              List<AudioVolumeInfo> speakers,
+              int speakerNumber,
+              int totalVolume,
+            ) {
+              try {
+                final speaking = <int>{};
+                for (final s in speakers) {
+                  if (s.volume != null &&
+                      s.volume! > _speakingVolumeThreshold) {
+                    final uid = s.uid ?? 0;
+                    if (uid != 0 && _isValidRemoteUid(uid)) {
+                      speaking.add(uid);
+                    }
+                  }
+                }
+                _speakingDebouncer.applyRaw(speaking, (debounced) {
+                  if (_speakingController.hasListener) {
+                    _speakingController.add(debounced);
+                  }
+                  unawaited(
+                    _applyRemoteStreamPriority(speakingUids: debounced),
+                  );
+                });
+                _considerMutedMicSpeechHint(speakers);
+              } catch (e) {
+                LogService.warning('onAudioVolumeIndication error: $e');
+              }
+            },
+        // Detect remote video state changes
+        onRemoteVideoStateChanged:
+            (
+              RtcConnection connection,
+              int remoteUid,
+              RemoteVideoState state,
+              RemoteVideoStateReason reason,
+              int elapsed,
+            ) {
+              LogService.info(
+                'Remote video state changed: UID=$remoteUid, state=$state, reason=$reason',
+              );
+              if (!_isValidRemoteUid(remoteUid)) {
+                LogService.debug(
+                  'Ignoring onRemoteVideoStateChanged for non-remote uid=$remoteUid (self=$_currentUID)',
+                );
+                return;
+              }
+              if (state == RemoteVideoState.remoteVideoStateStarting ||
+                  state == RemoteVideoState.remoteVideoStateDecoding) {
+                // Video is starting/decoding - user is active and camera is ON
+                LogService.info('✅ Remote video is active for UID=$remoteUid');
+                LogService.info(
+                  '💡 Video stream is automatically subscribed - video should display',
+                );
+
+                // Track video activity for health check
+                _lastRemoteVideoActivity = DateTime.now();
+                _lastActiveRemoteUid = remoteUid;
+
+                // Reset recovery attempts on successful video activity
+                _videoRecoveryAttempts.remove(remoteUid);
+                _lastRecoveryAttempt.remove(remoteUid);
+
+                // Reset screen-off detection when video becomes active
+                _resetScreenOffDetection(remoteUid);
+                _cancelRemoteVideoStoppedProvisional(remoteUid);
+
+                _remoteVideoMutedController.add({
+                  'uid': remoteUid,
+                  'muted': false,
+                });
+                _remoteVideoFrameController.add({
+                  'uid': remoteUid,
+                  'ready': true,
+                });
+                final freezeStartedAt = _freezeStartedAt.remove(remoteUid);
+                if (freezeStartedAt != null) {
+                  _emitQoe('remote_freeze_end', <String, dynamic>{
+                    'uid': remoteUid,
+                    'freeze_duration_ms': DateTime.now()
+                        .difference(freezeStartedAt)
+                        .inMilliseconds,
+                  });
+                }
+              } else if (state == RemoteVideoState.remoteVideoStateStopped) {
+                LogService.info(
+                  'Remote video stopped for UID=$remoteUid (reason: $reason)',
+                );
+                _remoteVideoMutedController.add({
+                  'uid': remoteUid,
+                  'muted': true,
+                });
+
+                if (reason ==
+                    RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted) {
+                  LogService.info(
+                    '📹 Remote camera OFF (remote muted): UID=$remoteUid',
+                  );
+                  _resetScreenOffDetection(remoteUid);
+                  _remoteVideoFrameController.add({
+                    'uid': remoteUid,
+                    'ready': false,
+                  });
+                } else {
+                  _freezeStartedAt.putIfAbsent(remoteUid, () => DateTime.now());
+                  _emitQoe('remote_freeze_start', <String, dynamic>{
+                    'uid': remoteUid,
+                    'reason': reason.name,
+                  });
+                  // Provisional: avoid immediate ready=false on transient renegotiation (e.g. web)
+                  _cancelRemoteVideoStoppedProvisional(remoteUid);
+                  _remoteVideoStoppedProvisionalTimers[remoteUid] = Timer(
+                    _remoteVideoStoppedProvisionalDelay,
+                    () {
+                      _remoteVideoStoppedProvisionalTimers.remove(remoteUid);
+                      _remoteVideoFrameController.add({
+                        'uid': remoteUid,
+                        'ready': false,
+                      });
+                      LogService.info(
+                        'Provisional stopped confirmed for UID=$remoteUid (no decode recovery)',
+                      );
+                    },
+                  );
+
+                  _remoteVideoStoppedTimestamps[remoteUid] = DateTime.now();
+                  final audioActive = _remoteAudioActive[remoteUid] ?? false;
+                  if (audioActive) {
+                    LogService.info(
+                      '📱 Remote video stopped but audio active - possible screen-off detected',
+                    );
+                    _startScreenOffDetection(remoteUid);
+                  } else {
+                    LogService.warning(
+                      '⚠️ Remote video stopped and audio inactive - attempting recovery',
+                    );
+                    _attemptVideoRecovery(remoteUid, connection);
+                  }
+                }
+              }
+            },
+        // Detect remote audio state changes
+        onRemoteAudioStateChanged:
+            (
+              RtcConnection connection,
+              int remoteUid,
+              RemoteAudioState state,
+              RemoteAudioStateReason reason,
+              int elapsed,
+            ) {
+              LogService.info(
+                'Remote audio state changed: UID=$remoteUid, state=$state, reason=$reason',
+              );
+              if (!_isValidRemoteUid(remoteUid)) {
+                LogService.debug(
+                  'Ignoring onRemoteAudioStateChanged for non-remote uid=$remoteUid (self=$_currentUID)',
+                );
+                return;
+              }
+              if (state == RemoteAudioState.remoteAudioStateStarting ||
+                  state == RemoteAudioState.remoteAudioStateDecoding) {
+                LogService.info('Remote audio is active for UID=$remoteUid');
+                _remoteAudioActive[remoteUid] = true;
+                _remoteAudioMutedController.add({
+                  'uid': remoteUid,
+                  'muted': false,
+                });
+
+                // If video is stopped but audio is active, check for screen-off
+                if (_remoteVideoStoppedTimestamps.containsKey(remoteUid)) {
+                  final videoStoppedTime =
+                      _remoteVideoStoppedTimestamps[remoteUid]!;
+                  final timeSinceVideoStopped = DateTime.now().difference(
+                    videoStoppedTime,
+                  );
+                  if (timeSinceVideoStopped < _screenOffDetectionDelay) {
+                    // Video just stopped but audio is active - likely screen-off
+                    LogService.info(
+                      '📱 Audio active but video stopped - possible screen-off for UID=$remoteUid',
+                    );
+                    _startScreenOffDetection(remoteUid);
+                  }
+                }
+              } else if (state == RemoteAudioState.remoteAudioStateStopped) {
+                _remoteAudioActive[remoteUid] = false;
+                if (reason ==
+                    RemoteAudioStateReason.remoteAudioReasonRemoteMuted) {
+                  LogService.info(
+                    'Remote user mic is muted for UID=$remoteUid',
+                  );
+                  // Emit audio muted event
+                  _remoteAudioMutedController.add({
+                    'uid': remoteUid,
+                    'muted': true,
+                  });
+                }
+                // Reset screen-off detection if audio also stopped
+                _resetScreenOffDetection(remoteUid);
+              }
+            },
+        // Track local video publishing state (important for debugging)
+        onLocalVideoStateChanged:
+            (
+              VideoSourceType sourceType,
+              LocalVideoStreamState state,
+              LocalVideoStreamReason reason,
+            ) {
+              LogService.info(
+                '📹 Local video state changed: sourceType=$sourceType, state=$state, reason=$reason',
+              );
+              final isScreenSource =
+                  sourceType == VideoSourceType.videoSourceScreen ||
+                  sourceType == VideoSourceType.videoSourceScreenPrimary ||
+                  sourceType.toString().toLowerCase().contains('screen');
+              if (state ==
+                  LocalVideoStreamState.localVideoStreamStateCapturing) {
+                LogService.success(
+                  '✅ Local video is capturing (camera active)',
+                );
+                // Only force-unmute when user expects camera ON. Respect explicit camera mute.
+                if (!isScreenSource &&
+                    _engine != null &&
+                    _isInChannel &&
+                    _isVideoEnabled) {
+                  _ensureVideoUnmuted(reason: 'capturing');
+                }
+              } else if (state ==
+                  LocalVideoStreamState.localVideoStreamStateEncoding) {
+                LogService.success(
+                  '✅ Local video is encoding (publishing to remote users)',
+                );
+                // Only force-unmute when user expects camera ON. Respect explicit camera mute.
+                if (!isScreenSource &&
+                    _engine != null &&
+                    _isInChannel &&
+                    _isVideoEnabled) {
+                  _ensureVideoUnmuted(reason: 'encoding');
+                }
+              } else if (state ==
+                  LocalVideoStreamState.localVideoStreamStateFailed) {
+                LogService.info(
+                  '📹 [VIDEO] Local video failed: sourceType=$sourceType, reason=$reason, isPublishingScreen=$_isPublishingScreen',
+                );
+                final isScreenSource =
+                    sourceType == VideoSourceType.videoSourceScreen ||
+                    sourceType == VideoSourceType.videoSourceScreenPrimary ||
+                    sourceType.toString().toLowerCase().contains('screen');
+                // Only treat this as screen-share cancel/deny when the failing stream is
+                // actually the screen source. Camera "deviceInterrupt" is expected while
+                // screen sharing is active and should not force-stop screen share.
+                if (_isPublishingScreen && isScreenSource) {
+                  LogService.info(
+                    '📹 [SCREEN_SHARE] Cancel/deny – restoring camera (no error dialog)',
+                  );
+                  _isPublishingScreen = false;
+                  _screenSharingController.add({
+                    'uid': _currentUID,
+                    'sharing': false,
+                  });
+                  Future.microtask(() async {
+                    if (_engine == null) return;
+                    try {
+                      await _engine!.stopScreenCapture();
+                    } catch (_) {
+                      /* ignore – capture may never have started */
+                    }
+                    try {
+                      if (_isInChannel) {
+                        await _engine!.updateChannelMediaOptions(
+                          ChannelMediaOptions(
+                            publishCameraTrack: _isVideoEnabled,
+                            publishScreenTrack: false,
+                            publishScreenCaptureVideo: false,
+                            publishScreenCaptureAudio: false,
+                            publishMicrophoneTrack: _isAudioEnabled,
+                          ),
+                        );
+                      }
+                      if (_isVideoEnabled) {
+                        await _engine!.setupLocalVideo(
+                          VideoCanvas(
+                            uid: 0,
+                            sourceType: VideoSourceType.videoSourceCamera,
+                          ),
+                        );
+                        await _ensureVideoUnmuted(
+                          reason: 'screen_share_cancel_restore_camera',
+                          force: true,
+                        );
+                        LogService.info(
+                          '📹 [SCREEN_SHARE] Camera restored after cancel',
+                        );
+                      }
+                    } catch (e) {
+                      LogService.warning(
+                        'Restore camera after screen cancel: $e',
+                      );
+                    }
+                  });
+                  return;
+                }
+                if (_isPublishingScreen && !isScreenSource) {
+                  LogService.info(
+                    '📹 [SCREEN_SHARE] Ignoring camera failure while screen share is active (expected interrupt).',
+                  );
+                  return;
+                }
+                final reasonStr = reason.toString().toLowerCase();
+                if (reasonStr.contains('permission') ||
+                    reasonStr.contains('denied') ||
+                    reasonStr.contains('notallowed')) {
+                  LogService.error('❌ Camera permission denied or not granted');
+                  _errorController.add(
+                    kIsWeb
+                        ? 'Camera permission denied. Please allow camera access in browser settings and refresh.'
+                        : 'Camera permission denied. Please allow camera access for this app in your device Settings.',
+                  );
+                  _updateState(AgoraSessionState.error);
+                } else {
+                  if (!_isRecoveringCamera &&
+                      _isVideoEnabled &&
+                      !_isPublishingScreen) {
+                    LogService.warning(
+                      '⚠️ Camera failed (reason: $reason) - attempting recovery',
+                    );
+                    _recoverCamera();
+                  }
+                }
+              } else if (state ==
+                  LocalVideoStreamState.localVideoStreamStateStopped) {
+                final isScreenSource =
+                    sourceType == VideoSourceType.videoSourceScreen ||
+                    sourceType == VideoSourceType.videoSourceScreenPrimary ||
+                    sourceType.toString().toLowerCase().contains('screen');
+                if (isScreenSource && _isPublishingScreen) {
+                  // User stopped screen sharing (e.g. from browser "Stop sharing" button)
+                  LogService.info(
+                    '📹 [SCREEN_SHARE] Local screen stream stopped – restoring camera',
+                  );
+                  _isPublishingScreen = false;
+                  _screenSharingController.add({
+                    'uid': _currentUID,
+                    'sharing': false,
+                  });
+                  Future.microtask(() async {
+                    if (_engine == null) return;
+                    try {
+                      if (_isInChannel) {
+                        await _engine!.updateChannelMediaOptions(
+                          ChannelMediaOptions(
+                            publishCameraTrack: _isVideoEnabled,
+                            publishScreenTrack: false,
+                            publishScreenCaptureVideo: false,
+                            publishScreenCaptureAudio: false,
+                            publishMicrophoneTrack: _isAudioEnabled,
+                          ),
+                        );
+                      }
+                      if (_isVideoEnabled) {
+                        await _engine!.setupLocalVideo(
+                          VideoCanvas(
+                            uid: 0,
+                            sourceType: VideoSourceType.videoSourceCamera,
+                          ),
+                        );
+                        await _ensureVideoUnmuted(
+                          reason: 'screen_share_stopped_restore_camera',
+                          force: true,
+                        );
+                        LogService.info(
+                          '📹 [SCREEN_SHARE] Camera restored after screen stopped',
+                        );
+                      }
+                      await _notifyRemoteUsersScreenSharing(false);
+                    } catch (e) {
+                      LogService.warning(
+                        'Restore camera after screen stopped: $e',
+                      );
+                    }
+                  });
+                  return;
+                }
+                if (!isScreenSource) {
+                  LogService.warning(
+                    '⚠️ Local video stopped - not publishing to remote users',
+                  );
+                  if (_isVideoEnabled &&
+                      !_isPublishingScreen &&
+                      _engine != null &&
+                      _isInChannel) {
+                    Future.delayed(const Duration(milliseconds: 500), () async {
+                      if (_engine != null &&
+                          _isInChannel &&
+                          _isVideoEnabled &&
+                          !_isPublishingScreen) {
+                        await _ensureVideoUnmuted(
+                          reason: 'video_stopped_recovery',
+                          force: true,
+                          logOnSuccess: true,
+                        );
+                      }
+                    });
+                  }
+                }
               } else {
-                LogService.info('[VIDEO] User left channel - skipping reconnection');
+                LogService.info(
+                  '📹 Local video state: $state (reason: $reason)',
+                );
               }
-            }
-          } else if (state == ConnectionStateType.connectionStateReconnecting) {
-            _updateState(AgoraSessionState.reconnecting);
-            LogService.info('[VIDEO] 🔄 Reconnecting to channel...');
-            _reconnectTelemetryActive = true;
-            _emitQoe(
-              'reconnect_attempt',
-              <String, dynamic>{
-                'reason': reason.name,
-                'attempt_count': _reconnectionAttempts + 1,
-              },
-            );
-            _handleReconnection(connection);
-          } else if (state == ConnectionStateType.connectionStateConnecting) {
-            _updateState(AgoraSessionState.joining);
-          }
-        },
+            },
+        onConnectionStateChanged:
+            (
+              RtcConnection connection,
+              ConnectionStateType state,
+              ConnectionChangedReasonType reason,
+            ) {
+              LogService.info(
+                '[VIDEO] Connection state: $state, reason: $reason',
+              );
+              LogService.info(
+                '[VIDEO] Connection details: channelId=${connection.channelId}, localUid=${connection.localUid}',
+              );
+              _connectionStateController.add(state);
+
+              // Update connection when we have valid channelId
+              if (connection.channelId != null) {
+                _currentConnection = connection;
+              }
+
+              // Handle banned by server - this is critical
+              if (reason ==
+                  ConnectionChangedReasonType.connectionChangedBannedByServer) {
+                LogService.error(
+                  '❌ Connection banned by server! This may indicate:',
+                );
+                LogService.error('   - Duplicate UID in channel');
+                LogService.error('   - Invalid token');
+                LogService.error('   - Network/firewall issues');
+                LogService.error('   - Agora service restrictions');
+                _errorController.add(
+                  'Connection was rejected by server. Please try again.',
+                );
+                _isInChannel = false;
+                _currentConnection = null; // Clear connection on ban
+                _stopVideoHealthCheck();
+                _updateState(AgoraSessionState.error);
+                return;
+              }
+
+              // Update session state based on connection state
+              // Note: onJoinChannelSuccess is the primary indicator of successful join
+              if (state == ConnectionStateType.connectionStateConnected) {
+                // Update connection when state changes to connected (if channelId is set)
+                if (connection.channelId != null &&
+                    _currentConnection == null) {
+                  _currentConnection = connection;
+                }
+                // Only update if we're not already connected (onJoinChannelSuccess handles this)
+                if (_state != AgoraSessionState.connected) {
+                  _updateState(AgoraSessionState.connected);
+                }
+                if (_reconnectTelemetryActive) {
+                  _emitQoe('reconnect_success', <String, dynamic>{
+                    'attempt_count': _reconnectionAttempts,
+                  });
+                  _reconnectTelemetryActive = false;
+                }
+                LogService.info(
+                  '[VIDEO] ✅ Connection established - waiting for remote user...',
+                );
+              } else if (state ==
+                  ConnectionStateType.connectionStateDisconnected) {
+                _joinInProgress = false;
+                _isInChannel = false;
+                _currentConnection = null; // Clear connection on disconnect
+                _stopVideoHealthCheck();
+                // Don't set disconnected if we were banned (error state already set)
+                if (reason !=
+                    ConnectionChangedReasonType
+                        .connectionChangedBannedByServer) {
+                  _updateState(AgoraSessionState.disconnected);
+                  // Do NOT reconnect when user intentionally left - fixes audio continuing after leave
+                  if (reason !=
+                      ConnectionChangedReasonType
+                          .connectionChangedLeaveChannel) {
+                    if (_reconnectTelemetryActive) {
+                      _emitQoe('reconnect_failed', <String, dynamic>{
+                        'reason': reason.name,
+                        'attempt_count': _reconnectionAttempts,
+                      });
+                      _reconnectTelemetryActive = false;
+                    }
+                    _attemptReconnection();
+                  } else {
+                    LogService.info(
+                      '[VIDEO] User left channel - skipping reconnection',
+                    );
+                  }
+                }
+              } else if (state ==
+                  ConnectionStateType.connectionStateReconnecting) {
+                _updateState(AgoraSessionState.reconnecting);
+                LogService.info('[VIDEO] 🔄 Reconnecting to channel...');
+                _reconnectTelemetryActive = true;
+                _emitQoe('reconnect_attempt', <String, dynamic>{
+                  'reason': reason.name,
+                  'attempt_count': _reconnectionAttempts + 1,
+                });
+                _handleReconnection(connection);
+              } else if (state ==
+                  ConnectionStateType.connectionStateConnecting) {
+                _updateState(AgoraSessionState.joining);
+              }
+            },
         onError: (ErrorCodeType err, String msg) {
           LogService.error('Agora error: $err, $msg');
-          
+
           // Check for permission-related errors
           final errorMsg = msg.toLowerCase();
-          if (errorMsg.contains('permission') || 
-              errorMsg.contains('denied') || 
+          if (errorMsg.contains('permission') ||
+              errorMsg.contains('denied') ||
               errorMsg.contains('notallowed') ||
               errorMsg.contains('not allowed') ||
               errorMsg.contains('getusermedia')) {
             LogService.error('❌ Permission error detected: $msg');
             LogService.error('💡 Camera/microphone permission was denied');
             LogService.error('💡 To fix:');
-            LogService.error('   1. Click the camera/mic icon in the browser address bar');
+            LogService.error(
+              '   1. Click the camera/mic icon in the browser address bar',
+            );
             LogService.error('   2. Set camera and microphone to "Allow"');
             LogService.error('   3. Refresh the page and try again');
-            _errorController.add(kIsWeb
-                ? 'Camera/microphone permission denied. Please allow access in browser settings (click camera icon in address bar) and refresh the page.'
-                : 'Camera/microphone permission denied. Please allow access for this app in your device Settings.');
+            _errorController.add(
+              kIsWeb
+                  ? 'Camera/microphone permission denied. Please allow access in browser settings (click camera icon in address bar) and refresh the page.'
+                  : 'Camera/microphone permission denied. Please allow access for this app in your device Settings.',
+            );
             _updateState(AgoraSessionState.error);
             return;
           }
-          
-          _errorController.add('Error $err: $msg');
-          
+
+          if (err != ErrorCodeType.errJoinChannelRejected) {
+            _errorController.add('Error $err: $msg');
+          }
+
           // Don't set error state for join channel rejected if we're still trying
           // The connection state handler will manage state transitions
           if (err == ErrorCodeType.errJoinChannelRejected) {
             LogService.error('❌ Join channel rejected: $msg');
-            String errorMsg = 'Failed to join video session. ';
-            
+            _joinInProgress = false;
+            String errorMsg = 'Session is resyncing. Reconnecting...';
+
             // Provide specific error messages
-            if (msg.contains('appid') || msg.contains('Invalid appid') || msg.contains('appId')) {
-              errorMsg = 'Invalid Agora App ID. Please check server configuration.';
+            if (msg.contains('appid') ||
+                msg.contains('Invalid appid') ||
+                msg.contains('appId')) {
+              errorMsg =
+                  'Invalid Agora App ID. Please check server configuration.';
             } else if (msg.contains('token') || msg.contains('Token')) {
               errorMsg = 'Invalid or expired token. Please try again.';
             } else if (msg.contains('channel') || msg.contains('Channel')) {
-              errorMsg = 'Invalid channel name. Please check session configuration.';
+              errorMsg =
+                  'Invalid channel name. Please check session configuration.';
             } else if (msg.contains('uid') || msg.contains('UID')) {
               errorMsg = 'Invalid user ID. Please try again.';
-            } else {
-              errorMsg = 'Unable to join video session. This may be due to:\n'
-                  '• Invalid session configuration\n'
-                  '• Network connectivity issues\n'
-                  '• Server authentication problems\n\n'
-                  'Please try again or contact support.';
             }
-            
+
             _errorController.add(errorMsg);
-            _updateState(AgoraSessionState.error);
+            _updateState(AgoraSessionState.reconnecting);
+            _attemptReconnection();
           } else {
+            _joinInProgress = false;
             _updateState(AgoraSessionState.error);
           }
         },
-        onTokenPrivilegeWillExpire: (RtcConnection connection, String token) async {
-          LogService.info('[CALL] Token privilege will expire – refreshing');
-          final sessionId = _lastSessionId;
-          if (sessionId == null || sessionId.isEmpty || _engine == null || !_isInChannel) {
-            LogService.warning('[CALL] Cannot refresh token: no session or not in channel');
-            return;
-          }
-          try {
-            final tokenData = await AgoraTokenService.fetchToken(sessionId);
-            final newToken = tokenData['token'] as String?;
-            if (newToken == null || newToken.isEmpty) {
-              LogService.warning('[CALL] Token refresh returned empty token');
-              return;
-            }
-            await _engine!.renewToken(newToken);
-            LogService.info('[CALL] Token renewed successfully');
-          } catch (e) {
-            LogService.warning('[CALL] Token refresh failed: $e');
-          }
+        onTokenPrivilegeWillExpire:
+            (RtcConnection connection, String token) {
+              LogService.info(
+                '[CALL] Token privilege will expire soon — refreshing',
+              );
+              unawaited(_renewRtcToken(trigger: 'privilege_will_expire'));
+            },
+        onRequestToken: (RtcConnection connection) {
+          LogService.warning(
+            '[CALL] onRequestToken — privilege expired or invalid; renewing',
+          );
+          unawaited(_renewRtcToken(trigger: 'request_token'));
         },
         // Network quality monitoring for adaptive bitrate
-        onNetworkQuality: (RtcConnection connection, int remoteUid, QualityType txQuality, QualityType rxQuality) {
-          // Adjust video quality based on network conditions
-          // QualityType: excellent(0), good(1), poor(2), bad(3), veryBad(4), down(5), unsupported(6)
-          if (remoteUid == 0) {
-            // Local network quality - adapt video quality proactively
-            _adaptVideoQuality(rxQuality);
-            
-            // Update buffer settings based on network quality
-            try {
-              if (_engine != null) {
-                final bufferSize = _calculateBufferSize(rxQuality);
-                // Note: setBufferSettings may not be available in all SDK versions
-                // This is a best-effort optimization
-              }
-            } catch (e) {
-              // Silently fail if buffer settings not supported
-            }
-          } else {
-            // Remote user's network quality - track and detect instability
-            _trackRemoteNetworkQuality(remoteUid, rxQuality);
-          }
-        },
-        // Receive data stream messages for screen sharing notifications and reactions
-        onStreamMessage: (RtcConnection connection, int remoteUid, int streamId, Uint8List data, int length, int sentTs) {
-          try {
-            // CRITICAL: Use UTF-8 decoding to properly handle emoji characters
-            // String.fromCharCodes only works for ASCII - emojis need UTF-8 decoding
-            final message = utf8.decode(data, allowMalformed: true);
-            LogService.debug('📨 Received data stream: UID=$remoteUid: "$message"');
-            
-            if (message == 'screen_share_start') {
-              LogService.success('✅ Remote user started screen sharing: UID=$remoteUid');
-              
-              // Note: Agora SDK automatically handles video subscription for screen sharing
-              // The VideoViewController.remote in AgoraVideoViewWidget will handle
-              // the source type configuration when the widget rebuilds with sourceType=videoSourceScreen
-              // The UI will rebuild when _screenSharingController emits the event
-              // No need to explicitly call muteRemoteVideoStream - SDK handles subscription automatically
-              LogService.info('💡 UI will rebuild to show screen sharing stream');
-              
-              _screenShareOwnerUid = remoteUid;
-              _screenSharingController.add({
-                'uid': remoteUid,
-                'sharing': true,
-                'ownerUid': _screenShareOwnerUid,
-              });
-            } else if (message == 'screen_share_stop') {
-              LogService.info('📺 Remote user stopped screen sharing: UID=$remoteUid');
-              
-              // Note: The VideoViewController.remote in AgoraVideoViewWidget will handle
-              // switching back to camera source when the widget rebuilds with sourceType=videoSourceCamera
-              // The UI will rebuild when _screenSharingController emits the event
-              LogService.info('💡 UI will rebuild to show camera stream');
-              
-              if (_screenShareOwnerUid == remoteUid) {
-                _screenShareOwnerUid = null;
-              }
-              _screenSharingController.add({
-                'uid': remoteUid,
-                'sharing': false,
-                'ownerUid': _screenShareOwnerUid,
-              });
-            } else if (message == 'camera_on') {
-              LogService.info('📹 Remote user turned camera ON: UID=$remoteUid');
-              _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
-              _remoteVideoFrameController.add({'uid': remoteUid, 'ready': true});
-            } else if (message == 'camera_off') {
-              LogService.info('📹 Remote user turned camera OFF: UID=$remoteUid');
-              _remoteVideoMutedController.add({'uid': remoteUid, 'muted': true});
-              _remoteVideoFrameController.add({'uid': remoteUid, 'ready': false});
-            } else if (message.startsWith('reaction:')) {
-              final emoji = message.substring(9); // Extract emoji after "reaction:"
-              LogService.info('🎭 [EMOJI] Received reaction: remoteUid=$remoteUid, emoji="$emoji", streamId=$streamId – pushing to UI');
-              LogService.success('🎉 Received reaction from UID=$remoteUid: emoji="$emoji"');
-              
-              // Verify emoji is not empty
-              if (emoji.isNotEmpty) {
-                _reactionController.add({'uid': remoteUid, 'emoji': emoji});
-                LogService.info('✅ Reaction added to stream: UID=$remoteUid, emoji="$emoji"');
+        onNetworkQuality:
+            (
+              RtcConnection connection,
+              int remoteUid,
+              QualityType txQuality,
+              QualityType rxQuality,
+            ) {
+              // Adjust video quality based on network conditions
+              // QualityType: excellent(0), good(1), poor(2), bad(3), veryBad(4), down(5), unsupported(6)
+              if (remoteUid == 0) {
+                _lastObservedTxQuality = txQuality;
+                final combinedLocal =
+                    worstLocalNetworkQuality(txQuality, rxQuality);
+                _adaptVideoQuality(combinedLocal);
+
+                // Update buffer settings based on network quality
+                try {
+                  if (_engine != null) {
+                    final bufferSize = _calculateBufferSize(rxQuality);
+                    // Note: setBufferSettings may not be available in all SDK versions
+                    // This is a best-effort optimization
+                  }
+                } catch (e) {
+                  // Silently fail if buffer settings not supported
+                }
               } else {
-                LogService.warning('⚠️ Received reaction with empty emoji from UID=$remoteUid');
+                // Remote user's network quality - track and detect instability
+                _trackRemoteNetworkQuality(remoteUid, rxQuality);
               }
-            } else {
-              LogService.debug('Unknown data stream message format: "$message"');
-            }
-          } catch (e) {
-            LogService.error('❌ Error parsing data stream message: $e');
-            LogService.debug('Data stream details: remoteUid=$remoteUid, streamId=$streamId, length=$length, data=${data.length} bytes');
-          }
-        },
+            },
+        // Receive data stream messages for screen sharing notifications and reactions
+        onStreamMessage:
+            (
+              RtcConnection connection,
+              int remoteUid,
+              int streamId,
+              Uint8List data,
+              int length,
+              int sentTs,
+            ) {
+              try {
+                // CRITICAL: Use UTF-8 decoding to properly handle emoji characters
+                // String.fromCharCodes only works for ASCII - emojis need UTF-8 decoding
+                final message = utf8.decode(data, allowMalformed: true);
+                LogService.debug(
+                  '📨 Received data stream: UID=$remoteUid: "$message"',
+                );
+
+                if (message == 'screen_share_start') {
+                  LogService.success(
+                    '✅ Remote user started screen sharing: UID=$remoteUid',
+                  );
+
+                  // Note: Agora SDK automatically handles video subscription for screen sharing
+                  // The VideoViewController.remote in AgoraVideoViewWidget will handle
+                  // the source type configuration when the widget rebuilds with sourceType=videoSourceScreen
+                  // The UI will rebuild when _screenSharingController emits the event
+                  // No need to explicitly call muteRemoteVideoStream - SDK handles subscription automatically
+                  LogService.info(
+                    '💡 UI will rebuild to show screen sharing stream',
+                  );
+
+                  _screenShareOwnerUid = remoteUid;
+                  _screenSharingController.add({
+                    'uid': remoteUid,
+                    'sharing': true,
+                    'ownerUid': _screenShareOwnerUid,
+                  });
+                } else if (message == 'screen_share_stop') {
+                  LogService.info(
+                    '📺 Remote user stopped screen sharing: UID=$remoteUid',
+                  );
+
+                  // Note: The VideoViewController.remote in AgoraVideoViewWidget will handle
+                  // switching back to camera source when the widget rebuilds with sourceType=videoSourceCamera
+                  // The UI will rebuild when _screenSharingController emits the event
+                  LogService.info('💡 UI will rebuild to show camera stream');
+
+                  if (_screenShareOwnerUid == remoteUid) {
+                    _screenShareOwnerUid = null;
+                  }
+                  _screenSharingController.add({
+                    'uid': remoteUid,
+                    'sharing': false,
+                    'ownerUid': _screenShareOwnerUid,
+                  });
+                } else if (message == 'camera_on') {
+                  LogService.info(
+                    '📹 Remote user turned camera ON: UID=$remoteUid',
+                  );
+                  _remoteVideoMutedController.add({
+                    'uid': remoteUid,
+                    'muted': false,
+                  });
+                  _remoteVideoFrameController.add({
+                    'uid': remoteUid,
+                    'ready': true,
+                  });
+                } else if (message == 'camera_off') {
+                  LogService.info(
+                    '📹 Remote user turned camera OFF: UID=$remoteUid',
+                  );
+                  _remoteVideoMutedController.add({
+                    'uid': remoteUid,
+                    'muted': true,
+                  });
+                  _remoteVideoFrameController.add({
+                    'uid': remoteUid,
+                    'ready': false,
+                  });
+                } else if (message.startsWith('reaction:')) {
+                  final emoji = message.substring(
+                    9,
+                  ); // Extract emoji after "reaction:"
+                  LogService.info(
+                    '🎭 [EMOJI] Received reaction: remoteUid=$remoteUid, emoji="$emoji", streamId=$streamId – pushing to UI',
+                  );
+                  LogService.success(
+                    '🎉 Received reaction from UID=$remoteUid: emoji="$emoji"',
+                  );
+
+                  // Verify emoji is not empty
+                  if (emoji.isNotEmpty) {
+                    _reactionController.add({'uid': remoteUid, 'emoji': emoji});
+                    LogService.info(
+                      '✅ Reaction added to stream: UID=$remoteUid, emoji="$emoji"',
+                    );
+                  } else {
+                    LogService.warning(
+                      '⚠️ Received reaction with empty emoji from UID=$remoteUid',
+                    );
+                  }
+                } else {
+                  LogService.debug(
+                    'Unknown data stream message format: "$message"',
+                  );
+                }
+              } catch (e) {
+                LogService.error('❌ Error parsing data stream message: $e');
+                LogService.debug(
+                  'Data stream details: remoteUid=$remoteUid, streamId=$streamId, length=$length, data=${data.length} bytes',
+                );
+              }
+            },
       ),
     );
   }
@@ -2750,7 +3659,7 @@ class AgoraService {
     if (_userConfirmedLeft[remoteUid] == true) {
       return; // Already confirmed
     }
-    
+
     _userConfirmedLeft[remoteUid] = true;
     if (_screenShareOwnerUid == remoteUid) {
       _screenShareOwnerUid = null;
@@ -2767,17 +3676,19 @@ class AgoraService {
           : null;
     }
     unawaited(_applyRemoteStreamPriority());
-    LogService.info('CONFIRMED user left remoteUid=$remoteUid (will emit userLeftStream)');
+    LogService.info(
+      'CONFIRMED user left remoteUid=$remoteUid (will emit userLeftStream)',
+    );
     debugPrint('CONFIRMED user left remoteUid=$remoteUid');
-    
+
     // Cancel grace period timer
     _userLeftGracePeriodTimers[remoteUid]?.cancel();
     _userLeftGracePeriodTimers.remove(remoteUid);
-    
+
     // Emit user left event - this will trigger UI to show "user left" message
     _userLeftController.add(remoteUid);
   }
-  
+
   void _cancelRemoteVideoStoppedProvisional(int remoteUid) {
     _remoteVideoStoppedProvisionalTimers[remoteUid]?.cancel();
     _remoteVideoStoppedProvisionalTimers.remove(remoteUid);
@@ -2788,12 +3699,12 @@ class AgoraService {
     _userLeftGracePeriodTimers[remoteUid]?.cancel();
     _userLeftGracePeriodTimers.remove(remoteUid);
     _cancelRemoteVideoStoppedProvisional(remoteUid);
-    
+
     // Reset offline tracking
     _userOfflineTimestamps.remove(remoteUid);
     _userOfflineCount.remove(remoteUid);
     _userConfirmedLeft[remoteUid] = false;
-    
+
     // Emit connection stable event
     _remoteNetworkQualityController.add({
       'uid': remoteUid,
@@ -2801,23 +3712,27 @@ class AgoraService {
       'isUnstable': false,
       'message': 'Connection restored',
     });
-    
-    LogService.info('✅ Reset offline tracking for user $remoteUid - user is active');
+
+    LogService.info(
+      '✅ Reset offline tracking for user $remoteUid - user is active',
+    );
   }
-  
+
   /// Start screen-off detection timer
   void _startScreenOffDetection(int remoteUid) {
     // Cancel existing timer
     _screenOffDetectionTimers[remoteUid]?.cancel();
-    
+
     // Start new timer
     _screenOffDetectionTimers[remoteUid] = Timer(_screenOffDetectionDelay, () {
       // Check if video is still stopped and audio is still active
       final videoStoppedTime = _remoteVideoStoppedTimestamps[remoteUid];
       final audioActive = _remoteAudioActive[remoteUid] ?? false;
-      
+
       if (videoStoppedTime != null && audioActive) {
-        final timeSinceVideoStopped = DateTime.now().difference(videoStoppedTime);
+        final timeSinceVideoStopped = DateTime.now().difference(
+          videoStoppedTime,
+        );
         if (timeSinceVideoStopped >= _screenOffDetectionDelay) {
           // Video stopped for delay period but audio is active - likely screen-off
           _remoteScreenOff[remoteUid] = true;
@@ -2827,14 +3742,14 @@ class AgoraService {
       }
     });
   }
-  
+
   /// Reset screen-off detection
   void _resetScreenOffDetection(int remoteUid) {
     _screenOffDetectionTimers[remoteUid]?.cancel();
     _screenOffDetectionTimers.remove(remoteUid);
     _cancelRemoteVideoStoppedProvisional(remoteUid);
     _remoteVideoStoppedTimestamps.remove(remoteUid);
-    
+
     if (_remoteScreenOff[remoteUid] == true) {
       _remoteScreenOff[remoteUid] = false;
       _remoteScreenOffController.add({'uid': remoteUid, 'screenOff': false});
@@ -2864,4 +3779,3 @@ class AgoraService {
     );
   }
 }
-

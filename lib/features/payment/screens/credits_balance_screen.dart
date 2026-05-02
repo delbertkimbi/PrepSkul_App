@@ -5,7 +5,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
-import 'package:prepskul/features/payment/services/user_credits_service.dart';
+import 'package:prepskul/features/payment/services/session_points_service.dart';
 import 'package:prepskul/features/payment/widgets/credits_balance_widget.dart';
 import 'package:intl/intl.dart';
 
@@ -44,16 +44,13 @@ class _CreditsBalanceScreenState extends State<CreditsBalanceScreen> {
         throw Exception('User not found');
       }
 
-      final balance = await UserCreditsService.getUserBalance(userId);
+      final paidUpcomingSessions =
+          await SessionPointsService.getPaidUpcomingSessionsCount();
+      final points = paidUpcomingSessions * SessionPointsService.pointsPerSession;
       
       // Get credits record for total_purchased
-      final creditsRecord = await SupabaseService.client
-          .from('user_credits')
-          .select('total_purchased')
-          .eq('user_id', userId)
-          .maybeSingle();
-      
-      final totalPurchased = (creditsRecord?['total_purchased'] as num?)?.toInt() ?? 0;
+      // In session-points mode, purchased equals available points shown in this screen.
+      final totalPurchased = points;
       
       // Get transaction history
       final transactionsResponse = await SupabaseService.client
@@ -77,7 +74,7 @@ class _CreditsBalanceScreenState extends State<CreditsBalanceScreen> {
       final transactions = (transactionsResponse as List).cast<Map<String, dynamic>>();
 
       safeSetState(() {
-        _currentBalance = balance;
+        _currentBalance = points;
         _totalPurchased = totalPurchased;
         _transactions = transactions;
         _isLoading = false;

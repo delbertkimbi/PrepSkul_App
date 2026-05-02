@@ -15,16 +15,21 @@ class QualityDecision {
 }
 
 /// Policy-driven quality controller with hysteresis and minimum dwell windows.
+///
+/// [minDwellDown] / [minDwellUp] asymmetry: quicker tier step-down on sustained poor
+/// on sustained bad network, slower step-up so brief recovery does not thrash the encoder.
 class QualityController {
   QualityController({
     this.poorThreshold = 3,
     this.goodThreshold = 4,
-    this.minDwell = const Duration(seconds: 10),
+    this.minDwellDown = const Duration(seconds: 8),
+    this.minDwellUp = const Duration(seconds: 12),
   });
 
   final int poorThreshold;
   final int goodThreshold;
-  final Duration minDwell;
+  final Duration minDwellDown;
+  final Duration minDwellUp;
 
   int _consecutivePoor = 0;
   int _consecutiveGood = 0;
@@ -72,11 +77,11 @@ class QualityController {
       return null;
     }
 
-    if (_lastTierChangeAt != null && at.difference(_lastTierChangeAt!) < minDwell) {
+    final isDowngrade = _rank(target) < _rank(_currentTier!);
+    final dwell = _dwellForChange(isDowngrade: isDowngrade);
+    if (_lastTierChangeAt != null && at.difference(_lastTierChangeAt!) < dwell) {
       return null;
     }
-
-    final isDowngrade = _rank(target) < _rank(_currentTier!);
     if (isDowngrade && _consecutivePoor < poorThreshold) return null;
     if (!isDowngrade && _consecutiveGood < goodThreshold) return null;
 
@@ -116,5 +121,15 @@ class QualityController {
     _consecutiveGood = 0;
     _consecutivePoor = 0;
   }
-}
 
+  /// Clear tier memory (e.g. after leaving a channel) so the next call starts fresh.
+  void reset() {
+    _consecutivePoor = 0;
+    _consecutiveGood = 0;
+    _lastTierChangeAt = null;
+    _currentTier = null;
+  }
+
+  Duration _dwellForChange({required bool isDowngrade}) =>
+      isDowngrade ? minDwellDown : minDwellUp;
+}

@@ -170,7 +170,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     });
   }
 
-  /// Request permissions via custom UI (like Google Meet)
+  /// Request permissions via custom in-app UI
   Future<void> _requestPermissions() async {
     setState(() {
       _isLoading = true;
@@ -354,7 +354,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     );
   }
 
-  /// Build permission request dialog (Google Meet style)
+  /// Build permission request dialog (PrepSkul in-app)
   Widget _buildPermissionDialog() {
     if (!_showPermissionDialog) return const SizedBox.shrink();
 
@@ -428,7 +428,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                       child: Text(
                         'Cancel',
                         style: GoogleFonts.poppins(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey[600],
                         ),
@@ -464,7 +464,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                                   ? 'Open Settings'
                                   : 'Allow',
                               style: GoogleFonts.poppins(
-                                fontSize: 16,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white,
                               ),
@@ -543,10 +543,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                           icon: _micEnabled ? Icons.mic : Icons.mic_off,
                           label: _micEnabled ? 'Mic on' : 'Mic off',
                           isActive: _micEnabled,
-                          onTap: () {
-                            setState(() {
-                              _micEnabled = !_micEnabled;
-                            });
+                          onTap: () async {
+                            setState(() => _micEnabled = !_micEnabled);
+                            if (_previewStarted) {
+                              await _agoraService.setPreJoinMicEnabled(_micEnabled);
+                            }
                           },
                         ),
                         const SizedBox(width: 16),
@@ -621,10 +622,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                           icon: _micEnabled ? Icons.mic : Icons.mic_off,
                           label: _micEnabled ? 'Mic on' : 'Mic off',
                           isActive: _micEnabled,
-                          onTap: () {
-                            setState(() {
-                              _micEnabled = !_micEnabled;
-                            });
+                          onTap: () async {
+                            setState(() => _micEnabled = !_micEnabled);
+                            if (_previewStarted) {
+                              await _agoraService.setPreJoinMicEnabled(_micEnabled);
+                            }
                           },
                         ),
                         const SizedBox(width: 16),

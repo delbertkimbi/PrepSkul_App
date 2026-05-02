@@ -49,21 +49,9 @@ class AppConfig {
 
   /// Enable/disable Phone OTP verification flows.
   ///
-  /// When `false`, the app will not send or verify SMS OTP codes (login/signup/reset),
-  /// and will show a friendly message instead of surfacing backend/provider errors.
-  ///
-  /// Use `.env` override (optional):
-  /// - `PHONE_OTP_VERIFICATION_ENABLED=true|false`
-  static bool get enablePhoneOtpVerification {
-    if (!enablePhoneSignIn) return false;
-    try {
-      final v = dotenv.env['PHONE_OTP_VERIFICATION_ENABLED']?.toLowerCase();
-      if (v == 'true' || v == '1' || v == 'yes') return true;
-      if (v == 'false' || v == '0' || v == 'no') return false;
-    } catch (_) {}
-    // Default OFF (credits/availability risk); flip to true when stable.
-    return false;
-  }
+  /// Initial state is OFF. Flip to `true` when OTP provider is ready.
+  /// This is intentionally code-controlled to avoid accidental env overrides.
+  static const bool enablePhoneOtpVerification = false;
   
   /// Enable/disable SkulMate feature
   /// 
@@ -207,6 +195,12 @@ class AppConfig {
         }
         return envApiUrl;
       }
+    }
+
+    // For web builds, normalize app.prepskul.com/api -> www.prepskul.com/api
+    // unless localhost is explicitly configured above.
+    if (kIsWeb) {
+      url = url.replaceAll('://app.prepskul.com', '://www.prepskul.com');
     }
 
     return url;
@@ -481,6 +475,54 @@ class AppConfig {
   /// Enable Email Notifications
   static bool get enableEmailNotifications {
     return _safeEnvBool('ENABLE_EMAIL_NOTIFICATIONS', true);
+  }
+
+  /// Enable classroom QoE telemetry events
+  static bool get enableClassroomQoeTelemetry {
+    return _safeEnvBool('CLASSROOM_QOE_TELEMETRY_ENABLED', true);
+  }
+
+  /// Enable classroom orchestrator-driven flow (safe rollout flag).
+  static bool get enableClassroomOrchestrator {
+    return _safeEnvBool('CLASSROOM_ORCHESTRATOR_ENABLED', true);
+  }
+
+  /// Enable dual-stream policy (safe rollout flag).
+  static bool get enableClassroomDualStream {
+    return _safeEnvBool('CLASSROOM_DUAL_STREAM_ENABLED', true);
+  }
+
+  /// Subscribe to workspace sync packets over Supabase Realtime during sessions.
+  static bool get enableClassroomWorkspaceRealtime {
+    return _safeEnvBool('CLASSROOM_WORKSPACE_REALTIME_ENABLED', true);
+  }
+
+  /// Enable group classes flows (safe rollout flag).
+  static bool get enableGroupClasses {
+    return _safeEnvBool('GROUP_CLASSES_ENABLED', true);
+  }
+
+  /// Dev-only QA account quick switch panel on login screen.
+  static bool get enableQaQuickSwitch {
+    if (!kDebugMode || isProd) return false;
+    return _safeEnvBool('QA_QUICK_SWITCH_ENABLED', true);
+  }
+
+  static String get qaTutorPhone => _safeEnv('QA_TUTOR_PHONE', '');
+  static String get qaTutorPassword => _safeEnv('QA_TUTOR_PASSWORD', '');
+  static String get qaLearnerPhone => _safeEnv('QA_LEARNER_PHONE', '');
+  static String get qaLearnerPassword => _safeEnv('QA_LEARNER_PASSWORD', '');
+  static String get qaObserverPhone => _safeEnv('QA_OBSERVER_PHONE', '');
+  static String get qaObserverPassword => _safeEnv('QA_OBSERVER_PASSWORD', '');
+
+  /// Dev-only bypass for joining booked sessions from any QA account until expiry.
+  ///
+  /// Safety:
+  /// - Always false in production mode.
+  /// - Enabled only in debug/dev when explicitly toggled.
+  static bool get enableQaSessionJoinBypass {
+    if (isProd) return false;
+    return _safeEnvBool('QA_SESSION_JOIN_BYPASS_ENABLED', false);
   }
   
   // ============================================
