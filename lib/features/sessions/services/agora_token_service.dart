@@ -42,6 +42,7 @@ class AgoraTokenService {
       final headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ${session.accessToken}',
+        if (AppConfig.enableQaSessionJoinBypass) 'X-PrepSkul-QA-Bypass': '1',
       };
       final body = jsonEncode({
         'sessionId': sessionId,
@@ -138,6 +139,10 @@ class AgoraTokenService {
         
         // Try to parse error response
         String? serverErrorMessage;
+        String? serverErrorCode;
+        String? serverReason;
+        String? serverHint;
+        bool? retryable;
         Map<String, dynamic>? errorBody;
         
         if (response.body.isNotEmpty) {
@@ -147,10 +152,18 @@ class AgoraTokenService {
                 ?? errorBody?['message'] as String?
                 ?? errorBody?['details'] as String?
                 ?? errorBody?.toString();
+            serverErrorCode = errorBody?['code']?.toString();
+            serverReason = errorBody?['reason']?.toString();
+            serverHint = errorBody?['hint']?.toString();
+            final dynamic retryableRaw = errorBody?['retryable'];
+            if (retryableRaw is bool) retryable = retryableRaw;
             
             if (serverErrorMessage != null) {
               LogService.error('❌ Server error message: $serverErrorMessage');
             }
+            if (serverErrorCode != null) LogService.error('❌ Server error code: $serverErrorCode');
+            if (serverReason != null) LogService.error('❌ Server reason: $serverReason');
+            if (serverHint != null) LogService.error('❌ Server hint: $serverHint');
           } catch (parseError) {
             LogService.warning('⚠️ Could not parse error response as JSON: $parseError');
             LogService.warning('⚠️ Raw response body: ${response.body}');
@@ -159,21 +172,33 @@ class AgoraTokenService {
         }
         
         // Provide specific error messages based on status code
+        String buildStructuredMessage(String fallback) {
+          final base = serverErrorMessage ?? fallback;
+          final codePart = (serverErrorCode != null && serverErrorCode!.isNotEmpty)
+              ? ' [$serverErrorCode]'
+              : '';
+          final hintPart = (serverHint != null && serverHint!.isNotEmpty)
+              ? ' Hint: $serverHint'
+              : '';
+          final retryPart = retryable == true ? ' You can retry.' : '';
+          return '$base$codePart$hintPart$retryPart';
+        }
+
         if (response.statusCode == 401) {
-          final message = serverErrorMessage ?? 'Unauthorized. Please log in again.';
+          final message = buildStructuredMessage('Unauthorized. Please log in again.');
           throw Exception(message);
         } else if (response.statusCode == 403) {
-          final message = serverErrorMessage ?? 'Access denied. You are not a participant in this session.';
+          final message = buildStructuredMessage('Access denied. You are not a participant in this session.');
           throw Exception(message);
         } else if (response.statusCode == 404) {
-          throw Exception('Connection failed. Please check your internet and try again.');
+          throw Exception(buildStructuredMessage('Connection failed. Please check your internet and try again.'));
         } else if (response.statusCode == 500) {
-          throw Exception('Something went wrong on our end. Please try again later.');
+          throw Exception(buildStructuredMessage('Something went wrong on our end. Please try again later.'));
         } else if (response.statusCode >= 500) {
-          throw Exception('Something went wrong on our end. Please try again later.');
+          throw Exception(buildStructuredMessage('Something went wrong on our end. Please try again later.'));
         } else {
           // Other 4xx errors
-          final message = serverErrorMessage ?? 'Failed to fetch token (Status: ${response.statusCode})';
+          final message = buildStructuredMessage('Failed to fetch token (Status: ${response.statusCode})');
           throw Exception('Client Error (${response.statusCode}): $message');
         }
       }

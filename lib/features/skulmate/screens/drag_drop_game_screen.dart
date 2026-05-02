@@ -4,11 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
+import '../models/skulmate_character_model.dart';
 import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/drag_drop_question_widget.dart';
 import '../widgets/game_standard_widgets.dart';
+import '../widgets/skulmate_companion_banner.dart';
 import '../services/character_selection_service.dart';
 import '../services/game_sound_service.dart';
 import 'game_results_screen.dart';
@@ -66,7 +68,7 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
 
   @override
   void dispose() {
-    unawaited(_soundService.stopMusic());
+    unawaited(_soundService.stopMusic(force: true));
     super.dispose();
   }
 
@@ -111,6 +113,10 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
 
   String _mappingText(GameItem question) {
     return DragDropQuestionWidget.buildMappingText(question.dragItems ?? const []);
+  }
+
+  int _remainingWords(List<Map<String, dynamic>> dragItems) {
+    return (dragItems.length - _assignments.length).clamp(0, 999);
   }
 
   void _nextOrFinish() {
@@ -169,102 +175,156 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
       appBar: SkulMateGameAppBar(
         title: widget.game.title.isNotEmpty ? widget.game.title : 'Drag & Drop',
         actions: [
-          if (_character != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(
-                child: SkulMateCharacterWidget(
-                  character: _character,
-                  size: 40,
-                  animated: false,
-                  showName: false,
-                ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: SkulMateCharacterWidget(
+                character: _character ?? SkulMateCharacters.middleMale,
+                size: 40,
+                animated: false,
+                showName: false,
               ),
             ),
+          ),
         ],
       ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            GameStandardsHud(
-              progressText:
-                  'Question ${_currentQuestionIndex + 1} of ${_questions.length}',
-              progressValue:
-                  (_currentQuestionIndex + 1) / (_questions.isEmpty ? 1 : _questions.length),
-              xpEarned: _xpEarned,
-              gameType: widget.game.gameType,
-            ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: GameStandardsTipCard(
-                text: 'Drag each item into the right zone, then submit.',
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+              child: GameStandardsHud(
+                progressText:
+                    'Question ${_currentQuestionIndex + 1} of ${_questions.length}',
+                progressValue:
+                    (_currentQuestionIndex + 1) / (_questions.isEmpty ? 1 : _questions.length),
+                xpEarned: _xpEarned,
+                gameType: widget.game.gameType,
               ),
             ),
-            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.softBorder),
-              ),
-              child: Text(
-                (question.question ?? '').trim().isEmpty
-                    ? 'Match each item to its correct zone.'
-                    : (question.question ?? ''),
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            DragDropQuestionWidget(
-              dragItems: dragItems,
-              dropZones: dropZones,
-              assignments: _assignments,
-              showCorrection: _showFeedback,
-              onAssignmentsChanged: (next) {
-                safeSetState(() {
-                  _assignments
-                    ..clear()
-                    ..addAll(next);
-                });
-              },
-            ),
-            if (_showFeedback) ...[
-              const SizedBox(height: 6),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentLightGreen.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.accentGreen),
-                ),
-                child: Text(
-                  _mappingText(question),
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
-                    height: 1.4,
+                  const SizedBox(height: 4),
+                  FlatStageCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    radius: 16,
+                    backgroundColor: Colors.white,
+                    borderColor: AppTheme.softBorder,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SkulMateCharacterWidget(
+                          character: SkulMateCharacters.middleMale,
+                          size: 44,
+                          animated: false,
+                          showName: false,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Drag the missing pieces of the definition into the correct spots. You\'ve got this, Scholar.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13.5,
+                              height: 1.4,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.textDark,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            GameStandardsPrimaryButton(
-              label: _showFeedback ? 'Next' : 'Submit answer',
-              onPressed: _showFeedback ? _nextOrFinish : _submitCurrent,
-            ),
+                  const SizedBox(height: 10),
+                  FlatStageCard(
+                    padding: const EdgeInsets.all(16),
+                    radius: 20,
+                    backgroundColor: const Color(0xFFF3F6FC),
+                    borderColor: const Color(0xFFE4EAF5),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          ((question.question ?? '').trim().isEmpty
+                                  ? 'Concept Builder'
+                                  : (question.question ?? ''))
+                              .trim(),
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF223A64),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        DragDropQuestionWidget(
+                          dragItems: dragItems,
+                          dropZones: dropZones,
+                          assignments: _assignments,
+                          showCorrection: _showFeedback,
+                          instructionText: '',
+                          onAssignmentsChanged: (next) {
+                            safeSetState(() {
+                              _assignments
+                                ..clear()
+                                ..addAll(next);
+                            });
+                          },
+                          onDragStart: () => unawaited(_soundService.playClick()),
+                          onDrop: () => unawaited(_soundService.playClick()),
+                          onClearZone: () => unawaited(_soundService.playClick()),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'VOCABULARY POOL',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                      Text(
+                        '${_remainingWords(dragItems)} WORDS LEFT',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          letterSpacing: 1.0,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0EA5E9),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_showFeedback) ...[
+                    const SizedBox(height: 6),
+                    FlatStageCard(
+                      padding: const EdgeInsets.all(14),
+                      backgroundColor: AppTheme.accentLightGreen.withOpacity(0.5),
+                      borderColor: AppTheme.accentGreen,
+                      child: Text(
+                        _mappingText(question),
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  GameStandardsPrimaryButton(
+                    label: _showFeedback ? 'Next' : 'Check Answer',
+                    onPressed: _showFeedback ? _nextOrFinish : _submitCurrent,
+                  ),
                 ],
               ),
             ),

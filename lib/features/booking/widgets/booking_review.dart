@@ -72,7 +72,14 @@ class _BookingReviewState extends State<BookingReview> {
     _reviewScreenShownAt = DateTime.now();
     _agreedToTerms = widget.initialAgreedToTerms;
     _agreedToSafeguarding = widget.initialAgreedToSafeguarding;
-    widget.onAgreementsChanged?.call(agreedToTerms: _agreedToTerms, agreedToSafeguarding: _agreedToSafeguarding);
+    // Avoid updating parent state while this widget is mounting inside PageView.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onAgreementsChanged?.call(
+        agreedToTerms: _agreedToTerms,
+        agreedToSafeguarding: _agreedToSafeguarding,
+      );
+    });
     // Pre-calculate multi-learner totals if needed (only once)
     final useMultiLearnerDiscount = widget.learnerCount != null && widget.learnerCount! > 1;
     if (useMultiLearnerDiscount) {

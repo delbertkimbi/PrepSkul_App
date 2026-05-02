@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/game_model.dart';
 import '../services/daily_challenge_service.dart';
+import 'skulmate_surface_styles.dart';
 
 /// Card for "Today's Challenge" – one focused set per day. User-specific (or child-specific).
 class DailyChallengeCard extends StatefulWidget {
@@ -83,7 +85,64 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.softBorder),
         ),
-        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Shimmer.fromColors(
+            baseColor: AppTheme.neutral200,
+            highlightColor: Colors.white,
+            period: const Duration(milliseconds: 1200),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          height: 14,
+                          width: 160,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          height: 12,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          height: 12,
+                          width: 120,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       );
     }
 
@@ -96,42 +155,34 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.primaryColor,
-            AppTheme.primaryColor.withOpacity(0.85),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: SkulMateSurfaceStyles.heroGradient(radius: 16),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: hasChallenge && !_completedToday
-              ? () => widget.onPlay(todayGame!, isDailyChallenge: true)
+              ? () => widget.onPlay(todayGame, isDailyChallenge: true)
               : null,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Stack(
+              clipBehavior: Clip.none,
               children: [
+                Positioned(
+                  right: -18,
+                  top: -18,
+                  child: CircleAvatar(
+                    radius: 44,
+                    backgroundColor: Colors.white.withValues(alpha: 0.06),
+                  ),
+                ),
                 Row(
                   children: [
                     Container(
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
@@ -163,11 +214,11 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
                             hasChallenge
                                 ? (_completedToday
                                     ? 'Come back tomorrow for a new challenge, or continue playing.'
-                                    : todayGame!.title)
+                                    : todayGame.title)
                                 : 'Create a quiz game to unlock daily challenges.',
                             style: GoogleFonts.poppins(
                               fontSize: 13,
-                              color: Colors.white.withOpacity(0.95),
+                              color: Colors.white.withValues(alpha: 0.95),
                               height: 1.3,
                             ),
                             maxLines: 2,
@@ -208,7 +259,7 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: AppTheme.primaryColor.withOpacity(0.12),
+                              color: AppTheme.primaryColor.withValues(alpha: 0.12),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
@@ -233,7 +284,7 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
                       tooltip: 'Hide for today',
                       icon: Icon(
                         Icons.close_rounded,
-                        color: Colors.white.withOpacity(0.92),
+                        color: Colors.white.withValues(alpha: 0.92),
                       ),
                       onPressed: _dismissForToday,
                     ),

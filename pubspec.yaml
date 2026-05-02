@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+11
+version: 1.0.0+13
 
 environment:
   sdk: ^3.8.1
@@ -32,13 +32,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-  
   # State Management
-  flutter_bloc: ^8.1.4
-  equatable: ^2.0.5
   provider: ^6.1.1
   
   # Localization
@@ -53,14 +47,12 @@ dependencies:
   
   # Firebase - upgraded for compatibility with GoogleUtilities 8.0
   firebase_core: ^3.6.0
-  firebase_auth: ^5.3.1
   firebase_messaging: ^15.2.10
   
   # Local Notifications (for displaying notifications)
   flutter_local_notifications: ^16.3.0
   
   # UI Components
-  flutter_svg: ^2.0.10+1
   google_fonts: ^6.1.0
   intl: ^0.20.2
   cached_network_image: ^3.3.1
@@ -80,8 +72,7 @@ dependencies:
   url_launcher: ^6.2.5
   youtube_player_flutter: ^9.0.3
   agora_rtc_engine: ^6.3.0  # Agora RTC SDK for live video sessions
-  pip_view: ^0.9.7  # Native Picture-in-Picture support for Android/iOS (updated)
-  
+
   # Local Storage
   shared_preferences: ^2.2.2
   path_provider: ^2.1.1
@@ -94,7 +85,6 @@ dependencies:
   image: ^4.3.0  # For image compression and optimization
   
   # Utilities
-  logger: ^2.0.2+1
   connectivity_plus: ^5.0.2
   device_info_plus: ^10.1.0
   package_info_plus: ^8.0.0
@@ -124,6 +114,8 @@ dependencies:
   
   # Platform Achievements & Leaderboards
   games_services: ^5.0.0
+  video_player: ^2.10.1
+  pdf: ^3.12.0
 
 dev_dependencies:
   flutter_test:
@@ -166,6 +158,16 @@ flutter:
     - assets/audio/music/sfx_wrong_mute.ogg
     - assets/sounds/
     - assets/characters/
+    # Explicit paths so Android release builds reliably bundle mascot media (folder-only
+    # entries have been observed to omit some subpaths on some toolchains).
+    - assets/characters/mascots/default.png
+    - assets/characters/mascots/thinking.png
+    - assets/characters/mascots/encouraging.png
+    - assets/characters/mascots/celebration.png
+    - assets/characters/animations/Neutral.mp4
+    - assets/characters/animations/Think.mp4
+    - assets/characters/animations/Encouraging.mp4
+    - assets/characters/animations/Celebrate.mp4
     - assets/fonts/
     - .env  # Root .env file (bundled for web, used for all platforms)
 

@@ -9,6 +9,8 @@ class GameModel {
   final GameType gameType;
   final String? documentUrl;
   final String? sourceType;
+  final String? sourceFileName;
+  final String? sourceTextSnapshot;
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isDeleted;
@@ -23,6 +25,8 @@ class GameModel {
     required this.gameType,
     this.documentUrl,
     this.sourceType,
+    this.sourceFileName,
+    this.sourceTextSnapshot,
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
@@ -39,6 +43,8 @@ class GameModel {
       gameType: GameType.fromString(json['game_type'] as String),
       documentUrl: json['document_url'] as String?,
       sourceType: json['source_type'] as String?,
+      sourceFileName: json['source_file_name'] as String?,
+      sourceTextSnapshot: json['source_text_snapshot'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
       isDeleted: json['is_deleted'] as bool? ?? false,
@@ -76,9 +82,15 @@ class GameModel {
       case GameType.fillBlank:
         return items.any((i) => (i.blankText ?? '').isNotEmpty);
       case GameType.dragDrop:
-        return items.any(
-          (i) => (i.dragItems ?? []).isNotEmpty && (i.dropZones ?? []).isNotEmpty,
+        final hasDragItems = items.any((i) => (i.dragItems ?? []).isNotEmpty);
+        final hasDropZones = items.any(
+          (i) =>
+              (i.dropZones ?? []).isNotEmpty ||
+              ((i.gameData?['dropZones'] as List?)?.isNotEmpty ?? false) ||
+              ((i.gameData?['drop_zones'] as List?)?.isNotEmpty ?? false) ||
+              ((i.gameData?['zones'] as List?)?.isNotEmpty ?? false),
         );
+        return hasDragItems && hasDropZones;
       case GameType.match3:
         return items.any((i) => (i.gridData ?? []).isNotEmpty || (i.words ?? []).isNotEmpty);
       case GameType.bubblePop:
@@ -114,7 +126,8 @@ class GameModel {
                   (((i.gameData!['clues'] as List?)?.isNotEmpty ?? false) ||
                       ((i.gameData!['solution'] as String?)?.trim().isNotEmpty ??
                           false))) ||
-              ((i.question ?? '').trim().isNotEmpty),
+              (((i.question ?? '').trim().isNotEmpty) &&
+                  ((i.solution ?? '').trim().isNotEmpty)),
         );
       case GameType.escapeRoom:
         return items.any(
@@ -137,6 +150,8 @@ class GameModel {
       'game_type': gameType.toString(),
       'document_url': documentUrl,
       'source_type': sourceType,
+      'source_file_name': sourceFileName,
+      'source_text_snapshot': sourceTextSnapshot,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'is_deleted': isDeleted,
@@ -409,10 +424,24 @@ class GameItem {
             gameDataMap?['board'],
       ),
       dragItems: parseMapList(
-        json['dragItems'] ?? json['drag_items'] ?? gameDataMap?['dragItems'] ?? gameDataMap?['drag_items'],
+        json['dragItems'] ??
+            json['drag_items'] ??
+            json['draggables'] ??
+            json['tokens'] ??
+            gameDataMap?['dragItems'] ??
+            gameDataMap?['drag_items'] ??
+            gameDataMap?['draggables'],
       ),
       dropZones: parseMapList(
-        json['dropZones'] ?? json['drop_zones'] ?? gameDataMap?['dropZones'] ?? gameDataMap?['drop_zones'],
+        json['dropZones'] ??
+            json['drop_zones'] ??
+            json['zones'] ??
+            json['targets'] ??
+            json['categories'] ??
+            gameDataMap?['dropZones'] ??
+            gameDataMap?['drop_zones'] ??
+            gameDataMap?['zones'] ??
+            gameDataMap?['targets'],
       ),
       puzzlePieces: parseMapList(
         json['puzzlePieces'] ??

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
+import '../models/skulmate_character_model.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../services/character_selection_service.dart';
@@ -75,7 +76,7 @@ class _Match3GameScreenState extends State<Match3GameScreen> {
 
   @override
   void dispose() {
-    unawaited(_soundService.stopMusic());
+    unawaited(_soundService.stopMusic(force: true));
     super.dispose();
   }
 
@@ -148,28 +149,30 @@ class _Match3GameScreenState extends State<Match3GameScreen> {
       appBar: SkulMateGameAppBar(
         title: widget.game.title.isNotEmpty ? widget.game.title : 'Match-3',
         actions: [
-          if (_character != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(
-                child: SkulMateCharacterWidget(
-                  character: _character,
-                  size: 40,
-                  animated: false,
-                  showName: false,
-                ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: const SkulMateCharacterWidget(
+                character: SkulMateCharacters.middleMale,
+                size: 40,
+                animated: false,
+                showName: false,
               ),
             ),
+          ),
         ],
       ),
       body: Center(
         child: Column(
           children: [
-            GameStandardsHud(
-              progressText: 'Matches: $_score / $_targetMatches',
-              progressValue: _targetMatches == 0 ? 0 : _score / _targetMatches,
-              xpEarned: _xpEarned,
-              gameType: widget.game.gameType,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+              child: GameStandardsHud(
+                progressText: 'Matches: $_score / $_targetMatches',
+                progressValue: _targetMatches == 0 ? 0 : _score / _targetMatches,
+                xpEarned: _xpEarned,
+                gameType: widget.game.gameType,
+              ),
             ),
             const SizedBox(height: 12),
             Padding(

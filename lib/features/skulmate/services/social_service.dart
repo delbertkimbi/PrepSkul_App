@@ -1,9 +1,8 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/social_models.dart';
-import '../models/game_stats_model.dart';
 import 'games_services_controller.dart';
 
 /// Service for managing social features (friendships, leaderboards, challenges)
@@ -108,7 +107,7 @@ class SocialService {
         await NotificationHelperService.sendSkulmateNotification(
           userId: friendId,
           type: 'skulmate_friend_request',
-          title: '👋 New friend request',
+          title: 'New friend request ⚡',
           message: '$requesterName wants to be your friend',
           actionUrl: '/skulmate/friends',
           actionText: 'View',
@@ -173,10 +172,10 @@ class SocialService {
               .eq('id', userId)
               .maybeSingle())?['full_name'] as String? ?? 'Someone';
           final requesterId = row['user_id'] as String;
-          await NotificationService.createNotification(
+          await NotificationHelperService.sendSkulmateNotification(
             userId: requesterId,
             type: 'skulmate_friend_accepted',
-            title: '✅ Friend request accepted',
+            title: 'Friend request accepted 🎉',
             message: '$accepterName accepted your friend request',
             actionUrl: '/skulmate/friends',
             actionText: 'View',
@@ -419,6 +418,8 @@ class SocialService {
       }
 
       LogService.success('🎮 [Social] Leaderboard updated');
+
+      await _notifyDailyLeaderSnapshot();
       
       // Submit to platform leaderboard (non-blocking)
       await submitToPlatformLeaderboard(xpEarned: xpEarned);
@@ -467,6 +468,50 @@ class SocialService {
     return ((currentAverage * currentGames) + newScore) / (currentGames + 1);
   }
 
+  /// Sends one daily leaderboard snapshot notification per user/device.
+  /// This keeps players aware of who is topping the daily chart.
+  static Future<void> _notifyDailyLeaderSnapshot() async {
+    try {
+      final currentUser = SupabaseService.client.auth.currentUser;
+      if (currentUser == null) return;
+      final userId = currentUser.id;
+      final now = DateTime.now();
+      final dayKey = '${now.year}-${now.month}-${now.day}';
+      final prefs = await SharedPreferences.getInstance();
+      final sentKey = 'skulmate_daily_leader_notified_$dayKey';
+      if (prefs.getBool(sentKey) == true) return;
+
+      final dailyEntries = await getLeaderboard(
+        period: LeaderboardPeriod.daily,
+        limit: 100,
+      );
+      if (dailyEntries.isEmpty) return;
+      final top = dailyEntries.first;
+      final rawTopName = (top.userName ?? '').trim();
+      final topName = rawTopName.isEmpty ? 'Player' : rawTopName;
+      final message = top.userId == userId
+          ? 'You are topping today\'s game chart with ${top.totalXP} XP. Keep the streak going!'
+          : '$topName is topping today\'s game chart with ${top.totalXP} XP.';
+      await NotificationHelperService.sendSkulmateNotification(
+        userId: userId,
+        type: 'skulmate_daily_leaderboard',
+        title: 'Daily game chart update ⚡',
+        message: message,
+        actionUrl: '/skulmate/leaderboard',
+        actionText: 'View leaderboard',
+        data: {
+          'top_user_id': top.userId,
+          'top_user_name': topName,
+          'top_xp': top.totalXP,
+          'period': 'daily',
+        },
+      );
+      await prefs.setBool(sentKey, true);
+    } catch (e) {
+      LogService.debug('🎮 [Social] Daily leaderboard notification skipped: $e');
+    }
+  }
+
   /// Create a challenge
   static Future<Challenge> createChallenge({
     required String challengeeId,
@@ -510,7 +555,7 @@ class SocialService {
         await NotificationHelperService.sendSkulmateNotification(
           userId: challengeeId,
           type: 'skulmate_challenge',
-          title: '⚔️ Challenge from $challengerName',
+          title: 'Challenge from $challengerName ⚡',
           message: '$challengerName challenged you! Play to beat their score.',
           actionUrl: '/skulmate/challenges',
           actionText: 'View',
@@ -627,10 +672,10 @@ class SocialService {
               .eq('id', userId)
               .maybeSingle())?['full_name'] as String? ?? 'Someone';
           final challengerId = challenge['challenger_id'] as String;
-          await NotificationService.createNotification(
+          await NotificationHelperService.sendSkulmateNotification(
             userId: challengerId,
             type: 'skulmate_challenge_accepted',
-            title: '✅ Challenge accepted',
+            title: 'Challenge accepted 🎉',
             message: '$accepterName accepted your challenge. Play now!',
             actionUrl: '/skulmate/challenges',
             actionText: 'View',

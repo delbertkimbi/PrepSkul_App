@@ -4,12 +4,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
+import '../models/skulmate_character_model.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../services/character_selection_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import '../widgets/game_standard_widgets.dart';
+import '../widgets/skulmate_companion_banner.dart';
 import 'game_results_screen.dart';
 
 /// Crossword game screen
@@ -79,7 +81,7 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
 
   @override
   void dispose() {
-    unawaited(_soundService.stopMusic());
+    unawaited(_soundService.stopMusic(force: true));
     for (final c in _controllers.values) {
       c.dispose();
     }
@@ -153,28 +155,39 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
       appBar: SkulMateGameAppBar(
         title: widget.game.title.isNotEmpty ? widget.game.title : 'Crossword',
         actions: [
-          if (_character != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(
-                child: SkulMateCharacterWidget(
-                  character: _character,
-                  size: 40,
-                  animated: false,
-                  showName: false,
-                ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: const SkulMateCharacterWidget(
+                character: SkulMateCharacters.middleMale,
+                size: 40,
+                animated: false,
+                showName: false,
               ),
             ),
+          ),
         ],
       ),
       body: Column(
         children: [
-          GameStandardsHud(
-            progressText: 'Solved: $_score / ${_clues.length}',
-            progressValue: _clues.isEmpty ? 0 : _score / _clues.length,
-            xpEarned: _xpEarned,
-            gameType: widget.game.gameType,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: GameStandardsHud(
+              progressText: 'Solved: $_score / ${_clues.length}',
+              progressValue: _clues.isEmpty ? 0 : _score / _clues.length,
+              xpEarned: _xpEarned,
+              gameType: widget.game.gameType,
+            ),
           ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: SkulMateCompanionBanner(
+              message: 'Use hint-style thinking: solve clue by clue and verify each word.',
+              tone: CompanionTone.tip,
+              useBrandMascot: true,
+            ),
+          ),
+          const SizedBox(height: 10),
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -182,18 +195,14 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
               itemBuilder: (context, index) {
                 final solved = _solved.contains(index);
                 final controller = _controllers[index]!;
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: solved ? AppTheme.accentGreen : AppTheme.softBorder,
-                      width: solved ? 2 : 1,
-                    ),
-                  ),
-                  child: Column(
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: FlatStageCard(
+                    backgroundColor: Colors.white,
+                    borderColor: solved ? AppTheme.accentGreen : AppTheme.softBorder,
+                    radius: 14,
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
@@ -236,6 +245,7 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
                         ],
                       ),
                     ],
+                    ),
                   ),
                 );
               },

@@ -32,6 +32,8 @@ import 'game_library_screen.dart';
 import 'text_input_screen.dart';
 import 'skulmate_plans_screen.dart';
 import '../services/game_sound_service.dart';
+import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
 
 /// Screen showing game generation progress
 /// Accepts either pre-uploaded URLs or files to upload (navigates here first, then uploads)
@@ -77,21 +79,37 @@ class GameGenerationScreen extends StatefulWidget {
 
 class _GameGenerationScreenState extends State<GameGenerationScreen>
     with TickerProviderStateMixin {
+  static const List<String> _stableGameTypes = <String>[
+    'quiz',
+    'flashcards',
+    'matching',
+    'fill_blank',
+    'drag_drop',
+  ];
   bool _isGenerating = true;
+  bool _generationInFlight = false;
   String _status = 'Generating your game...';
   String? _error;
   String? _errorTitle;
   String? _errorDetails;
+  String? _suggestedGameType;
+  String? _overrideGameType;
 
   /// When true, "Try again" is shown; when false (e.g. file too large), only Go back / Try text input.
   bool _errorRetryable = true;
   late AnimationController _animationController;
-  AnimationController? _pulseController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _rotationAnimation;
+  AnimationController? _pulseController;
   Animation<double>? _pulseAnimation;
   double _progress = 0.0;
   final GameSoundService _soundService = GameSoundService();
+  static const List<String> _phaseLabels = <String>[
+    'Uploading source',
+    'Analyzing content',
+    'Building game',
+    'Finalizing',
+  ];
 
   @override
   void initState() {
@@ -144,6 +162,160 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
     });
   }
 
+  String _gameTypeLabel(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'quiz':
+        return 'Quiz';
+      case 'flashcards':
+        return 'Flashcards';
+      case 'matching':
+        return 'Matching';
+      case 'fill_blank':
+        return 'Fill Blank';
+      case 'drag_drop':
+        return 'Drag & Drop';
+      case 'match3':
+        return 'Match-3';
+      case 'bubble_pop':
+        return 'Bubble Pop';
+      case 'word_search':
+        return 'Word Search';
+      case 'crossword':
+        return 'Crossword';
+      default:
+        return 'Quiz';
+    }
+  }
+
+  String _pickSuggestedGameType(String requestedGameType) {
+    switch (requestedGameType) {
+      case 'drag_drop':
+      case 'fill_blank':
+        return 'quiz';
+      case 'matching':
+      case 'crossword':
+      case 'word_search':
+        return 'flashcards';
+      default:
+        return 'quiz';
+    }
+  }
+
+  String _rawGameTypeFromEnum(GameType type) {
+    switch (type) {
+      case GameType.quiz:
+        return 'quiz';
+      case GameType.flashcards:
+        return 'flashcards';
+      case GameType.matching:
+        return 'matching';
+      case GameType.fillBlank:
+        return 'fill_blank';
+      case GameType.dragDrop:
+        return 'drag_drop';
+      case GameType.puzzlePieces:
+        return 'puzzle_pieces';
+      case GameType.match3:
+        return 'match3';
+      case GameType.bubblePop:
+        return 'bubble_pop';
+      case GameType.wordSearch:
+        return 'word_search';
+      case GameType.crossword:
+        return 'crossword';
+      case GameType.simulation:
+        return 'simulation';
+      case GameType.mystery:
+        return 'mystery';
+      case GameType.escapeRoom:
+        return 'escape_room';
+      case GameType.diagramLabel:
+        return 'diagram_label';
+    }
+  }
+
+  void _setGenerationStatus(String nextStatus) {
+    safeSetState(() {
+      _status = nextStatus;
+      final phase = _phaseIndexFromStatus(nextStatus);
+      final phaseProgress = ((phase + 1) / _phaseLabels.length).clamp(0.0, 0.95);
+      if (phaseProgress > _progress) {
+        _progress = phaseProgress;
+      }
+    });
+  }
+
+  int _phaseIndexFromStatus(String status) {
+    final s = status.toLowerCase();
+    if (s.contains('upload')) return 0;
+    if (s.contains('analyz')) return 1;
+    if (s.contains('generat') || s.contains('build')) return 2;
+    if (s.contains('ready') || s.contains('final')) return 3;
+    return 2;
+  }
+
+  List<String> _compatibleGameTypesForCurrentInput() {
+    final hasDocument = widget.documentToUpload != null || widget.fileUrl != null;
+    final hasImage =
+        widget.imageToUpload != null ||
+        (widget.imagesToUpload?.isNotEmpty ?? false) ||
+        widget.imageUrl != null;
+    final hasText = widget.text != null && widget.text!.trim().isNotEmpty;
+    if (hasText && !hasDocument && !hasImage) {
+      return const ['quiz', 'flashcards', 'fill_blank', 'matching'];
+    }
+    return const ['quiz', 'flashcards', 'matching', 'fill_blank', 'drag_drop'];
+  }
+
+  Future<String?> _promptGameTypeSelection({
+    required String title,
+    required String message,
+    required List<String> options,
+  }) async {
+    if (!mounted) return null;
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(
+            title,
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                message,
+                style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textMedium),
+              ),
+              const SizedBox(height: 12),
+              ...options.map((raw) {
+                return ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    _gameTypeLabel(raw),
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.pop(context, raw),
+                );
+              }),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     unawaited(_soundService.stopMusic());
@@ -166,10 +338,98 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
     return 0;
   }
 
+  String? _inferSourceFileName() {
+    final doc = widget.documentToUpload;
+    if (doc is PlatformFile) return doc.name;
+    if (doc is File) {
+      final p = doc.path.replaceAll('\\', '/');
+      if (p.contains('/')) return p.split('/').last;
+      return p;
+    }
+
+    final singleImage = widget.imageToUpload;
+    if (singleImage is XFile) return singleImage.name;
+
+    final manyImages = widget.imagesToUpload;
+    if (manyImages != null && manyImages.isNotEmpty) {
+      final first = manyImages.first;
+      if (first is XFile) {
+        return manyImages.length > 1
+            ? '${first.name} (+${manyImages.length - 1})'
+            : first.name;
+      }
+    }
+
+    final typedText = (widget.text ?? '').trim();
+    if (typedText.isNotEmpty) {
+      final lines = typedText
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+      final firstLine = lines.isNotEmpty ? lines.first : typedText;
+      final clean = firstLine
+          .replaceAll(RegExp(r'[^A-Za-z0-9 ]'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (clean.isNotEmpty) {
+        final words = clean
+            .split(' ')
+            .where((w) => w.trim().length >= 3)
+            .take(6)
+            .toList();
+        if (words.isNotEmpty) {
+          final base = words.join('_').toLowerCase();
+          return '${base}_notes.txt';
+        }
+      }
+      return 'typed_notes.txt';
+    }
+    return null;
+  }
+
   Future<void> _generateGame() async {
+    if (_generationInFlight) {
+      LogService.warning(
+        '🎮 [skulMate] _generateGame ignored: generation already in flight',
+      );
+      return;
+    }
+    _generationInFlight = true;
     try {
       String? fileUrl = widget.fileUrl;
       String? imageUrl = widget.imageUrl;
+      var requestedGameType =
+          (_overrideGameType ?? widget.gameType ?? 'auto').toLowerCase();
+      final compatibleTypes = _compatibleGameTypesForCurrentInput();
+      if (requestedGameType != 'auto' &&
+          (!_stableGameTypes.contains(requestedGameType) ||
+              !compatibleTypes.contains(requestedGameType))) {
+        safeSetState(() {
+          _isGenerating = false;
+          _error = null;
+          _errorTitle = null;
+          _errorDetails = null;
+          _errorRetryable = false;
+          _progress = 0.0;
+        });
+        final selected = await _promptGameTypeSelection(
+          title: 'Selected type unavailable',
+          message:
+              '${_gameTypeLabel(requestedGameType)} is not released for stable gameplay yet. Pick one supported option to continue.',
+          options: compatibleTypes,
+        );
+        if (selected == null) return;
+        requestedGameType = selected;
+        safeSetState(() {
+          _overrideGameType = selected;
+          _isGenerating = true;
+          _status = 'Preparing ${_gameTypeLabel(selected)}...';
+          _errorRetryable = true;
+        });
+      }
+      final allowFallback = requestedGameType == 'auto';
+      _suggestedGameType = null;
 
       // Upload files if passed (user navigated here with files)
       final hasImages =
@@ -204,11 +464,10 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           return;
         }
 
-        safeSetState(() {
-          _isGenerating = true;
-          _status =
-              'Uploading your file${hasImages && widget.imagesToUpload!.length > 1 ? 's' : ''}...';
-        });
+        safeSetState(() => _isGenerating = true);
+        _setGenerationStatus(
+          'Uploading your file${hasImages && widget.imagesToUpload!.length > 1 ? 's' : ''}...',
+        );
 
         final user = SupabaseService.client.auth.currentUser;
         if (user == null) throw Exception('User not authenticated');
@@ -225,9 +484,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           final urls = <String>[];
           for (int i = 0; i < widget.imagesToUpload!.length; i++) {
             if (i > 0) {
-              safeSetState(
-                () => _status =
-                    'Uploading image ${i + 1} of ${widget.imagesToUpload!.length}...',
+              _setGenerationStatus(
+                'Uploading image ${i + 1} of ${widget.imagesToUpload!.length}...',
               );
             }
             final url = await StorageService.uploadDocument(
@@ -247,59 +505,140 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           );
         }
 
-        safeSetState(() => _status = 'Analyzing content...');
+        _setGenerationStatus('Analyzing content...');
       } else {
-        safeSetState(() {
-          _isGenerating = true;
-          _status = 'Analyzing content...';
-        });
+        safeSetState(() => _isGenerating = true);
+        _setGenerationStatus('Analyzing content...');
       }
 
       // Pull adaptive learner context from onboarding/survey so we avoid re-asking users.
       final learnerContext = await _buildLearnerContext();
 
-      // Try auto first; if not playable, retry with quiz then flashcards then matching (vary outcome)
+      // For auto only: if not playable, retry with a few deterministic types.
       const fallbackTypes = ['quiz', 'flashcards', 'matching'];
+      _setGenerationStatus('Generating your game...');
+      final sourceFileName = _inferSourceFileName();
       GameModel game = await SkulMateService.generateGame(
         fileUrl: fileUrl ?? widget.fileUrl,
         imageUrl: imageUrl ?? widget.imageUrl,
         text: widget.text,
+        sourceFileName: sourceFileName,
         childId: widget.childId,
-        gameType: widget.gameType ?? 'auto',
+        gameType: requestedGameType,
         difficulty: widget.difficulty,
         topic: widget.topic,
         numQuestions: widget.numQuestions,
         learnerContext: learnerContext,
       );
 
-      int attempt = 0;
-      while (!game.isPlayable && attempt < fallbackTypes.length && mounted) {
-        safeSetState(() => _status = 'Trying ${fallbackTypes[attempt]}...');
-        game = await SkulMateService.generateGame(
-          fileUrl: fileUrl ?? widget.fileUrl,
-          imageUrl: imageUrl ?? widget.imageUrl,
-          text: widget.text,
-          childId: widget.childId,
-          difficulty: widget.difficulty,
-          topic: widget.topic,
-          numQuestions: widget.numQuestions,
-          gameType: fallbackTypes[attempt],
-          learnerContext: learnerContext,
-        );
-        attempt++;
+      // Keep the first ID so we can clean up unusable saved records.
+      final firstGeneratedId = game.id;
+
+      if (!game.isPlayable && allowFallback && mounted) {
+        for (final fallbackType in fallbackTypes) {
+          if (fallbackType == requestedGameType) continue;
+          _setGenerationStatus('Generating with $fallbackType...');
+          try {
+            final fallbackGame = await SkulMateService.generateGame(
+              fileUrl: fileUrl ?? widget.fileUrl,
+              imageUrl: imageUrl ?? widget.imageUrl,
+              text: widget.text,
+              sourceFileName: sourceFileName,
+              childId: widget.childId,
+              difficulty: widget.difficulty,
+              topic: widget.topic,
+              numQuestions: widget.numQuestions,
+              gameType: fallbackType,
+              learnerContext: learnerContext,
+            );
+            game = fallbackGame;
+            if (game.isPlayable) break;
+          } catch (fallbackError) {
+            LogService.warning(
+              '🎮 [skulMate] Fallback generation failed for $fallbackType: $fallbackError',
+            );
+            // If billing/limit is hit, further retries are unlikely to succeed.
+            final fallbackLower = fallbackError.toString().toLowerCase();
+            if (fallbackLower.contains('free limit reached') ||
+                fallbackLower.contains('insufficient credits') ||
+                fallbackLower.contains('plan to continue') ||
+                fallbackLower.contains('402')) {
+              break;
+            }
+          }
+        }
       }
 
-      safeSetState(() {
-        _status = 'Game ready!';
-      });
+      // Never silently switch from a user-selected game type.
+      if (!allowFallback) {
+        final generatedRawType = _rawGameTypeFromEnum(game.gameType);
+        if (generatedRawType != requestedGameType) {
+          if (firstGeneratedId.isNotEmpty) {
+            unawaited(
+              SkulMateService.deleteGame(firstGeneratedId).catchError((e) {
+                LogService.warning(
+                  '🎮 [skulMate] Could not delete mismatched generated game: $e',
+                );
+              }),
+            );
+          }
+          safeSetState(() {
+            _isGenerating = false;
+            _errorTitle = 'Selected game type changed';
+            _suggestedGameType = generatedRawType;
+            _errorDetails =
+                'You selected ${_gameTypeLabel(requestedGameType)}, but this content generated '
+                '${_gameTypeLabel(generatedRawType)}. '
+                'Choose "Try ${_gameTypeLabel(generatedRawType)}" to continue, or go back to upload.';
+            _error = '$_errorTitle\n\n$_errorDetails';
+            _errorRetryable = true;
+            _progress = 0.0;
+          });
+          return;
+        }
+      }
+
+      // If fallback/auto-switch produced a different playable game, clean up
+      // the initial non-playable record to avoid duplicate/broken cards.
+      if (game.isPlayable &&
+          firstGeneratedId.isNotEmpty &&
+          game.id.isNotEmpty &&
+          game.id != firstGeneratedId) {
+        unawaited(
+          SkulMateService.deleteGame(firstGeneratedId).catchError((e) {
+            LogService.warning(
+              '🎮 [skulMate] Could not delete superseded generated game: $e',
+            );
+          }),
+        );
+      }
+
+      _setGenerationStatus('Game ready!');
 
       // Validate game is playable before routing (avoid showing broken "No answer options" etc.)
       if (!game.isPlayable && mounted) {
+        LogService.warning(
+          '🎮 [skulMate] Generated game not playable '
+          '(type=${game.gameType.name}, items=${game.items.length}, id=${game.id})',
+        );
+        // Avoid cluttering dashboard with broken, non-playable generated records.
+        if (firstGeneratedId.isNotEmpty) {
+          unawaited(
+            SkulMateService.deleteGame(firstGeneratedId).catchError((e) {
+              LogService.warning(
+                '🎮 [skulMate] Could not delete non-playable generated game: $e',
+              );
+            }),
+          );
+        }
         safeSetState(() {
           _isGenerating = false;
           _errorTitle = 'We couldn\'t create a playable game';
+          final suggested = _pickSuggestedGameType(requestedGameType);
+          _suggestedGameType = suggested;
           _errorDetails =
-              'This content doesn\'t work well for games yet. Try "Enter Text Manually" with clear notes (terms and definitions, or question-answer pairs), or upload different content.';
+              'This content does not fit ${_gameTypeLabel(requestedGameType)} well yet. '
+              'You can try ${_gameTypeLabel(suggested)} now, or go back to upload another content.';
           _error = '$_errorTitle\n\n$_errorDetails';
           _errorRetryable = true;
         });
@@ -350,9 +689,10 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
             gameScreen = QuizGameScreen(game: game, fromGenerationFlow: true);
         }
 
-        Navigator.pushReplacement(
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => gameScreen),
+          (route) => route.isFirst,
         );
       }
     } catch (e) {
@@ -499,6 +839,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         _errorRetryable = !nonRetryable;
         _progress = 0.0;
       });
+    } finally {
+      _generationInFlight = false;
     }
   }
 
@@ -635,146 +977,364 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: AppTheme.primaryColor,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Generating Game',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+  IconData _phaseIcon(int index) {
+    switch (index) {
+      case 0:
+        return Icons.file_upload_outlined;
+      case 1:
+        return Icons.psychology_alt_outlined;
+      case 2:
+        return Icons.auto_awesome_rounded;
+      case 3:
+        return Icons.check_circle_rounded;
+      default:
+        return Icons.circle_outlined;
+    }
+  }
+
+  Color _phaseActiveColor(int index) {
+    switch (index) {
+      case 0:
+        return const Color(0xFF2563EB); // blue
+      case 1:
+        return const Color(0xFF7C3AED); // purple
+      case 2:
+        return const Color(0xFF0EA5E9); // sky
+      case 3:
+        return const Color(0xFF16A34A); // green
+      default:
+        return AppTheme.textMedium;
+    }
+  }
+
+  Widget _buildProcessTimeline() {
+    final activeStep = _phaseIndexFromStatus(_status);
+    final phaseDescriptions = <String>[
+      activeStep == 0 ? _status : 'Secure transfer complete.',
+      activeStep == 1 ? _status : 'Concept map prepared.',
+      activeStep == 2 ? _status : 'Questions and game logic prepared.',
+      activeStep == 3 ? _status : 'Game is ready to launch.',
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.softBorder),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.textDark.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
-        centerTitle: true,
+        ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppTheme.primaryColor.withOpacity(0.1), Colors.white],
-          ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (_isGenerating) ...[
-                  // Animated icon with multiple effects
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Pulsing background circles
-                      AnimatedBuilder(
-                        animation: _pulseController ?? _animationController,
-                        builder: (context, child) {
-                          final pulseValue = _pulseAnimation?.value ?? 1.0;
-                          return Container(
-                            width: 140 + (40 * pulseValue),
-                            height: 140 + (40 * pulseValue),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppTheme.primaryColor.withOpacity(
-                                0.1 * pulseValue,
-                              ),
-                            ),
-                          );
-                        },
+      child: Column(
+        children: List.generate(_phaseLabels.length, (stepIndex) {
+          final isDone = stepIndex < activeStep;
+          final isActive = stepIndex == activeStep;
+          final iconColor = isDone || isActive
+              ? _phaseActiveColor(stepIndex)
+              : AppTheme.textMedium;
+          return Container(
+            margin: EdgeInsets.only(bottom: stepIndex == _phaseLabels.length - 1 ? 0 : 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: isActive
+                  ? iconColor.withValues(alpha: 0.08)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isActive
+                    ? iconColor.withValues(alpha: 0.8)
+                    : AppTheme.softBorder,
+              ),
+              boxShadow: isActive
+                  ? [
+                      BoxShadow(
+                        color: iconColor.withValues(alpha: 0.1),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
-                      // Rotating icon
-                      AnimatedBuilder(
-                        animation: _animationController,
-                        builder: (context, child) {
-                          return Transform.scale(
-                            scale: _scaleAnimation.value,
-                            child: Transform.rotate(
-                              angle: _rotationAnimation.value * 2 * 3.14159,
-                              child: Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppTheme.primaryColor.withOpacity(
-                                        0.4,
-                                      ),
-                                      blurRadius: 20,
-                                      spreadRadius: 5,
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  Icons.auto_awesome_rounded,
-                                  size: 50,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                    ]
+                  : null,
+            ),
+            child: Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isDone || isActive
+                        ? iconColor
+                        : AppTheme.neutral100,
+                  ),
+                  child: Icon(
+                    isDone ? Icons.check : _phaseIcon(stepIndex),
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _phaseLabels[stepIndex],
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        phaseDescriptions[stepIndex],
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          color: AppTheme.textMedium,
+                          height: 1.3,
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 32),
-                  Text(
-                    _status,
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
+                ),
+                if (isActive)
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(iconColor),
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'This may take a few moments...',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: AppTheme.textMedium,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-                  // Progress indicator with percentage
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildFloatingBadge({required IconData icon, required Color color}) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.35),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(
+        icon,
+        size: 12,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: const SkulMateGameAppBar(title: 'Generating Game'),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => unawaited(_soundService.registerUserGesture()),
+        child: Container(
+          color: Colors.white,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_isGenerating) ...[
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppTheme.softBorder),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.textDark.withValues(alpha: 0.035),
+                          blurRadius: 9,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
                     child: Column(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            value: _progress,
-                            backgroundColor: Colors.grey[200],
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              AppTheme.primaryColor,
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.auto_awesome_rounded,
+                              size: 13,
+                              color: AppTheme.primaryColor,
                             ),
-                            minHeight: 8,
+                            const SizedBox(width: 5),
+                            Text(
+                              'SkulMate',
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.skyBlue.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'Processing',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        AnimatedBuilder(
+                          animation: _pulseController ?? _animationController,
+                          builder: (context, _) {
+                            final pulseValue = _pulseAnimation?.value ?? 1.0;
+                            return Transform.translate(
+                              offset: Offset(0, -(pulseValue - 0.5) * 6),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                alignment: Alignment.center,
+                                children: [
+                                  Container(
+                                    width: 106,
+                                    height: 106,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.skyBlue.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                  ),
+                                  const SizedBox(
+                                    width: 86,
+                                    height: 86,
+                                    child: SkulMateMascotMediaWidget(
+                                      state: SkulMateMascotState.thinking,
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: -4,
+                                    right: -2,
+                                    child: _buildFloatingBadge(
+                                      icon: Icons.auto_awesome_rounded,
+                                      color: const Color(0xFFF59E0B),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    left: -4,
+                                    bottom: 4,
+                                    child: _buildFloatingBadge(
+                                      icon: Icons.quiz_outlined,
+                                      color: const Color(0xFF0EA5E9),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          _status,
+                          style: GoogleFonts.poppins(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textDark,
                           ),
+                          textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '${(_progress * 100).toInt()}%',
+                          'We are transforming your notes into a personalized challenge.',
                           style: GoogleFonts.poppins(
                             fontSize: 12,
                             color: AppTheme.textMedium,
-                            fontWeight: FontWeight.w500,
+                            height: 1.4,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        TweenAnimationBuilder<double>(
+                          tween: Tween<double>(begin: 0, end: _progress),
+                          duration: const Duration(milliseconds: 400),
+                          builder: (context, animatedValue, _) {
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                value: animatedValue.clamp(0.0, 1.0),
+                                minHeight: 9,
+                                backgroundColor: AppTheme.neutral100,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  _phaseActiveColor(_phaseIndexFromStatus(_status)),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 7),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            '${(_progress * 100).toInt()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildProcessTimeline(),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFFAF0),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF9AE6A3),
+                      ),
+                    ),
+                    child: Text(
+                      'PRO TIP: Structured notes with key terms and definitions generate stronger games.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: const Color(0xFF166534),
+                        height: 1.35,
+                      ),
                     ),
                   ),
                 ] else if (_error != null) ...[
@@ -786,7 +1346,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                       border: Border.all(color: AppTheme.softBorder),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.textDark.withOpacity(0.06),
+                          color: AppTheme.textDark.withValues(alpha: 0.06),
                           blurRadius: 16,
                           offset: const Offset(0, 6),
                         ),
@@ -836,7 +1396,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppTheme.primaryColor,
                                 side: BorderSide(
-                                  color: AppTheme.primaryColor.withOpacity(0.6),
+                                  color: AppTheme.primaryColor.withValues(alpha: 0.6),
                                 ),
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 11,
@@ -902,7 +1462,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                                   ),
                                 ),
                                 child: Text(
-                                  'Go back',
+                                  'Back to upload',
                                   style: GoogleFonts.poppins(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
@@ -910,6 +1470,48 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                                 ),
                               ),
                             ),
+                            if (_suggestedGameType != null) ...[
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    final suggested = _suggestedGameType;
+                                    if (suggested == null) return;
+                                    safeSetState(() {
+                                      _overrideGameType = suggested;
+                                      _isGenerating = true;
+                                      _error = null;
+                                      _errorTitle = null;
+                                      _errorDetails = null;
+                                      _errorRetryable = true;
+                                      _progress = 0.0;
+                                      _status =
+                                          'Trying ${_gameTypeLabel(suggested)}...';
+                                    });
+                                    _simulateProgress();
+                                    _generateGame();
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF0EA5E9),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: Text(
+                                    'Try ${_gameTypeLabel(_suggestedGameType!)}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                             if (_errorRetryable) ...[
                               const SizedBox(width: 12),
                               Expanded(
@@ -961,9 +1563,9 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.accentGreen.withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                          color: AppTheme.accentGreen.withValues(alpha: 0.12),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
@@ -973,7 +1575,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppTheme.accentGreen.withOpacity(0.1),
+                            color: AppTheme.accentGreen.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -1061,6 +1663,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                   ),
                 ],
               ],
+              ),
             ),
           ),
         ),

@@ -7,6 +7,7 @@ import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 
 /// Step 1 of phone password reset: OTP entry with countdown (same UI as OTP verification).
@@ -72,6 +73,20 @@ class _ResetPasswordOTPScreenState extends State<ResetPasswordOTPScreen> {
   String get _otpCode => _otpControllers.map((c) => c.text).join();
 
   Future<void> _verifyOTP() async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Phone verification is temporarily unavailable. Please use email password reset.',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
     if (_otpCode.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -132,6 +147,20 @@ class _ResetPasswordOTPScreenState extends State<ResetPasswordOTPScreen> {
   }
 
   Future<void> _resendOTP() async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Phone verification is temporarily unavailable. Please use email password reset.',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
     safeSetState(() => _isResending = true);
     try {
       await AuthService.sendPasswordResetOTP(widget.phone);

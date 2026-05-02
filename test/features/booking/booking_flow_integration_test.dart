@@ -21,7 +21,7 @@ void main() {
         };
         
         // Calculate monthly total
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         
         // Validate all steps
@@ -43,7 +43,7 @@ void main() {
           'perSession': 5000.0,
         };
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         final biweeklyAmount = monthlyTotal / 2;
         
@@ -64,7 +64,7 @@ void main() {
           'perSession': 5000.0,
         };
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         final weeklyAmount = monthlyTotal / 4;
         
@@ -89,7 +89,7 @@ void main() {
           'perSession': 5000.0,
         };
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         
         expect(bookingData['frequency'], 4);
@@ -117,7 +117,7 @@ void main() {
         expect(bookingData['address'], isNotNull);
         expect((bookingData['address'] as String).trim().isNotEmpty, true);
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         
         expect(monthlyTotal, 20000.0);
@@ -138,7 +138,7 @@ void main() {
         expect(bookingData['location'], 'onsite');
         expect((bookingData['address'] as String).trim().isNotEmpty, true);
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         final biweeklyAmount = monthlyTotal / 2;
         
@@ -160,7 +160,7 @@ void main() {
         expect(bookingData['location'], 'onsite');
         expect((bookingData['address'] as String).trim().isNotEmpty, true);
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         final weeklyAmount = monthlyTotal / 4;
         
@@ -187,7 +187,7 @@ void main() {
         expect(bookingData['location'], 'onsite');
         expect((bookingData['address'] as String).trim().isNotEmpty, true);
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         
         expect(monthlyTotal, 80000.0);
@@ -211,7 +211,7 @@ void main() {
         expect(bookingData['location'], 'hybrid');
         expect(bookingData['address'], isNull);
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         
         expect(monthlyTotal, 40000.0);
@@ -231,7 +231,7 @@ void main() {
         
         expect(bookingData['location'], 'flexible');
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         final biweeklyAmount = monthlyTotal / 2;
         
@@ -257,7 +257,7 @@ void main() {
         
         expect(bookingData['location'], 'hybrid');
         
-        final sessionsPerMonth = bookingData['frequency'] as int * 4;
+        final sessionsPerMonth = (bookingData['frequency'] as int) * 4;
         final monthlyTotal = (bookingData['perSession'] as double) * sessionsPerMonth;
         final weeklyAmount = monthlyTotal / 4;
         

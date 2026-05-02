@@ -8,6 +8,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'dart:math';
 import '../models/game_model.dart';
+import '../models/skulmate_character_model.dart';
 import '../models/game_stats_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
@@ -17,6 +18,8 @@ import '../services/character_selection_service.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/flashcard_help_sheet.dart';
+import '../widgets/game_standard_widgets.dart';
+import '../widgets/game_settings_sheet.dart';
 import 'game_results_screen.dart';
 
 /// Flashcard game screen with flip animation
@@ -115,7 +118,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   @override
   void dispose() {
     _flipController.dispose();
-    unawaited(_soundService.stopMusic());
+    unawaited(_soundService.stopMusic(force: true));
     _ttsService.dispose();
     _progressController.dispose();
     _swipeController.dispose();
@@ -194,14 +197,14 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
 
     if (_isFlipped) {
       _flipController.reverse();
-      _soundService.playFlip();
+      _soundService.playCardFlip();
       // Speak term when flipping back
       if (_isTTSEnabled) {
         _speakCurrentCard();
       }
     } else {
       _flipController.forward();
-      _soundService.playFlip();
+      _soundService.playCardFlip();
       // Speak definition when flipped
       if (_isTTSEnabled) {
         final card = widget.game.items[_currentCardIndex];
@@ -237,174 +240,15 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   }
 
   void _openGameSettings() {
-    showModalBottomSheet(
+    GameSettingsSheet.show(
       context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, modalSetState) {
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _isFrench ? 'Parametres du jeu' : 'Game settings',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textDark,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        _isFrench ? 'Sons du jeu' : 'Game sounds',
-                        style: GoogleFonts.poppins(),
-                      ),
-                      value: _soundService.soundsEnabled,
-                      onChanged: (v) async {
-                        await _soundService.toggleSounds(v);
-                        modalSetState(() {});
-                        if (mounted) safeSetState(() {});
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'SFX volume: ${(_soundService.soundsVolume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _soundService.soundsVolume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _soundService.soundsEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _soundService.setSoundsVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        _isFrench ? 'Musique' : 'Music',
-                        style: GoogleFonts.poppins(),
-                      ),
-                      value: _soundService.musicEnabled,
-                      onChanged: (v) async {
-                        await _soundService.toggleMusic(v);
-                        if (v) {
-                          await _soundService.playMusicForGame(
-                            widget.game.gameType,
-                          );
-                        }
-                        modalSetState(() {});
-                        if (mounted) safeSetState(() {});
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Music volume: ${(_soundService.musicVolume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _soundService.musicVolume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _soundService.musicEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _soundService.setMusicVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        _isFrench ? 'Lecture vocale (TTS)' : 'Read aloud (TTS)',
-                        style: GoogleFonts.poppins(),
-                      ),
-                      value: _isTTSEnabled,
-                      onChanged: (v) {
-                        _ttsService.setEnabled(v);
-                        modalSetState(() => _isTTSEnabled = v);
-                        if (mounted) safeSetState(() => _isTTSEnabled = v);
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Voice volume: ${(_ttsService.volume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _ttsService.volume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _isTTSEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _ttsService.setVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
+      title: _isFrench ? 'Parametres du jeu' : 'Game settings',
+      soundService: _soundService,
+      gameType: widget.game.gameType,
+      ttsService: _ttsService,
+      isTTSEnabled: _isTTSEnabled,
+      onTTSToggled: (v) {
+        safeSetState(() => _isTTSEnabled = v);
       },
     );
   }
@@ -617,54 +461,32 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       appBar: SkulMateGameAppBar(
         title: widget.game.title,
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.16),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${_score}/${widget.game.items.length}  $_xpEarned XP',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
           IconButton(
             tooltip: _isFrench ? 'Suggestion' : 'Suggestion',
             icon: const Icon(Icons.lightbulb_outline, color: Colors.white),
             onPressed: _openLearnMoreSheet,
           ),
           Padding(
-            padding: const EdgeInsets.only(right: 8, left: 2),
+            padding: const EdgeInsets.only(right: 4, left: 0),
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: _openGameSettings,
-              child: CircleAvatar(
-                radius: 14,
-                backgroundColor: Colors.white.withOpacity(0.22),
-                child: _character != null
-                    ? ClipOval(
-                        child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: SkulMateCharacterWidget(
-                            character: _character,
-                            size: 20,
-                            animated: false,
-                            showName: false,
-                          ),
-                        ),
-                      )
-                    : const Icon(Icons.settings, size: 16, color: Colors.white),
-              ),
+                child: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.white.withOpacity(0.22),
+                  child: ClipOval(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: SkulMateCharacterWidget(
+                        character: _character ?? SkulMateCharacters.middleMale,
+                        size: 24,
+                        animated: false,
+                        showName: false,
+                      ),
+                    ),
+                  ),
+                ),
             ),
           ),
         ],
@@ -673,17 +495,18 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         children: [
           Column(
             children: [
-              // Animated Progress bar
               AnimatedBuilder(
                 animation: _progressAnimation,
                 builder: (context, child) {
-                  return LinearProgressIndicator(
-                    value: _progressAnimation.value,
-                    backgroundColor: Colors.grey[200],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppTheme.primaryColor,
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    child: GameStandardsHud(
+                      progressText:
+                          'Card ${_currentCardIndex + 1} of ${widget.game.items.length}',
+                      progressValue: _progressAnimation.value,
+                      xpEarned: _xpEarned,
+                      gameType: widget.game.gameType,
                     ),
-                    minHeight: 6,
                   );
                 },
               ),
@@ -694,26 +517,19 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Card counter with smooth transition
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: Text(
-                            'Card ${_currentCardIndex + 1} of ${widget.game.items.length}',
-                            key: ValueKey(_currentCardIndex),
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-                        // Card stack with swipe
+                        const SizedBox(height: 12),
+                        // Card stack with swipe (flat refined surface)
                         Expanded(
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
+                          child: FlatStageCard(
+                            padding: const EdgeInsets.all(10),
+                            radius: 18,
+                            backgroundColor: Colors.white,
+                            borderColor: AppTheme.primaryColor.withOpacity(0.18),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
                                 // Stack of next cards (background)
                                 ...List.generate(_stackSize - 1, (index) {
                                   final cardIndex =
@@ -883,6 +699,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                             ),
                           ),
                         ),
+                      ),
                         const SizedBox(height: 24),
                         // Action buttons and instructions
                         if (_isFlipped) ...[
@@ -936,7 +753,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                                     _isFrench ? 'Je connais' : 'I Know This',
                                   ),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.accentGreen,
+                                    backgroundColor: AppTheme.primaryColor,
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 15,
@@ -1034,27 +851,17 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       constraints: const BoxConstraints(maxHeight: 400),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppTheme.primaryColor, AppTheme.skyBlue],
-        ),
+        color: const Color(0xFFF4F8FF),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.textDark.withOpacity(0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.25)),
       ),
       child: Center(
         child: Text(
           resolved.term,
           style: GoogleFonts.poppins(
-            fontSize: 28,
+            fontSize: 24,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: AppTheme.primaryColor,
           ),
           textAlign: TextAlign.center,
         ),
@@ -1071,14 +878,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.skyBlue.withOpacity(0.4), width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.textDark.withOpacity(0.1),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        border: Border.all(color: AppTheme.accentGreen.withOpacity(0.7), width: 1.6),
       ),
       child: Stack(
         children: [
@@ -1096,7 +896,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                 child: Text(
                   resolved.definition,
                   style: GoogleFonts.poppins(
-                    fontSize: 20,
+                    fontSize: 17,
                     color: AppTheme.textDark,
                     height: 1.5,
                   ),
@@ -1130,17 +930,24 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       constraints: const BoxConstraints(maxHeight: 400),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppTheme.skyBlueLight,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.primaryColor.withOpacity(0.10),
+            AppTheme.primaryLight.withOpacity(0.08),
+          ],
+        ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.skyBlue.withOpacity(0.3), width: 1),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2), width: 1),
       ),
       child: Center(
         child: Text(
           resolved.term,
           style: GoogleFonts.poppins(
-            fontSize: 24,
+            fontSize: 20,
             fontWeight: FontWeight.w600,
-            color: AppTheme.primaryColor,
+            color: AppTheme.primaryDark,
           ),
           textAlign: TextAlign.center,
         ),

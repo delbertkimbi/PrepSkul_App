@@ -1,6 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'dart:async';
 import 'supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -17,7 +17,17 @@ import 'package:http/http.dart' as http;
 class AuthService {
   /// Global flag so UI can show a blocking loader while Google OAuth completes
   /// (including during deep-link callback back into the app).
-  static bool isGoogleSignInInProgress = false;
+  static final ValueNotifier<bool> googleSignInInProgressNotifier =
+      ValueNotifier<bool>(false);
+
+  static bool get isGoogleSignInInProgress =>
+      googleSignInInProgressNotifier.value;
+
+  static set isGoogleSignInInProgress(bool value) {
+    if (googleSignInInProgressNotifier.value != value) {
+      googleSignInInProgressNotifier.value = value;
+    }
+  }
   // Session Management Keys
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyUserRole = 'user_role';
@@ -43,13 +53,14 @@ class AuthService {
     // Supabase stores sessions in secure storage and needs time to restore
     bool hasSupabaseSession = SupabaseService.isAuthenticated;
     
-    // If no session yet, wait a bit for it to restore (max 2 seconds)
+    // If no session yet, wait briefly for restore.
+    // Keep this window short to avoid slow app startup when offline.
     if (!hasSupabaseSession) {
-      for (int i = 0; i < 10; i++) {
-        await Future.delayed(const Duration(milliseconds: 200));
+      for (int i = 0; i < 3; i++) {
+        await Future.delayed(const Duration(milliseconds: 150));
         hasSupabaseSession = SupabaseService.isAuthenticated;
         if (hasSupabaseSession) {
-          LogService.debug('✅ Supabase session restored after ${(i + 1) * 200}ms');
+          LogService.debug('✅ Supabase session restored after ${(i + 1) * 150}ms');
           break;
         }
       }
@@ -76,8 +87,9 @@ class AuthService {
       await logout();
       // #region agent log
       try {
-        http
-            .post(
+        Future<void>(() async {
+          try {
+            await http.post(
               Uri.parse(
                   'http://127.0.0.1:7242/ingest/e6cc2b0e-750a-413c-b251-261549698526'),
               headers: {'Content-Type': 'application/json'},
@@ -95,8 +107,9 @@ class AuthService {
                   'hadSupabaseSession': hasSupabaseSession,
                 },
               }),
-            )
-            .catchError((_) {});
+            );
+          } catch (_) {}
+        });
       } catch (_) {}
       // #endregion agent log
       return false;
@@ -105,8 +118,9 @@ class AuthService {
     final result = isLogged && hasSupabaseSession;
     // #region agent log
     try {
-      http
-          .post(
+      Future<void>(() async {
+        try {
+          await http.post(
             Uri.parse(
                 'http://127.0.0.1:7242/ingest/e6cc2b0e-750a-413c-b251-261549698526'),
             headers: {'Content-Type': 'application/json'},
@@ -124,8 +138,9 @@ class AuthService {
                 'result': result,
               },
             }),
-          )
-          .catchError((_) {});
+          );
+        } catch (_) {}
+      });
     } catch (_) {}
     // #endregion agent log
 
@@ -461,6 +476,11 @@ class AuthService {
 
   /// Send password reset OTP (for phone auth)
   static Future<void> sendPasswordResetOTP(String phone) async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      throw Exception(
+        'Phone verification is temporarily unavailable. Please use email password reset.',
+      );
+    }
     try {
       // Format phone number
       String formattedPhone = phone;
@@ -587,6 +607,11 @@ class AuthService {
     required String otp,
     required String newPassword,
   }) async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      throw Exception(
+        'Phone verification is temporarily unavailable. Please use email password reset.',
+      );
+    }
     try {
       // Format phone number
       String formattedPhone = phone;
@@ -639,6 +664,8 @@ class AuthService {
       } else if (event == AuthChangeEvent.signedIn) {
         final user = state.session?.user;
         LogService.success('User signed in');
+        // End Google OAuth loading overlay even if deep-link navigation handled elsewhere.
+        isGoogleSignInInProgress = false;
         if (user != null) {
           await _handleSupabaseSignedIn(user);
         }
@@ -650,8 +677,17 @@ class AuthService {
       }
     }, onError: (error) {
       // Handle auth errors (e.g., refresh token failures)
-      LogService.error('🔐 Auth state error: $error');
       final errorStr = error.toString().toLowerCase();
+      final isBenignOauthFlowState = errorStr.contains('flow_state_not_found') ||
+          (errorStr.contains('invalid flow state') &&
+              errorStr.contains('no valid flow state found'));
+      if (isBenignOauthFlowState) {
+        // During OAuth callback both SDK + app handler can race on flow state.
+        // This is non-fatal once signed-in/navigation succeeded.
+        LogService.debug('🔐 Ignoring benign OAuth flow-state warning: $error');
+        return;
+      }
+      LogService.error('🔐 Auth state error: $error');
       
       // Check if this is a network/offline error - don't clear session for these
       final isNetworkError = errorStr.contains('socketexception') ||
@@ -791,9 +827,9 @@ class AuthService {
         OAuthProvider.google,
         redirectTo: redirectUrl,
         // No explicit Calendar scopes – rely on basic profile/email scopes
-        authScreenLaunchMode: kIsWeb
-            ? LaunchMode.platformDefault
-            : LaunchMode.externalApplication,
+        // Use platform default on mobile to prefer in-app auth session UX.
+        // This reduces hard app switching and Safari breadcrumb persistence on iOS.
+        authScreenLaunchMode: LaunchMode.platformDefault,
       );
       
       LogService.success('Google Sign In initiated: $response');
@@ -1144,7 +1180,7 @@ class AuthService {
       }
       // For invalid_credentials, it could be either wrong password or non-existent user
       // Provide a message that covers both cases
-      return 'The email or password is incorrect. If you don\'t have an account, please sign up first.';
+      return 'The phone/email or password is incorrect. If you don\'t have an account, please sign up first.';
     }
 
     if (errorString.contains('password') && errorString.contains('weak')) {

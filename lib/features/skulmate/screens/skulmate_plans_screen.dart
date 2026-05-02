@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import '../widgets/skulmate_surface_styles.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
@@ -204,7 +205,16 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
       backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.white,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            color: AppTheme.softBackground,
+            boxShadow: SkulMateSurfaceStyles.appBarSoftLift(),
+          ),
+        ),
         title: Text(
           'SkulMate Plans',
           style: GoogleFonts.poppins(
@@ -218,56 +228,62 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
         children: [
           Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF123F87), Color(0xFF0A2D67)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            decoration: SkulMateSurfaceStyles.heroGradient(radius: 16),
+            child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                Row(
+                Positioned(
+                  right: -20,
+                  top: -20,
+                  child: CircleAvatar(
+                    radius: 48,
+                    backgroundColor: Colors.white.withValues(alpha: 0.07),
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Start Free, Upgrade When Ready',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Start Free, Upgrade When Ready',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: _showCreditsUsageSheet,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        padding: const EdgeInsets.all(5),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.14),
+                        InkWell(
+                          onTap: _showCreditsUsageSheet,
                           borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.read_more_rounded,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.read_more_rounded,
-                          size: 16,
-                          color: Colors.white,
-                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Free includes up to 2 document/text generations and 4 image generations per day. Paid plans unlock much more generation power anytime.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.92),
+                        height: 1.35,
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Free includes up to 2 document/text generations and 4 image generations per day. Paid plans unlock much more generation power anytime.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.92),
-                    height: 1.35,
-                  ),
                 ),
               ],
             ),
@@ -275,11 +291,7 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.softBorder),
-            ),
+            decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 12),
             child: Row(
               children: [
                 const Icon(
@@ -334,10 +346,11 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: plan.isPopular
-              ? planColor.withOpacity(0.6)
-              : AppTheme.softBorder,
+              ? planColor.withValues(alpha: 0.6)
+              : AppTheme.softBorder.withValues(alpha: 0.55),
           width: plan.isPopular ? 1.5 : 1,
         ),
+        boxShadow: SkulMateSurfaceStyles.neumorphicSoft(),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,7 +374,7 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: planColor.withOpacity(0.12),
+                    color: planColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(

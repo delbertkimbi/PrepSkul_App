@@ -15,6 +15,22 @@ import 'package:prepskul/core/services/notification_helper_service.dart';
 class SessionFeedbackService {
   static SupabaseClient get _supabase => SupabaseService.client;
 
+  /// True only when PostgREST/PG indicates the relation is missing.
+  static bool _isSessionFeedbackTableMissingError(Object error) {
+    if (error is PostgrestException) {
+      final code = error.code ?? '';
+      // PGRST205: relation not found in schema cache
+      // 42P01: undefined_table
+      if (code == 'PGRST205' || code == '42P01') return true;
+      final msg = '${error.message} ${error.details ?? ''} ${error.hint ?? ''}'.toLowerCase();
+      return msg.contains('could not find the table') &&
+          msg.contains('session_feedback');
+    }
+    final errorStr = error.toString().toLowerCase();
+    return (errorStr.contains('pgrst205') || errorStr.contains('42p01')) &&
+        errorStr.contains('session_feedback');
+  }
+
   /// Submit student feedback for a session
   ///
   /// Collects rating, review, and recommendations from student
@@ -86,10 +102,7 @@ class SessionFeedbackService {
             .eq('session_id', sessionId)
             .maybeSingle();
       } catch (e) {
-        final errorStr = e.toString();
-        if (errorStr.contains('PGRST205') || 
-            errorStr.contains('Could not find the table') || 
-            errorStr.contains('session_feedback')) {
+        if (_isSessionFeedbackTableMissingError(e)) {
           LogService.error('session_feedback table does not exist in schema cache. Please ensure migration 022_normal_sessions_tables.sql has been run.');
           throw Exception('Feedback system is not available. The database table has not been created yet. Please contact support or wait for the system update.');
         }
@@ -173,7 +186,7 @@ class SessionFeedbackService {
       // Determine session type (trial or recurrent)
       // If recurring_session_id exists, it's a recurrent session
       // Otherwise, check if there's a trial_session linked to this individual_session
-      String? sessionType;
+      final String sessionType;
       if (session['recurring_session_id'] != null) {
         sessionType = 'recurrent';
       } else {
@@ -183,9 +196,7 @@ class SessionFeedbackService {
         // TODO: Add proper trial_session_id tracking if needed
         sessionType = 'trial';
       }
-      if (sessionType != null) {
-        feedbackData['session_type'] = sessionType;
-      }
+      feedbackData['session_type'] = sessionType;
 
       // Onsite only: "Did this session take place?" (family confirmation / dispute)
       final location = (session['location'] as String?)?.toLowerCase().trim();
@@ -258,10 +269,7 @@ class SessionFeedbackService {
           });
         }
       } catch (e) {
-        final errorStr = e.toString();
-        if (errorStr.contains('PGRST205') || 
-            errorStr.contains('Could not find the table') || 
-            errorStr.contains('session_feedback')) {
+        if (_isSessionFeedbackTableMissingError(e)) {
           LogService.error('session_feedback table does not exist in schema cache. Please ensure migration 022_normal_sessions_tables.sql has been run.');
           throw Exception('Feedback system is not available. The database table has not been created yet. Please contact support or wait for the system update.');
         }
@@ -335,10 +343,7 @@ class SessionFeedbackService {
             .eq('session_id', sessionId)
             .maybeSingle();
       } catch (e) {
-        final errorStr = e.toString();
-        if (errorStr.contains('PGRST205') || 
-            errorStr.contains('Could not find the table') || 
-            errorStr.contains('session_feedback')) {
+        if (_isSessionFeedbackTableMissingError(e)) {
           LogService.warning('session_feedback table does not exist. Skipping feedback processing.');
           return; // Don't throw - this is a background process
         }
@@ -545,10 +550,7 @@ class SessionFeedbackService {
 
       return feedback;
     } catch (e) {
-      final errorStr = e.toString();
-      if (errorStr.contains('PGRST205') || 
-          errorStr.contains('Could not find the table') || 
-          errorStr.contains('session_feedback')) {
+      if (_isSessionFeedbackTableMissingError(e)) {
         LogService.info('session_feedback table does not exist yet. Feedback will be available after migration.');
         return null;
       }
@@ -574,7 +576,7 @@ class SessionFeedbackService {
             tutor_response,
             tutor_response_submitted_at,
             review_displayed,
-            individual_sessions!inner(
+            individual_sessions!session_feedback_session_id_fkey!inner(
               tutor_id,
               scheduled_date,
               scheduled_time
@@ -587,10 +589,7 @@ class SessionFeedbackService {
       return (reviews as List).cast<Map<String, dynamic>>();
     } catch (e) {
       // Handle case where table doesn't exist yet (migration not run)
-      final errorStr = e.toString();
-      if (errorStr.contains('PGRST205') || 
-          errorStr.contains('Could not find the table') || 
-          errorStr.contains('session_feedback')) {
+      if (_isSessionFeedbackTableMissingError(e)) {
         LogService.info('session_feedback table does not exist yet. Reviews will be available after migration.');
         return [];
       }

@@ -7,12 +7,14 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../models/game_model.dart';
-import '../services/skulmate_service.dart';
+import '../models/skulmate_character_model.dart';
 import '../services/game_sound_service.dart';
 import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/game_standard_widgets.dart';
 import 'game_results_screen.dart';
 
 /// Mystery game screen - Detective-style games
@@ -72,25 +74,60 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
   void _parseGameData() {
     if (widget.game.items.isEmpty) return;
 
-    final firstItem = widget.game.items[0];
+    final allItems = widget.game.items;
+    final firstItem = allItems[0];
     _caseName = firstItem.caseName ?? 'The Mystery';
-    _clues = firstItem.mysteryClues ?? [];
     _finalSolution = firstItem.solution;
 
-    // If clues not in first item, try to extract from gameData
-    if (_clues == null || _clues!.isEmpty) {
-      final gameData = firstItem.gameData;
-      if (gameData != null) {
-        _caseName =
-            gameData['case'] as String? ??
-            gameData['caseName'] as String? ??
-            _caseName;
-        if (gameData['clues'] != null) {
-          _clues = List<Map<String, dynamic>>.from(gameData['clues'] as List);
+    final parsedClues = <Map<String, dynamic>>[];
+
+    for (final item in allItems) {
+      if ((item.caseName ?? '').trim().isNotEmpty) {
+        _caseName = item.caseName;
+      }
+      if ((item.solution ?? '').trim().isNotEmpty) {
+        _finalSolution = item.solution;
+      }
+      if ((item.mysteryClues ?? []).isNotEmpty) {
+        parsedClues.addAll(item.mysteryClues!);
+      }
+
+      final gameData = item.gameData;
+      if (gameData == null) continue;
+      _caseName =
+          gameData['case'] as String? ??
+          gameData['caseName'] as String? ??
+          _caseName;
+      final dynamic rawClues = gameData['clues'];
+      if (rawClues is List) {
+        for (final clue in rawClues) {
+          if (clue is Map<String, dynamic>) {
+            parsedClues.add(clue);
+          } else if (clue is Map) {
+            parsedClues.add(clue.cast<String, dynamic>());
+          } else if (clue is String && clue.trim().isNotEmpty) {
+            parsedClues.add({
+              'noteReference': 'From the notes',
+              'reveals': clue.trim(),
+            });
+          }
         }
-        _finalSolution = gameData['solution'] as String? ?? _finalSolution;
+      }
+      _finalSolution = gameData['solution'] as String? ?? _finalSolution;
+    }
+
+    // Last fallback: some mystery payloads come as one item per clue with `question`.
+    if (parsedClues.isEmpty) {
+      for (final item in allItems) {
+        final clueText = (item.question ?? '').trim();
+        if (clueText.isEmpty) continue;
+        parsedClues.add({
+          'noteReference': 'From generated clue',
+          'reveals': clueText,
+        });
       }
     }
+    _clues = parsedClues;
 
     LogService.debug(
       'Mystery game: Case=$_caseName, Clues=${_clues?.length ?? 0}',
@@ -99,7 +136,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
 
   @override
   void dispose() {
-    unawaited(_soundService.stopMusic());
+    unawaited(_soundService.stopMusic(force: true));
     _progressController.dispose();
     _confettiController.dispose();
     _solutionController.dispose();
@@ -322,20 +359,50 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
   Widget build(BuildContext context) {
     if (_clues == null || _clues!.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          title: Text(
-            widget.game.title,
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
+        appBar: SkulMateGameAppBar(title: widget.game.title),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.travel_explore, size: 54, color: AppTheme.primaryColor),
+                const SizedBox(height: 10),
+                Text(
+                  'No clues available for this mystery.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This content was not a good fit for mystery mode. Try generating as Quiz, Flashcards, or Matching.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppTheme.textMedium,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 14),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.arrow_back),
+                  label: Text(
+                    'Back to dashboard',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        body: Center(
-          child: Text('No clues available', style: GoogleFonts.poppins()),
         ),
       );
     }
@@ -352,40 +419,41 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          widget.game.title,
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: SkulMateGameAppBar(
+        title: widget.game.title,
         actions: [
-          if (_character != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: SkulMateCharacterWidget(character: _character),
+          Padding(
+            padding: const EdgeInsets.only(right: 4, left: 0),
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.white.withOpacity(0.22),
+              child: ClipOval(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: const SkulMateCharacterWidget(
+                    character: SkulMateCharacters.middleMale,
+                    size: 24,
+                    animated: false,
+                    showName: false,
+                  ),
+                ),
+              ),
             ),
+          ),
         ],
       ),
       body: Column(
         children: [
-          // Progress bar
-          AnimatedBuilder(
-            animation: _progressAnimation,
-            builder: (context, child) {
-              return LinearProgressIndicator(
-                value: _progressAnimation.value,
-                backgroundColor: AppTheme.textLight.withOpacity(0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  AppTheme.primaryColor,
-                ),
-                minHeight: 4,
-              );
-            },
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: GameStandardsHud(
+              progressText: 'Clue ${_currentClueIndex + 1} of ${_clues!.length}',
+              progressValue:
+                  ((_currentClueIndex + 1) / _clues!.length).clamp(0.0, 1.0),
+              xpEarned: _xpEarned,
+              gameType: widget.game.gameType,
+            ),
           ),
 
           Expanded(
@@ -396,12 +464,10 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                 children: [
                   // Case name
                   if (_caseName != null)
-                    Container(
+                    FlatStageCard(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.purple.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      backgroundColor: Colors.purple.withOpacity(0.1),
+                      borderColor: Colors.purple.withOpacity(0.25),
                       child: Row(
                         children: [
                           Icon(Icons.search, color: Colors.purple),
@@ -435,20 +501,10 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                   const SizedBox(height: 16),
 
                   // Clue card
-                  Container(
-                    width: double.infinity,
+                  FlatStageCard(
                     padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.textDark.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
+                    radius: 16,
+                    borderColor: AppTheme.primaryColor.withOpacity(0.14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -686,18 +742,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
   Widget _buildSolutionInput() {
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Solve the Mystery',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-      ),
+      appBar: SkulMateGameAppBar(title: 'Solve the Mystery'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(

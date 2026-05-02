@@ -14,6 +14,7 @@ import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
@@ -95,6 +96,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   Future<void> _verifyOTP() async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      _showError(
+        'Phone verification is temporarily unavailable. Please use Email or Google sign-in.',
+      );
+      return;
+    }
     if (_otpCode.length != 6) {
       _showError('Please enter the complete 6-digit code');
       return;
@@ -187,105 +194,24 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           LogService.debug('🆕 New user signup - cleared survey_intro_seen flag');
         }
 
-        // Navigate based on user status
+        // Use centralized route resolution to keep OTP flow seamless and
+        // aligned with email/google startup and deep-link behavior.
         if (mounted) {
-          // For tutors: Check tutor-specific onboarding status
-          // Check for pending tutor deep link before normal navigation
-          final pendingTutorId = await NavigationService.getAndClearPendingTutorLink();
-          if (pendingTutorId != null) {
-            // Navigate to tutor profile if user is student/parent
-            // Navigate to dashboard if user is tutor (can't book themselves)
-            if (userRole == 'student' || userRole == 'learner' || userRole == 'parent') {
-              LogService.debug('🔗 [OTP] Navigating to pending tutor profile: $pendingTutorId');
-              try {
-                final tutor = await TutorService.fetchTutorById(pendingTutorId);
-                if (tutor != null) {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => TutorDetailScreen(tutor: tutor),
-                    ),
-                  );
-                  return;
-                } else {
-                  LogService.warning('🔗 [OTP] Pending tutor not found: $pendingTutorId');
-                  // Fall through to normal navigation
-                }
-              } catch (e) {
-                LogService.error('🔗 [OTP] Error loading pending tutor: $e');
-                // Fall through to normal navigation
-              }
-            } else if (userRole == 'tutor') {
-              LogService.debug('🔗 [OTP] User is tutor, navigating to dashboard instead of tutor profile');
-              // Fall through to normal tutor navigation
-            }
-          }
-          
-          if (userRole == 'tutor') {
-            final userId = response.user!.id;
-            try {
-              final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
-              final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
-              
-              if (onboardingComplete || onboardingSkipped) {
-                // Tutor onboarding complete or skipped - go directly to dashboard
-                LogService.success('Tutor onboarding complete - navigating to dashboard');
-                _sendOnboardingNotificationIfNeeded(userId);
-                Navigator.pushReplacementNamed(context, '/tutor-nav');
-              } else {
-                // Check if it's a new tutor (no progress at all)
-                final progress = await TutorOnboardingProgressService.loadProgress(userId);
-                if (progress == null && !onboardingSkipped) {
-                  // New tutor - show choice screen
-                  LogService.success('New tutor signup - navigating to onboarding choice screen');
-                  Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
-                } else {
-                  // Has some progress - go to dashboard (they can continue from there)
-                  LogService.success('Tutor with existing progress - navigating to dashboard');
-                  Navigator.pushReplacementNamed(context, '/tutor-nav');
-                }
-              }
-            } catch (e) {
-              LogService.warning('Error checking tutor onboarding: $e - navigating to dashboard');
-              // On error, go to dashboard (better than blocking user)
-              Navigator.pushReplacementNamed(context, '/tutor-nav');
-            }
-          } else if (surveyCompleted) {
-            // Other roles with completed survey → go to role-based navigation
-            LogService.success('Survey completed - navigating to dashboard for $userRole');
-            if (userRole == 'parent') {
-              Navigator.pushReplacementNamed(context, '/parent-nav');
-            } else {
-              Navigator.pushReplacementNamed(context, '/student-nav');
-            }
+          final navService = NavigationService();
+          if (navService.isReady) {
+            final routeResult = await navService.determineInitialRoute();
+            await navService.navigateToRoute(
+              routeResult.route,
+              arguments: routeResult.arguments,
+              replace: true,
+            );
           } else {
-            // Other roles: New user or incomplete survey → check for survey intro screen first
-            final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
-
-            LogService.debug('📋 Survey not completed');
-            LogService.debug('👤 User role: $userRole');
-            LogService.debug('👀 Survey intro seen: $surveyIntroSeen');
-            LogService.debug('🆕 Is new user: $isNewUser');
-
-            if ((userRole == 'student' ||
-                    userRole == 'learner' ||
-                    userRole == 'parent') &&
-                !surveyIntroSeen) {
-              LogService.success('Navigating to survey intro screen for $userRole');
-              Navigator.pushReplacementNamed(
-                context,
-                '/survey-intro',
-                arguments: {'userType': userRole},
-              );
-            } else {
-              // Survey intro already seen → go to profile setup
-              LogService.debug('⏭️ Skipping survey intro - navigating to profile setup');
-              Navigator.pushReplacementNamed(
-                context,
-                '/profile-setup',
-                arguments: {'userRole': userRole},
-              );
-            }
+            // Fallback if nav service isn't ready yet.
+            Navigator.pushReplacementNamed(
+              context,
+              '/profile-setup',
+              arguments: {'userRole': userRole},
+            );
           }
         }
       }
@@ -334,6 +260,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   Future<void> _resendOTP() async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      _showError(
+        'Phone verification is temporarily unavailable. Please use Email or Google sign-in.',
+      );
+      return;
+    }
     safeSetState(() => _isResending = true);
 
     try {

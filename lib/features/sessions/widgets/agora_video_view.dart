@@ -33,6 +33,12 @@ class AgoraVideoViewWidget extends StatelessWidget {
     return 'agora_video_${type}_${uid ?? 0}_$source';
   }
 
+  // Prevent repeated local web setup calls on every rebuild.
+  static final Map<String, String> _lastLocalSetupSignatureByUid = <String, String>{};
+  static final Map<String, DateTime> _lastLocalSetupAtByUid = <String, DateTime>{};
+  static final Map<String, String> _lastRemoteRenderSignatureByUid = <String, String>{};
+  static final Map<String, DateTime> _lastRemoteRenderLogAtByUid = <String, DateTime>{};
+
   @override
   Widget build(BuildContext context) {
     if (uid == null) {
@@ -88,18 +94,25 @@ class AgoraVideoViewWidget extends StatelessWidget {
     if (isLocal) {
       if (kIsWeb) {
         try {
-          engine.setupLocalVideo(canvas);
-          if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen) {
-            LogService.info('✅ [AgoraVideoView] Set up LOCAL video with SCREEN source (web)');
-          } else {
-            LogService.info('✅ [AgoraVideoView] Set up LOCAL video with CAMERA source (web)');
-          }
-          if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceCamera) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              engine.muteLocalVideoStream(false).catchError((e) {
-                LogService.warning('Could not unmute local video after setup: $e');
-              });
-            });
+          final sourceSig = actualSourceType.name;
+          final uidKey = 'local_${uid ?? 0}';
+          final now = DateTime.now();
+          final previousSig = _lastLocalSetupSignatureByUid[uidKey];
+          final previousAt = _lastLocalSetupAtByUid[uidKey];
+          final shouldSetup = previousSig != sourceSig ||
+              previousAt == null ||
+              now.difference(previousAt) > const Duration(seconds: 10);
+
+          if (shouldSetup) {
+            _lastLocalSetupSignatureByUid[uidKey] = sourceSig;
+            _lastLocalSetupAtByUid[uidKey] = now;
+            engine.setupLocalVideo(canvas);
+            if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen) {
+              LogService.info('✅ [AgoraVideoView] Set up LOCAL video with SCREEN source (web)');
+            } else {
+              LogService.info('✅ [AgoraVideoView] Set up LOCAL video with CAMERA source (web)');
+            }
+            // Do not force-unmute from widget layer. AgoraService owns publish/mute policy.
           }
         } catch (e) {
           LogService.warning('⚠️ [AgoraVideoView] Failed to set up local video on web: $e');
@@ -109,10 +122,22 @@ class AgoraVideoViewWidget extends StatelessWidget {
     } else {
       // For remote video, the VideoViewController.remote will handle setup
       // The canvas with sourceType is passed to the controller
-      if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen) {
-        debugPrint('✅ [AgoraVideoView] Setting up REMOTE video with SCREEN source for UID=$uid');
-      } else {
-        debugPrint('✅ [AgoraVideoView] Setting up REMOTE video with CAMERA source for UID=$uid');
+      final remoteKey = 'remote_${uid ?? 0}';
+      final sourceSig = actualSourceType.name;
+      final now = DateTime.now();
+      final previousSig = _lastRemoteRenderSignatureByUid[remoteKey];
+      final previousAt = _lastRemoteRenderLogAtByUid[remoteKey];
+      final shouldLog = previousSig != sourceSig ||
+          previousAt == null ||
+          now.difference(previousAt) > const Duration(seconds: 10);
+      if (shouldLog) {
+        _lastRemoteRenderSignatureByUid[remoteKey] = sourceSig;
+        _lastRemoteRenderLogAtByUid[remoteKey] = now;
+        if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen) {
+          debugPrint('✅ [AgoraVideoView] Setting up REMOTE video with SCREEN source for UID=$uid');
+        } else {
+          debugPrint('✅ [AgoraVideoView] Setting up REMOTE video with CAMERA source for UID=$uid');
+        }
       }
     }
 

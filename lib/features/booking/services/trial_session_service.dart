@@ -496,6 +496,7 @@ class TrialSessionService {
       if (responseList == null || (responseList as List).isEmpty) {
         throw Exception('Failed to create trial sessions - no response from database');
       }
+      await _ensureTrialSessionParticipants((responseList as List).cast<Map<String, dynamic>>());
       final sessions = (responseList as List).map((json) => TrialSession.fromJson(json)).toList();
 
       final studentProfile = await _supabase.from('profiles').select('full_name, avatar_url').eq('id', userId).limit(1).maybeSingle();
@@ -577,17 +578,10 @@ class TrialSessionService {
       final response = await query.order('created_at', ascending: false);
       final trials = (response as List)
           .map((json) {
-            // Debug: Log payment_status from DB
-            LogService.debug('DB payment_status for ${json['id']}: ${json['payment_status']}');
             return TrialSession.fromJson(json);
           })
           .toList();
-      
-      // Debug: Log after mapping
-      for (var trial in trials) {
-        LogService.debug('Mapped trial ${trial.id}: paymentStatus=${trial.paymentStatus}');
-      }
-      
+
       return trials;
     } catch (e) {
       throw Exception('Failed to fetch trial sessions: $e');
@@ -2367,6 +2361,13 @@ class TrialSessionService {
       LogService.warning('Could not create/update individual_sessions record: $e');
     }
 
+    await _ensureIndividualSessionParticipants(
+      sessionId: trialSessionId,
+      tutorId: trial['tutor_id'] as String?,
+      learnerId: trial['learner_id'] as String?,
+      parentId: trial['parent_id'] as String?,
+    );
+
     // Start Agora Cloud Recording for online trial sessions (skipped on mobile web).
     if (isSessionOnline && !(kIsWeb && platform_utils.PlatformUtils.isMobileWeb)) {
       try {
@@ -2393,6 +2394,86 @@ class TrialSessionService {
   static String _normalizeTime(String time) {
     // Remove any whitespace and convert to lowercase for comparison
     return time.trim().toLowerCase();
+  }
+
+  static Future<void> _ensureTrialSessionParticipants(
+    List<Map<String, dynamic>> sessions,
+  ) async {
+    final participantRows = <Map<String, dynamic>>[];
+    for (final session in sessions) {
+      final trialSessionId = session['id'] as String?;
+      if (trialSessionId == null) continue;
+      participantRows.addAll(
+        _buildSessionParticipantRows(
+          sessionIdField: 'trial_session_id',
+          sessionId: trialSessionId,
+          tutorId: session['tutor_id'] as String?,
+          learnerId: session['learner_id'] as String?,
+          parentId: session['parent_id'] as String?,
+        ),
+      );
+    }
+
+    if (participantRows.isEmpty) return;
+    try {
+      await _supabase.from('session_participants').upsert(
+            participantRows,
+            onConflict: 'trial_session_id,user_id',
+          );
+    } catch (e) {
+      LogService.warning('Failed to upsert trial session_participants rows: $e');
+    }
+  }
+
+  static Future<void> _ensureIndividualSessionParticipants({
+    required String sessionId,
+    required String? tutorId,
+    required String? learnerId,
+    required String? parentId,
+  }) async {
+    final participantRows = _buildSessionParticipantRows(
+      sessionIdField: 'individual_session_id',
+      sessionId: sessionId,
+      tutorId: tutorId,
+      learnerId: learnerId,
+      parentId: parentId,
+    );
+    if (participantRows.isEmpty) return;
+    try {
+      await _supabase.from('session_participants').upsert(
+            participantRows,
+            onConflict: 'individual_session_id,user_id',
+          );
+    } catch (e) {
+      LogService.warning('Failed to upsert individual session_participants rows: $e');
+    }
+  }
+
+  static List<Map<String, dynamic>> _buildSessionParticipantRows({
+    required String sessionIdField,
+    required String sessionId,
+    required String? tutorId,
+    required String? learnerId,
+    required String? parentId,
+  }) {
+    final roleByUser = <String, String>{};
+    if (tutorId != null && tutorId.isNotEmpty) roleByUser[tutorId] = 'tutor';
+    if (learnerId != null && learnerId.isNotEmpty) {
+      roleByUser.putIfAbsent(learnerId, () => 'learner');
+    }
+    if (parentId != null && parentId.isNotEmpty) {
+      roleByUser.putIfAbsent(parentId, () => 'parent_observer');
+    }
+
+    final rows = <Map<String, dynamic>>[];
+    roleByUser.forEach((userId, role) {
+      rows.add({
+        sessionIdField: sessionId,
+        'user_id': userId,
+        'role': role,
+      });
+    });
+    return rows;
   }
 
 }

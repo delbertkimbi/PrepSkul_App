@@ -27,6 +27,7 @@ class LocationSelector extends StatefulWidget {
   final String? initialLocation;
   final String? initialAddress;
   final String? initialLocationDescription;
+  final bool embeddedInParentScroll;
   final Function(String location, String? address, String? locationDescription)
   onLocationSelected;
 
@@ -36,6 +37,7 @@ class LocationSelector extends StatefulWidget {
     this.initialLocation,
     this.initialAddress,
     this.initialLocationDescription,
+    this.embeddedInParentScroll = false,
     required this.onLocationSelected,
   }) : super(key: key);
 
@@ -345,11 +347,9 @@ class _LocationSelectorState extends State<LocationSelector> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
           // Title
           Text(
             'Where will sessions happen?',
@@ -405,8 +405,19 @@ class _LocationSelectorState extends State<LocationSelector> {
             const SizedBox(height: 24),
             _buildAddressInput(isOnline: _selectedLocation == 'online'),
           ],
-        ],
-      ),
+      ],
+    );
+
+    if (widget.embeddedInParentScroll) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: content,
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: content,
     );
   }
 

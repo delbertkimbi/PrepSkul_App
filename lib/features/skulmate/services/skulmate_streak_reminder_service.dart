@@ -5,7 +5,11 @@ import 'package:prepskul/core/services/push_notification_service.dart';
 import 'game_stats_service.dart';
 
 /// Service for scheduling daily streak reminder notifications.
-/// Uses local notifications; does not require backend.
+/// Uses **local** notifications (not server push); does not require backend.
+///
+/// **Timing:** Reminder fires at the user’s configured **clock time** (default **6:00 PM**
+/// local), not “the time they opened the app yesterday”. Rescheduled when the user opens
+/// SkulMate or finishes a game: if they already played today, today’s reminder is cancelled.
 class SkulMateStreakReminderService {
   static const String _enabledKey = 'skulmate_streak_reminder_enabled';
   static const String _hourKey = 'skulmate_streak_reminder_hour';

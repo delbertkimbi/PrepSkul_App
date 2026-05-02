@@ -8,6 +8,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../services/skulmate_service.dart';
 import '../services/skulmate_access_service.dart';
 import '../widgets/generation_context_sheet.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
 import 'game_setup_flow_screen.dart';
 import 'game_generation_screen.dart';
 import 'skulmate_plans_screen.dart';
@@ -330,7 +331,20 @@ class _TextInputScreenState extends State<TextInputScreen> {
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.auto_awesome_rounded, size: 18),
+                          ClipOval(
+                            child: Container(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              child: const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: SkulMateMascotMediaWidget(
+                                  state: SkulMateMascotState.celebration,
+                                  useLandscapeFrame: false,
+                                  borderRadius: 999,
+                                ),
+                              ),
+                            ),
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Generate Game',

@@ -7,6 +7,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../models/game_model.dart';
+import '../models/skulmate_character_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/character_selection_service.dart';
@@ -14,6 +15,7 @@ import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/game_standard_widgets.dart';
 import 'game_results_screen.dart';
 
 /// Escape Room game screen - Concept-based puzzle games
@@ -92,7 +94,7 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
 
   @override
   void dispose() {
-    unawaited(_soundService.stopMusic());
+    unawaited(_soundService.stopMusic(force: true));
     _progressController.dispose();
     _confettiController.dispose();
     for (var controller in _answerControllers.values) {
@@ -264,18 +266,7 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
   Widget build(BuildContext context) {
     if (_rooms == null || _rooms!.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          title: Text(
-            widget.game.title,
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
-          ),
-        ),
+        appBar: SkulMateGameAppBar(title: widget.game.title),
         body: Center(
           child: Text('No rooms available', style: GoogleFonts.poppins()),
         ),
@@ -296,28 +287,38 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
       appBar: SkulMateGameAppBar(
         title: widget.game.title,
         actions: [
-          if (_character != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: SkulMateCharacterWidget(character: _character),
+          Padding(
+            padding: const EdgeInsets.only(right: 4, left: 0),
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.white.withOpacity(0.22),
+              child: ClipOval(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: const SkulMateCharacterWidget(
+                    character: SkulMateCharacters.middleMale,
+                    size: 24,
+                    animated: false,
+                    showName: false,
+                  ),
+                ),
+              ),
             ),
+          ),
         ],
       ),
       body: Column(
         children: [
-          // Progress bar
-          AnimatedBuilder(
-            animation: _progressAnimation,
-            builder: (context, child) {
-              return LinearProgressIndicator(
-                value: _progressAnimation.value,
-                backgroundColor: AppTheme.textLight.withOpacity(0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  AppTheme.primaryColor,
-                ),
-                minHeight: 4,
-              );
-            },
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: GameStandardsHud(
+              progressText: 'Room ${_currentRoomIndex + 1} of ${_rooms!.length}',
+              progressValue:
+                  ((_currentRoomIndex + 1) / _rooms!.length).clamp(0.0, 1.0),
+              xpEarned: _xpEarned,
+              gameType: widget.game.gameType,
+            ),
           ),
 
           Expanded(
@@ -339,12 +340,10 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
                   const SizedBox(height: 16),
 
                   // Locked by
-                  Container(
+                  FlatStageCard(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    backgroundColor: Colors.red.withOpacity(0.1),
+                    borderColor: Colors.red.withOpacity(0.3),
                     child: Row(
                       children: [
                         Icon(Icons.lock, color: Colors.red),
@@ -366,20 +365,10 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
                   const SizedBox(height: 24),
 
                   // Puzzle card
-                  Container(
-                    width: double.infinity,
+                  FlatStageCard(
                     padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.textDark.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
+                    radius: 16,
+                    borderColor: AppTheme.primaryColor.withOpacity(0.14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

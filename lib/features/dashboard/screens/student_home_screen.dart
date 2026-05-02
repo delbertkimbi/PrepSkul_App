@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
@@ -49,6 +51,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   bool _showReminderCard = false;
   bool _isOffline = false;
   int _activeTutorsCount = 0;
+  int _allTimeSessionsCount = 0;
   int _upcomingSessionsCount = 0;
   final ConnectivityService _connectivity = ConnectivityService();
   /// Incremented on pull-to-refresh so NotificationBell (and other keyed widgets) reload
@@ -101,206 +104,436 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   Future<void> _loadUserData() async {
+    String? extractFirstName(String? fullName) {
+      if (fullName == null || fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
+        return null;
+      }
+      final parts = fullName.trim().split(' ');
+      final firstName = parts.isNotEmpty ? parts[0] : fullName;
+      if (firstName.isEmpty || firstName == 'Student' || firstName == 'User') {
+        return null;
+      }
+      return firstName;
+    }
+
     try {
-      final userProfile = await AuthService.getUserProfile();
       final prefs = await SharedPreferences.getInstance();
+
+      // Fast first paint from local cache so offline startup is instant.
+      final cachedName = extractFirstName(prefs.getString('user_name')) ??
+          extractFirstName(prefs.getString('signup_full_name')) ??
+          'Student';
+      final cachedUserRole = prefs.getString('user_role');
+      final cachedSurveyCompleted = prefs.getBool('survey_completed') ?? false;
       final hasVisitedHome = prefs.getBool('has_visited_home') ?? false;
-
-      // Get user name with priority: profile > direct Supabase query > stored signup data > session > auth metadata > default
-      // Extract first name from full_name if available
-      String? extractFirstName(String? fullName) {
-        if (fullName == null || fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
-          return null;
-        }
-        // Split by space and take first part
-        final parts = fullName.trim().split(' ');
-        final firstName = parts.isNotEmpty ? parts[0] : fullName;
-        // Return null if it's still "Student" or empty
-        if (firstName.isEmpty || firstName == 'Student' || firstName == 'User') {
-          return null;
-        }
-        return firstName;
-      }
-
-      var userName = extractFirstName(userProfile?['full_name']?.toString());
-      LogService.debug('[HOME] Name from getUserProfile: ${userProfile?['full_name']} -> $userName');
-      
-      // If still no name, try direct Supabase query as fallback
-      if (userName == null || userName.isEmpty) {
-        try {
-          final authUser = SupabaseService.currentUser;
-          if (authUser != null) {
-            final directProfile = await SupabaseService.client
-                .from('profiles')
-                .select('full_name')
-                .eq('id', authUser.id)
-                .maybeSingle();
-            
-            final directName = directProfile?['full_name']?.toString();
-            LogService.debug('[HOME] Name from direct Supabase query: $directName');
-            userName = extractFirstName(directName);
-          }
-        } catch (e) {
-          LogService.debug('[HOME] Error querying Supabase directly: $e');
-        }
-      }
-      
-      if (userName == null || userName.isEmpty) {
-        // Try stored signup data
-        final storedName = prefs.getString('signup_full_name');
-        LogService.debug('[HOME] Name from SharedPreferences: $storedName');
-        if (storedName != null && storedName.isNotEmpty && storedName != 'User' && storedName != 'Student') {
-          userName = extractFirstName(storedName);
-          // If we found a name from signup but database doesn't have it, update the database
-          try {
-            final authUser = SupabaseService.currentUser;
-            if (authUser != null) {
-              await SupabaseService.client
-                  .from('profiles')
-                  .update({'full_name': storedName})
-                  .eq('id', authUser.id);
-              LogService.info('[HOME] Updated profile with signup name: $storedName');
-            }
-          } catch (e) {
-            LogService.warning('[HOME] Failed to update profile with signup name: $e');
-          }
-        }
-      }
-      if (userName == null || userName.isEmpty) {
-        // Try session data
-        final currentUser = await AuthService.getCurrentUser();
-        final sessionName = currentUser['fullName']?.toString();
-        LogService.debug('[HOME] Name from session: $sessionName');
-        if (sessionName != null && sessionName.isNotEmpty && sessionName != 'User') {
-          userName = extractFirstName(sessionName);
-        }
-      }
-      if (userName == null || userName.isEmpty) {
-        // Try auth user metadata
-        final authUser = SupabaseService.currentUser;
-        if (authUser != null && authUser.userMetadata?['full_name'] != null) {
-          final metadataName = authUser.userMetadata!['full_name']?.toString();
-          LogService.debug('[HOME] Name from auth metadata: $metadataName');
-          if (metadataName != null && metadataName.isNotEmpty) {
-            userName = extractFirstName(metadataName);
-          }
-        }
-      }
-      if (userName == null || userName.isEmpty) {
-        // Last resort: try email username
-        final authUser = SupabaseService.currentUser;
-        if (authUser?.email != null) {
-          final email = authUser!.email!;
-          final emailName = email.split('@')[0];
-          // Capitalize first letter
-          if (emailName.isNotEmpty && emailName.length > 1) {
-            userName = emailName[0].toUpperCase() + emailName.substring(1);
-            LogService.debug('[HOME] Using email username: $userName');
-          }
-        }
-      }
-      if (userName == null || userName.isEmpty) {
-        // Default fallback
-        userName = 'Student';
-        LogService.warning('[HOME] All name sources failed, using default: Student');
-      }
-      
-      LogService.success('[HOME] Final userName: $userName');
-
-      _userName = userName;
-      _userType = userProfile?['user_type'] ?? 'student';
-      _isFirstVisit = !hasVisitedHome;
-      _surveyCompleted = userProfile?['survey_completed'] ?? false;
-
-      // Load survey data for personalization
-      if (_userType == 'student') {
-        _surveyData = await SurveyRepository.getStudentSurvey(
-          userProfile?['id'],
-        );
-      } else if (_userType == 'parent') {
-        _surveyData = await SurveyRepository.getParentSurvey(
-          userProfile?['id'],
-        );
-      }
-
-      // Check if reminder card should be shown
-      if (!_surveyCompleted) {
-        _showReminderCard = await SurveyReminderCard.shouldShow();
-      }
-
-      // Load active tutors and upcoming sessions counts
-      int activeTutors = 0;
-      int upcomingSessions = 0;
-      try {
-        final indUpcoming =
-            await IndividualSessionService.getStudentUpcomingSessions(limit: 50);
-        final tutorIds = <String>{};
-        for (final s in indUpcoming) {
-          final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
-          final tid = recurring?['tutor_id'] as String?;
-          if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
-        }
-        upcomingSessions += indUpcoming.length;
-
-        final trials = await TrialSessionService.getStudentTrialSessions();
-        for (final t in trials) {
-          if ((t.status == 'approved' || t.status == 'scheduled') &&
-              !SessionDateUtils.isSessionExpired(t)) {
-            upcomingSessions += 1;
-            if (t.tutorId.isNotEmpty) tutorIds.add(t.tutorId);
-          }
-        }
-        activeTutors = tutorIds.length;
-      } catch (e) {
-        LogService.debug('Student home stats load: $e');
-      }
+      final cachedActiveTutors = prefs.getInt('home_active_tutors_count') ?? 0;
+      final cachedAllTimeSessions = prefs.getInt('home_all_time_sessions_count') ?? 0;
+      final cachedUpcomingSessions = prefs.getInt('home_upcoming_sessions_count') ?? 0;
 
       if (mounted) {
         safeSetState(() {
-          _activeTutorsCount = activeTutors;
-          _upcomingSessionsCount = upcomingSessions;
+          _userName = cachedName;
+          _userType = cachedUserRole == 'parent' ? 'parent' : 'student';
+          _surveyCompleted = cachedSurveyCompleted;
+          _isFirstVisit = !hasVisitedHome;
+          _activeTutorsCount = cachedActiveTutors;
+          _allTimeSessionsCount = cachedAllTimeSessions;
+          _upcomingSessionsCount = cachedUpcomingSessions;
           _isLoading = false;
         });
       }
 
-      // LinkedIn-style nudge: ask after user has value context (home loaded).
+      // If offline, keep cached UI and skip remote roundtrips.
+      final isOnline = await _connectivity
+          .checkConnectivity()
+          .timeout(const Duration(milliseconds: 900), onTimeout: () => false);
+      if (!isOnline) {
+        LogService.info('🌐 [HOME] Offline startup: using cached home data');
+        return;
+      }
+
+      // Refresh in background when online.
+      final userProfile = await AuthService.getUserProfile()
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
+
+      var userName = extractFirstName(userProfile?['full_name']?.toString()) ?? cachedName;
+      _userType = userProfile?['user_type'] ?? _userType;
+      _surveyCompleted = userProfile?['survey_completed'] ?? _surveyCompleted;
+
+      if (_userType == 'student') {
+        _surveyData = await SurveyRepository.getStudentSurvey(userProfile?['id'])
+            .timeout(const Duration(seconds: 3), onTimeout: () => _surveyData);
+      } else if (_userType == 'parent') {
+        _surveyData = await SurveyRepository.getParentSurvey(userProfile?['id'])
+            .timeout(const Duration(seconds: 3), onTimeout: () => _surveyData);
+      }
+
+      if (!_surveyCompleted) {
+        _showReminderCard = await SurveyReminderCard.shouldShow()
+            .timeout(const Duration(seconds: 2), onTimeout: () => false);
+      }
+
+      int activeTutors = _activeTutorsCount;
+      int allTimeSessions = _allTimeSessionsCount;
+      int upcomingSessions = _upcomingSessionsCount;
+      var statsSource = 'previous_cached';
+      try {
+        bool hasFreshStatsData = false;
+
+        List<Map<String, dynamic>>? indUpcoming;
+        try {
+          indUpcoming = await IndividualSessionService
+              .getStudentUpcomingSessions(limit: 50)
+              .timeout(const Duration(seconds: 6));
+        } on TimeoutException {
+          indUpcoming = null;
+        }
+        final tutorIds = <String>{};
+        if (indUpcoming != null) {
+          hasFreshStatsData = true;
+          for (final s in indUpcoming) {
+            final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
+            final tid = (recurring?['tutor_id'] as String?) ??
+                (s['tutor_id'] as String?);
+            if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+          }
+          upcomingSessions = indUpcoming.length;
+          allTimeSessions = indUpcoming.length;
+        }
+
+        // All-time individual sessions should include past sessions, not only upcoming.
+        List<Map<String, dynamic>>? indPast;
+        try {
+          indPast = await IndividualSessionService
+              .getStudentPastSessions(limit: 200)
+              .timeout(const Duration(seconds: 6));
+        } on TimeoutException {
+          indPast = null;
+        }
+        if (indPast != null) {
+          hasFreshStatsData = true;
+          allTimeSessions += indPast.length;
+          for (final s in indPast) {
+            final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
+            final tid = (recurring?['tutor_id'] as String?) ??
+                (s['tutor_id'] as String?);
+            if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+          }
+        }
+
+        List<dynamic /* TrialSession */ >? trials;
+        try {
+          trials = await TrialSessionService.getStudentTrialSessions()
+              .timeout(const Duration(seconds: 6));
+        } on TimeoutException {
+          trials = null;
+        }
+        if (trials != null) {
+          hasFreshStatsData = true;
+          for (final t in trials) {
+            final status = t.status.toLowerCase();
+            final paymentStatus = t.paymentStatus.toLowerCase();
+            final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
+            final isCountableHistoricalTrial = isPaid &&
+                status != 'rejected' &&
+                status != 'cancelled';
+
+            if (isCountableHistoricalTrial) {
+              allTimeSessions += 1;
+              if (t.tutorId.isNotEmpty) tutorIds.add(t.tutorId);
+            }
+
+            if ((t.status == 'approved' || t.status == 'scheduled') &&
+                !SessionDateUtils.isSessionExpired(t)) {
+              upcomingSessions += 1;
+              if (t.tutorId.isNotEmpty) tutorIds.add(t.tutorId);
+            }
+          }
+        }
+
+        if (hasFreshStatsData) {
+          activeTutors = tutorIds.length;
+          statsSource = 'live_strict';
+
+          // Fallback for strict paid filters: if all-time still resolves to zero,
+          // run a relaxed history query so legitimate historical activity is shown.
+          if (allTimeSessions == 0) {
+            final relaxed = await _loadRelaxedAllTimeStats();
+            if (relaxed != null && relaxed['allTimeSessions']! > 0) {
+              allTimeSessions = relaxed['allTimeSessions']!;
+              activeTutors = relaxed['activeTutors']!;
+              statsSource = 'live_relaxed_fallback';
+              LogService.info(
+                'Student home stats recovered via relaxed history query: '
+                'sessions=$allTimeSessions tutors=$activeTutors',
+              );
+            }
+          }
+
+          // Never regress to zero if this device already has known non-zero history.
+          if (allTimeSessions == 0 && _allTimeSessionsCount > 0) {
+            allTimeSessions = _allTimeSessionsCount;
+            if (activeTutors == 0 && _activeTutorsCount > 0) {
+              activeTutors = _activeTutorsCount;
+            }
+            statsSource = 'preserved_previous_non_zero';
+            LogService.warning(
+              'Student home stats would regress to zero; preserving previous known counts '
+              '(sessions=$allTimeSessions tutors=$activeTutors).',
+            );
+          }
+        } else {
+          // If live queries fail (e.g. transient DNS/offline), compute from local caches.
+          final userId = SupabaseService.client.auth.currentUser?.id;
+          if (userId != null && userId.isNotEmpty) {
+            final cachedUpcoming = await OfflineCacheService
+                    .getCachedIndividualSessions('${userId}_upcoming') ??
+                const <Map<String, dynamic>>[];
+            final cachedPast = await OfflineCacheService
+                    .getCachedIndividualSessions('${userId}_past') ??
+                const <Map<String, dynamic>>[];
+            final cachedTrials =
+                await OfflineCacheService.getCachedTrialSessions(userId) ??
+                    const <Map<String, dynamic>>[];
+
+            final cachedTutorIds = <String>{};
+            final addTutorFromSessionMap = (Map<String, dynamic> s) {
+              final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
+              final tid = (recurring?['tutor_id'] as String?) ??
+                  (s['tutor_id'] as String?);
+              if (tid != null && tid.isNotEmpty) cachedTutorIds.add(tid);
+            };
+
+            for (final s in cachedUpcoming) {
+              addTutorFromSessionMap(s);
+            }
+            for (final s in cachedPast) {
+              addTutorFromSessionMap(s);
+            }
+
+            int cachedAllTime = cachedUpcoming.length + cachedPast.length;
+            int cachedUpcomingCount = cachedUpcoming.length;
+
+            for (final t in cachedTrials) {
+              final status = (t['status'] as String? ?? '').toLowerCase();
+              final paymentStatus =
+                  (t['payment_status'] as String? ?? '').toLowerCase();
+              final tutorId = t['tutor_id'] as String?;
+              final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
+              final isCountableHistoricalTrial =
+                  isPaid && status != 'rejected' && status != 'cancelled';
+
+              if (isCountableHistoricalTrial) {
+                cachedAllTime += 1;
+                if (tutorId != null && tutorId.isNotEmpty) {
+                  cachedTutorIds.add(tutorId);
+                }
+              }
+              if (status == 'approved' || status == 'scheduled') {
+                cachedUpcomingCount += 1;
+                if (tutorId != null && tutorId.isNotEmpty) {
+                  cachedTutorIds.add(tutorId);
+                }
+              }
+            }
+
+            if (cachedAllTime > 0 || cachedTutorIds.isNotEmpty) {
+              allTimeSessions = cachedAllTime;
+              upcomingSessions = cachedUpcomingCount;
+              activeTutors = cachedTutorIds.length;
+              statsSource = 'offline_cache_fallback';
+              LogService.info(
+                'Student home stats loaded from local cache fallback: '
+                'sessions=$allTimeSessions upcoming=$upcomingSessions tutors=$activeTutors',
+              );
+            } else {
+              statsSource = 'cache_empty_preserve_previous';
+              LogService.warning(
+                'Student home stats refresh unavailable and cache empty; preserving previous counts.',
+              );
+            }
+          } else {
+            statsSource = 'no_user_cache_lookup_preserve_previous';
+            LogService.warning(
+              'Student home stats refresh unavailable and no user id for cache lookup.',
+            );
+          }
+        }
+      } catch (e) {
+        LogService.debug('Student home stats load (background): $e');
+      }
+
+      // Persist latest good values for fast offline startup.
+      if (allTimeSessions > 0 && activeTutors == 0) {
+        final recoveredTutors = await _recoverActiveTutorsFromHistory();
+        if (recoveredTutors > 0) {
+          activeTutors = recoveredTutors;
+          if (statsSource == 'previous_cached') {
+            statsSource = 'previous_cached_plus_tutor_recovery';
+          }
+          LogService.info(
+            'Student home active tutors recovered from history: $activeTutors',
+          );
+        }
+      }
+
+      await prefs.setString('user_name', userName);
+      await prefs.setInt('home_active_tutors_count', activeTutors);
+      await prefs.setInt('home_all_time_sessions_count', allTimeSessions);
+      await prefs.setInt('home_upcoming_sessions_count', upcomingSessions);
+
+      if (mounted) {
+        safeSetState(() {
+          _userName = userName;
+          _activeTutorsCount = activeTutors;
+          _allTimeSessionsCount = allTimeSessions;
+          _upcomingSessionsCount = upcomingSessions;
+        });
+        LogService.info(
+          'Student home progress counters updated: '
+          'source=$statsSource activeTutors=$_activeTutorsCount '
+          'allTimeSessions=$_allTimeSessionsCount upcoming=$_upcomingSessionsCount',
+        );
+      }
+
       if (mounted && !_isFirstVisit) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          // Small delay so it doesn't feel "instant" on screen load.
           Future.delayed(const Duration(seconds: 2), () {
             if (!mounted) return;
-            NotificationPermissionNudgeService.maybeShow(
-              context,
-              trigger: 'home',
-            );
+            NotificationPermissionNudgeService.maybeShow(context, trigger: 'home');
           });
         });
       }
 
-      // First-time user? Auto-navigate to Find Tutors
       if (_isFirstVisit && mounted) {
         await prefs.setBool('has_visited_home', true);
-        // Small delay for smooth transition
         Future.delayed(const Duration(milliseconds: 800), () {
-          if (mounted) {
-            // Navigate to Find Tutors tab (index 1)
-            Navigator.pushReplacementNamed(
-              context,
-              _userType == 'parent' ? '/parent-nav' : '/student-nav',
-              arguments: {'initialTab': 1},
-            );
-          }
+          if (!mounted) return;
+          Navigator.pushReplacementNamed(
+            context,
+            _userType == 'parent' ? '/parent-nav' : '/student-nav',
+            arguments: {'initialTab': 1},
+          );
         });
       }
     } catch (e) {
       LogService.debug('Error loading user data: $e');
       if (!mounted) return;
-
       safeSetState(() {
-        _userName = 'Student';
+        _userName = _userName.isEmpty ? 'Student' : _userName;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<Map<String, int>?> _loadRelaxedAllTimeStats() async {
+    try {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null || userId.isEmpty) return null;
+
+      final tutorIds = <String>{};
+      int sessions = 0;
+
+      final individualRows = await SupabaseService.client
+          .from('individual_sessions')
+          .select('tutor_id, recurring_sessions(tutor_id), status')
+          .or('learner_id.eq.$userId,parent_id.eq.$userId')
+          .limit(500);
+      for (final row in (individualRows as List).cast<Map<String, dynamic>>()) {
+        final status = (row['status'] as String? ?? '').toLowerCase();
+        if (status == 'rejected') continue;
+        sessions += 1;
+        final recurring = row['recurring_sessions'] as Map<String, dynamic>?;
+        final tid = (recurring?['tutor_id'] as String?) ??
+            (row['tutor_id'] as String?);
+        if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+      }
+
+      final trialRows = await SupabaseService.client
+          .from('trial_sessions')
+          .select('tutor_id, status')
+          .or('learner_id.eq.$userId,parent_id.eq.$userId,requester_id.eq.$userId')
+          .limit(500);
+      for (final row in (trialRows as List).cast<Map<String, dynamic>>()) {
+        final status = (row['status'] as String? ?? '').toLowerCase();
+        if (status == 'rejected' || status == 'cancelled') continue;
+        sessions += 1;
+        final tid = row['tutor_id'] as String?;
+        if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+      }
+
+      return {
+        'allTimeSessions': sessions,
+        'activeTutors': tutorIds.length,
+      };
+    } catch (e) {
+      LogService.debug('Relaxed all-time stats query failed: $e');
+      return null;
+    }
+  }
+
+  Future<int> _recoverActiveTutorsFromHistory() async {
+    try {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null || userId.isEmpty) return 0;
+
+      final tutorIds = <String>{};
+
+      void addTutorFromSessionMap(Map<String, dynamic> s) {
+        final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
+        final tid = (recurring?['tutor_id'] as String?) ??
+            (s['tutor_id'] as String?);
+        if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+      }
+
+      final cachedUpcoming = await OfflineCacheService
+              .getCachedIndividualSessions('${userId}_upcoming') ??
+          const <Map<String, dynamic>>[];
+      final cachedPast = await OfflineCacheService
+              .getCachedIndividualSessions('${userId}_past') ??
+          const <Map<String, dynamic>>[];
+      final cachedTrials =
+          await OfflineCacheService.getCachedTrialSessions(userId) ??
+              const <Map<String, dynamic>>[];
+
+      for (final s in cachedUpcoming) {
+        addTutorFromSessionMap(s);
+      }
+      for (final s in cachedPast) {
+        addTutorFromSessionMap(s);
+      }
+      for (final t in cachedTrials) {
+        final status = (t['status'] as String? ?? '').toLowerCase();
+        if (status == 'rejected' || status == 'cancelled') continue;
+        final tid = t['tutor_id'] as String?;
+        if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+      }
+
+      if (tutorIds.isNotEmpty) return tutorIds.length;
+
+      // As a final online fallback, try direct lightweight history query.
+      try {
+        final rows = await SupabaseService.client
+            .from('individual_sessions')
+            .select('tutor_id, recurring_sessions(tutor_id)')
+            .or('learner_id.eq.$userId,parent_id.eq.$userId')
+            .limit(200)
+            .timeout(const Duration(seconds: 3));
+        for (final row in (rows as List).cast<Map<String, dynamic>>()) {
+          final recurring = row['recurring_sessions'] as Map<String, dynamic>?;
+          final tid = (recurring?['tutor_id'] as String?) ??
+              (row['tutor_id'] as String?);
+          if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+        }
+      } catch (_) {
+        // Ignore online fallback failures; we keep existing value.
+      }
+
+      return tutorIds.length;
+    } catch (e) {
+      LogService.debug('Recover active tutors from history failed: $e');
+      return 0;
     }
   }
 
@@ -341,6 +574,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const SkulMateOnboardingScreen(),
+                ),
+              );
+              return;
+            }
+
+            final isOnline = await _connectivity.checkConnectivity();
+            if (!isOnline) {
+              // Offline: avoid remote game existence checks that can hang.
+              if (!mounted) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const GameLibraryScreen(initialTab: 1),
                 ),
               );
               return;
@@ -501,7 +747,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                         child: _buildStatCard(
                           icon: PhosphorIcons.calendar(),
                           label: AppLocalizations.of(context)!.sessions,
-                          value: '$_upcomingSessionsCount',
+                          value: '$_allTimeSessionsCount',
                           color: AppTheme.primaryColor,
                         ),
                       ),
@@ -515,7 +761,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   _buildActionCard(
                     icon: PhosphorIcons.calendarCheck(),
                     title: AppLocalizations.of(context)!.mySessions,
-                    subtitle: 'View upcoming and completed sessions',
+                    subtitle: 'View upcoming sessions',
                     color: AppTheme.primaryColor,
                     trailingCount: _upcomingSessionsCount,
                     onTap: () {

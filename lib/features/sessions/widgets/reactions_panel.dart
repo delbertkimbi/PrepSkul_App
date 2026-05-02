@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// Reactions panel with emoji selection
-/// Shows a grid of emojis that users can select
+/// Shows a compact horizontally-scrollable emoji strip
 class ReactionsPanel extends StatelessWidget {
   final Function(String emoji) onEmojiSelected;
   final VoidCallback onClose;
@@ -20,69 +19,23 @@ class ReactionsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[900]!.withOpacity(0.95),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.2),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'React',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                color: Colors.white70,
-                onPressed: onClose,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Emoji grid
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 6,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: _emojis.length,
-            itemBuilder: (context, index) {
-              return _EmojiButton(
-                emoji: _emojis[index],
-                onTap: () {
-                  onEmojiSelected(_emojis[index]);
-                  onClose();
-                },
-              );
+    return SizedBox(
+      height: 56,
+      width: 280, // Shows roughly 5 emojis, horizontal scroll for the rest.
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _emojis.length,
+        physics: const BouncingScrollPhysics(),
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, index) {
+          return _EmojiButton(
+            emoji: _emojis[index],
+            onTap: () {
+              onEmojiSelected(_emojis[index]);
+              onClose();
             },
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -136,19 +89,13 @@ class _EmojiButtonState extends State<_EmojiButton>
       onTapCancel: () => _controller.reverse(),
       child: ScaleTransition(
         scale: _scaleAnimation,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.2),
-              width: 1,
-            ),
-          ),
+        child: SizedBox(
+          width: 50,
+          height: 50,
           child: Center(
             child: Text(
               widget.emoji,
-              style: const TextStyle(fontSize: 24),
+              style: const TextStyle(fontSize: 30),
             ),
           ),
         ),

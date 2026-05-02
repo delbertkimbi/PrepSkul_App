@@ -2,6 +2,18 @@
 
 This document outlines the notification strategy for skulMate to keep users engaged, protect streaks, and surface social/friend activity.
 
+## Product policy (current)
+
+| Channel | SkulMate real-time (social, challenges, streak nudges) | Weekly summary |
+|--------|------------------------------------------------------------|----------------|
+| **In-app** | Yes — always | Yes — digest appears in notification history |
+| **Push** | Yes — FCM via `/api/notifications/send` for social events; streak uses **local** scheduled notification on iOS/Android | Optional (off by default); email is the main channel |
+| **Email** | **No** for routine SkulMate events | **Yes — at most ~1×/week** learning/gaming progress report (`type: skulmate_weekly_digest`, see `NotificationHelperService.sendSkulMateWeeklyLearningDigest`) |
+
+**Streak reminder timing:** The daily streak nudge is **not** “the time you opened the app yesterday.” It uses a **fixed local clock time** (default **6:00 PM**), user-configurable via `SkulMateStreakReminderService`, implemented as a **local** notification (`scheduleSkulMateStreakReminder`). Web does not schedule local notifications.
+
+**Daily challenge:** Picking “today’s challenge” is **in-app** (`DailyChallengeService`); it is separate from push timing.
+
 ---
 
 ## 1. Daily Streak Reminder (High Priority)

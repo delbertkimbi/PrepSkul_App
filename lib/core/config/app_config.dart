@@ -46,6 +46,12 @@ class AppConfig {
   /// Set to `false` until phone verification is fully tested and ready.
   /// Phone login requires additional backend setup for SMS verification.
   static const bool enablePhoneSignIn = true; // ← Enabled for phone OTP authentication
+
+  /// Enable/disable Phone OTP verification flows.
+  ///
+  /// Initial state is OFF. Flip to `true` when OTP provider is ready.
+  /// This is intentionally code-controlled to avoid accidental env overrides.
+  static const bool enablePhoneOtpVerification = false;
   
   /// Enable/disable SkulMate feature
   /// 
@@ -191,7 +197,45 @@ class AppConfig {
       }
     }
 
+    // For web builds, normalize app.prepskul.com/api -> www.prepskul.com/api
+    // unless localhost is explicitly configured above.
+    if (kIsWeb) {
+      url = url.replaceAll('://app.prepskul.com', '://www.prepskul.com');
+    }
+
     return url;
+  }
+
+  /// Base URL for Next.js SkulMate HTTP routes (`/api/skulmate/*`).
+  ///
+  /// Flutter web calls to `https://app.prepskul.com/api/...` can hit a different
+  /// edge deployment than `https://www.prepskul.com/api`, where SkulMate `POST`/`OPTIONS`
+  /// CORS is implemented. On web we therefore normalize `app.prepskul.com` → `www.prepskul.com`.
+  ///
+  /// Override with env **`SKULMATE_HTTP_API_BASE`** (e.g. `http://localhost:3000/api`) for local Next.
+  static String get skulMateHttpApiBase {
+    try {
+      final o = _safeEnv('SKULMATE_HTTP_API_BASE', '').trim();
+      if (o.isNotEmpty) {
+        return o.endsWith('/') ? o.substring(0, o.length - 1) : o;
+      }
+    } catch (_) {}
+    var base = effectiveApiBaseUrl;
+    if (kIsWeb) {
+      base = _normalizeSkulMateApiHostForWeb(base);
+    }
+    return base;
+  }
+
+  /// Flutter web on `app.prepskul.com` must call SkulMate on `www` where CORS + routes are aligned.
+  static String _normalizeSkulMateApiHostForWeb(String base) {
+    try {
+      final uri = Uri.parse(base);
+      if (uri.hasScheme && uri.host == 'app.prepskul.com') {
+        return uri.replace(host: 'www.prepskul.com').toString();
+      }
+    } catch (_) {}
+    return base.replaceAll('://app.prepskul.com', '://www.prepskul.com');
   }
   
   /// App Base URL
@@ -431,6 +475,54 @@ class AppConfig {
   /// Enable Email Notifications
   static bool get enableEmailNotifications {
     return _safeEnvBool('ENABLE_EMAIL_NOTIFICATIONS', true);
+  }
+
+  /// Enable classroom QoE telemetry events
+  static bool get enableClassroomQoeTelemetry {
+    return _safeEnvBool('CLASSROOM_QOE_TELEMETRY_ENABLED', true);
+  }
+
+  /// Enable classroom orchestrator-driven flow (safe rollout flag).
+  static bool get enableClassroomOrchestrator {
+    return _safeEnvBool('CLASSROOM_ORCHESTRATOR_ENABLED', true);
+  }
+
+  /// Enable dual-stream policy (safe rollout flag).
+  static bool get enableClassroomDualStream {
+    return _safeEnvBool('CLASSROOM_DUAL_STREAM_ENABLED', true);
+  }
+
+  /// Subscribe to workspace sync packets over Supabase Realtime during sessions.
+  static bool get enableClassroomWorkspaceRealtime {
+    return _safeEnvBool('CLASSROOM_WORKSPACE_REALTIME_ENABLED', true);
+  }
+
+  /// Enable group classes flows (safe rollout flag).
+  static bool get enableGroupClasses {
+    return _safeEnvBool('GROUP_CLASSES_ENABLED', true);
+  }
+
+  /// Dev-only QA account quick switch panel on login screen.
+  static bool get enableQaQuickSwitch {
+    if (!kDebugMode || isProd) return false;
+    return _safeEnvBool('QA_QUICK_SWITCH_ENABLED', true);
+  }
+
+  static String get qaTutorPhone => _safeEnv('QA_TUTOR_PHONE', '');
+  static String get qaTutorPassword => _safeEnv('QA_TUTOR_PASSWORD', '');
+  static String get qaLearnerPhone => _safeEnv('QA_LEARNER_PHONE', '');
+  static String get qaLearnerPassword => _safeEnv('QA_LEARNER_PASSWORD', '');
+  static String get qaObserverPhone => _safeEnv('QA_OBSERVER_PHONE', '');
+  static String get qaObserverPassword => _safeEnv('QA_OBSERVER_PASSWORD', '');
+
+  /// Dev-only bypass for joining booked sessions from any QA account until expiry.
+  ///
+  /// Safety:
+  /// - Always false in production mode.
+  /// - Enabled only in debug/dev when explicitly toggled.
+  static bool get enableQaSessionJoinBypass {
+    if (isProd) return false;
+    return _safeEnvBool('QA_SESSION_JOIN_BYPASS_ENABLED', false);
   }
   
   // ============================================

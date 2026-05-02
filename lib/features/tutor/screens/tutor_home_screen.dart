@@ -20,12 +20,14 @@ import '../../../features/notifications/widgets/notification_bell.dart';
 import '../../../features/booking/services/session_payment_service.dart';
 import '../widgets/onboarding_progress_tracker.dart';
 import 'tutor_admin_feedback_screen.dart';
+import '../../group_classes/screens/tutor_group_classes_screen.dart';
 import 'tutor_onboarding_screen.dart';
 import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
 import '../../../core/services/notification_permission_nudge_service.dart';
+import '../../../core/config/app_config.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -52,6 +54,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   int _sessionCount = 0;
   bool _isOffline = false;
   final ConnectivityService _connectivity = ConnectivityService();
+  bool _isLoadingUserInfoRequestInFlight = false;
+  bool _isCheckingOnboardingInFlight = false;
+  DateTime? _lastUserInfoLoadAt;
+  DateTime? _lastOnboardingCheckAt;
+  static const Duration _homeRefreshCooldown = Duration(seconds: 20);
 
   @override
   void initState() {
@@ -65,14 +72,16 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh data when screen becomes visible again
-    // This ensures progress is updated after saving
+    // didChangeDependencies can fire often due to inherited updates.
+    // Throttle expensive refreshes to avoid repeated API churn/log spam.
+    final now = DateTime.now();
+    final recentlyRefreshed = _lastUserInfoLoadAt != null &&
+        now.difference(_lastUserInfoLoadAt!) < _homeRefreshCooldown;
+    if (recentlyRefreshed) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _checkOnboardingStatus();
-        // Also reload user info to get latest progress
-        _loadUserInfo();
-      }
+      if (!mounted) return;
+      _checkOnboardingStatus();
+      _loadUserInfo();
     });
   }
 
@@ -104,6 +113,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Future<void> _checkOnboardingStatus() async {
+    final now = DateTime.now();
+    if (_isCheckingOnboardingInFlight) return;
+    if (_lastOnboardingCheckAt != null &&
+        now.difference(_lastOnboardingCheckAt!) < _homeRefreshCooldown) {
+      return;
+    }
+    _isCheckingOnboardingInFlight = true;
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
@@ -115,8 +131,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _onboardingSkipped = skipped;
         _onboardingComplete = complete;
       });
+      _lastOnboardingCheckAt = DateTime.now();
     } catch (e) {
       LogService.warning('Error checking onboarding status: $e');
+    } finally {
+      _isCheckingOnboardingInFlight = false;
     }
   }
 
@@ -195,6 +214,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Future<void> _loadUserInfo() async {
+    final now = DateTime.now();
+    if (_isLoadingUserInfoRequestInFlight) return;
+    if (_lastUserInfoLoadAt != null &&
+        now.difference(_lastUserInfoLoadAt!) < _homeRefreshCooldown) {
+      return;
+    }
+    _isLoadingUserInfoRequestInFlight = true;
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
@@ -311,6 +337,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _sessionCount = sessionCount;
         _isLoading = false;
       });
+      _lastUserInfoLoadAt = DateTime.now();
 
       // LinkedIn-style nudge: ask on home once user lands (avoid onboarding screens).
       if (mounted) {
@@ -335,6 +362,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       safeSetState(() {
         _isLoading = false;
       });
+    } finally {
+      _isLoadingUserInfoRequestInFlight = false;
     }
   }
 
@@ -702,6 +731,23 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       );
                     },
                   ),
+                  if (AppConfig.enableGroupClasses) ...[
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                    _buildActionCard(
+                      icon: Icons.groups_outlined,
+                      title: 'Group Classes',
+                      subtitle: 'Create and publish group sessions',
+                      color: Colors.deepPurple,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const TutorGroupClassesScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1104,7 +1150,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               Expanded(
                 child: _buildWalletBalanceCard(
                   label: 'Active Balance',
-                  amount: activeBalanceStr,
+                amount: activeBalanceStr,
+                
                   icon: Icons.check_circle,
                   color: Colors.green.shade300,
                 ),
@@ -1114,6 +1161,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                 child: _buildWalletBalanceCard(
                   label: 'Pending Balance',
                   amount: pendingBalanceStr,
+                
                   icon: Icons.pending,
                   color: Colors.orange.shade300,
                 ),

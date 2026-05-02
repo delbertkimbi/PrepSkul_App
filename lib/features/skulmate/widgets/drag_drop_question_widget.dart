@@ -9,6 +9,9 @@ class DragDropQuestionWidget extends StatelessWidget {
   final bool showCorrection;
   final ValueChanged<Map<String, int>> onAssignmentsChanged;
   final String instructionText;
+  final VoidCallback? onDragStart;
+  final VoidCallback? onDrop;
+  final VoidCallback? onClearZone;
 
   const DragDropQuestionWidget({
     super.key,
@@ -18,6 +21,9 @@ class DragDropQuestionWidget extends StatelessWidget {
     required this.showCorrection,
     required this.onAssignmentsChanged,
     this.instructionText = 'Drag each item into the correct zone',
+    this.onDragStart,
+    this.onDrop,
+    this.onClearZone,
   });
 
   static String itemText(Map<String, dynamic> item) {
@@ -73,10 +79,33 @@ class DragDropQuestionWidget extends StatelessWidget {
       final text = itemText(item);
       final zone = expectedZone(item);
       if (text.isNotEmpty && zone.isNotEmpty) {
-        pairs.add('$text -> $zone');
+        pairs.add('$text → $zone');
       }
     }
     return pairs.join('\n');
+  }
+
+  Widget _chipShell({required Widget child, bool elevated = true}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppTheme.primaryColor.withOpacity(0.22),
+        ),
+        boxShadow: elevated
+            ? [
+                BoxShadow(
+                  color: AppTheme.textDark.withOpacity(0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
+      ),
+      child: child,
+    );
   }
 
   @override
@@ -86,9 +115,10 @@ class DragDropQuestionWidget extends StatelessWidget {
       children: [
         Text(
           instructionText,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             color: AppTheme.textMedium,
+            height: 1.35,
           ),
         ),
         const SizedBox(height: 10),
@@ -104,34 +134,60 @@ class DragDropQuestionWidget extends StatelessWidget {
             }
             return Draggable<int>(
               data: itemIndex,
+              onDragStarted: onDragStart,
               feedback: Material(
                 color: Colors.transparent,
+                elevation: 8,
+                borderRadius: BorderRadius.circular(12),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+                    horizontal: 14,
+                    vertical: 10,
                   ),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor,
                     borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryColor.withOpacity(0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Text(
                     label,
                     style: GoogleFonts.poppins(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
+                      fontSize: 13,
                     ),
                   ),
                 ),
               ),
+              feedbackOffset: const Offset(0, -8),
               childWhenDragging: Opacity(
-                opacity: 0.3,
-                child: Chip(label: Text(label)),
+                opacity: 0.35,
+                child: _chipShell(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: AppTheme.textMedium,
+                    ),
+                  ),
+                ),
               ),
-              child: Chip(
-                label: Text(label),
-                backgroundColor: Colors.white,
-                side: BorderSide(color: AppTheme.softBorder),
+              child: _chipShell(
+                child: Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: AppTheme.textDark,
+                  ),
+                ),
               ),
             );
           }).toList(),
@@ -144,8 +200,8 @@ class DragDropQuestionWidget extends StatelessWidget {
           final assignedItemIndex = assignments[zoneName];
           final assignedLabel =
               assignedItemIndex != null && assignedItemIndex < dragItems.length
-              ? itemText(dragItems[assignedItemIndex])
-              : null;
+                  ? itemText(dragItems[assignedItemIndex])
+                  : null;
           final expectedNorm = normalizeZone(
             expectedZone(
               assignedItemIndex != null && assignedItemIndex < dragItems.length
@@ -166,9 +222,12 @@ class DragDropQuestionWidget extends StatelessWidget {
                 next.removeWhere((_, value) => value == details.data);
                 next[zoneName] = details.data;
                 onAssignmentsChanged(next);
+                onDrop?.call();
               },
               builder: (context, candidateData, rejectedData) {
-                return Container(
+                final highlight = candidateData.isNotEmpty;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
@@ -177,20 +236,27 @@ class DragDropQuestionWidget extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: showCorrecting
                         ? (isAssignedCorrect
-                              ? AppTheme.accentGreen.withOpacity(0.18)
-                              : Colors.red.withOpacity(0.12))
+                              ? AppTheme.accentGreen.withOpacity(0.14)
+                              : const Color(0xFFFFE4E6))
                         : Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: showCorrecting
                           ? (isAssignedCorrect
                                 ? AppTheme.accentGreen
-                                : Colors.red.shade400)
-                          : (candidateData.isNotEmpty
+                                : const Color(0xFFE11D48))
+                          : (highlight
                                 ? AppTheme.primaryColor
                                 : AppTheme.softBorder),
-                      width: 2,
+                      width: highlight || showCorrecting ? 2 : 1,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.textDark.withOpacity(0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
@@ -201,18 +267,19 @@ class DragDropQuestionWidget extends StatelessWidget {
                             Text(
                               zoneName,
                               style: GoogleFonts.poppins(
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
+                                letterSpacing: 0.2,
                                 color: AppTheme.textMedium,
                               ),
                             ),
-                            const SizedBox(height: 3),
+                            const SizedBox(height: 4),
                             Text(
                               assignedLabel ?? 'Drop item here',
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: assignedLabel == null
-                                    ? FontWeight.w400
+                                    ? FontWeight.w500
                                     : FontWeight.w600,
                                 color: assignedLabel == null
                                     ? AppTheme.textMedium
@@ -224,11 +291,16 @@ class DragDropQuestionWidget extends StatelessWidget {
                       ),
                       if (!showCorrection && assignedItemIndex != null)
                         IconButton(
-                          icon: const Icon(Icons.close, size: 18),
+                          icon: Icon(
+                            Icons.close_rounded,
+                            size: 20,
+                            color: AppTheme.textMedium.withOpacity(0.85),
+                          ),
                           onPressed: () {
                             final next = Map<String, int>.from(assignments);
                             next.remove(zoneName);
                             onAssignmentsChanged(next);
+                            onClearZone?.call();
                           },
                         ),
                     ],
@@ -241,4 +313,5 @@ class DragDropQuestionWidget extends StatelessWidget {
       ],
     );
   }
+
 }

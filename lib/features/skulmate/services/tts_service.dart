@@ -46,6 +46,27 @@ class TTSService {
         _speakCompleter = null;
         // TTS often ducks/pauses other audio (especially on iOS); resume game BGM.
         unawaited(GameSoundService().resumeBgmIfNeeded());
+        unawaited(
+          Future<void>.delayed(
+            const Duration(milliseconds: 220),
+            () => GameSoundService().resumeBgmIfNeeded(),
+          ),
+        );
+      });
+      _flutterTts!.setCancelHandler(() {
+        _speakCompleter?.complete();
+        _speakCompleter = null;
+        unawaited(GameSoundService().resumeBgmIfNeeded());
+      });
+      _flutterTts!.setPauseHandler(() {
+        _speakCompleter?.complete();
+        _speakCompleter = null;
+        unawaited(GameSoundService().resumeBgmIfNeeded());
+      });
+      _flutterTts!.setErrorHandler((_) {
+        _speakCompleter?.complete();
+        _speakCompleter = null;
+        unawaited(GameSoundService().resumeBgmIfNeeded());
       });
       
       _isInitialized = true;
@@ -110,6 +131,7 @@ class TTSService {
 
     try {
       await _flutterTts!.stop();
+      unawaited(GameSoundService().resumeBgmIfNeeded());
     } catch (e) {
       LogService.error('[TTS] Error stopping: $e');
     }

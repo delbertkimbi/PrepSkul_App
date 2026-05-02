@@ -11,6 +11,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/core/widgets/app_logo_header.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
+import 'package:prepskul/features/group_classes/screens/group_classes_discovery_screen.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
@@ -28,6 +29,7 @@ import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/debouncer.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 
 class FindTutorsScreen extends StatefulWidget {
   const FindTutorsScreen({Key? key}) : super(key: key);
@@ -675,6 +677,29 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         surfaceTintColor: Colors.white,
         title: const AppLogoHeader(),
         actions: [
+          if (AppConfig.enableGroupClasses)
+            IconButton(
+              icon: Icon(
+                Icons.groups_outlined,
+                color: _isOffline ? Colors.grey[400] : Colors.black,
+              ),
+              onPressed: _isOffline
+                  ? () => OfflineDialog.show(
+                        context,
+                        message:
+                            'Group classes require an internet connection. Please check your connection and try again.',
+                      )
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const GroupClassesDiscoveryScreen(),
+                        ),
+                      );
+                    },
+              tooltip: _isOffline ? 'Group classes unavailable offline' : 'Group classes',
+            ),
           IconButton(
             icon: Icon(
               Icons.tune, 
@@ -1011,12 +1036,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     
     // Use pre-calculated values from tutor_service (no duplicate calculation)
     final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
-    final totalReviews = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
     
     // DEBUG: Log values being used (debug mode only)
     LogService.debug('Find Tutors - Tutor: $fullName', {
       'rating': rating,
-      'total_reviews': totalReviews,
     });
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
@@ -1140,14 +1163,6 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                       fontSize: ResponsiveHelper.responsiveBodySize(context),
                                       fontWeight: FontWeight.w600,
                                       color: Colors.black,
-                                    ),
-                                  ),
-                                  if (rating > 0 && totalReviews >= 3)
-                                  Text(
-                                    ' ($totalReviews)',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
-                                      color: Colors.grey[600],
                                     ),
                                   ),
                                 ],

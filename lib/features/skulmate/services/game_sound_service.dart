@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
@@ -16,6 +15,7 @@ class GameSoundService {
   GameSoundService._internal();
 
   final AudioPlayer _audioPlayer = AudioPlayer();
+  final AudioPlayer _matchingSfxPlayer = AudioPlayer();
   final AudioPlayer _bgmPlayer = AudioPlayer();
   final Map<SoundType, AudioPlayer> _preloadedPlayers = {};
   final Map<SoundType, String?> _resolvedSoundPaths = {};
@@ -28,6 +28,7 @@ class GameSoundService {
   String? _currentMusicPath;
   double _currentMusicBaseVolume = 0.06;
   GameType? _lastRequestedMusicGameType;
+  DateTime? _lastMusicStartAt;
   List<String>? _bundledAudioTracksCache;
   GameType? _pendingMusicForUserGesture;
   bool _gestureHookInstalled = false;
@@ -42,7 +43,8 @@ class GameSoundService {
       _soundsEnabled = prefs.getBool('game_sounds_enabled') ?? true;
       _musicEnabled = prefs.getBool('game_music_enabled') ?? true;
       _soundsVolume = prefs.getDouble('game_sounds_volume') ?? 1.0;
-      _musicVolume = prefs.getDouble('game_music_volume') ?? 1.0;
+      // Default BGM at 80% volume for a lively but balanced mix.
+      _musicVolume = prefs.getDouble('game_music_volume') ?? 0.8;
       _isInitialized = true;
 
       // Preload common sounds for smoother playback
@@ -98,14 +100,6 @@ class GameSoundService {
     }
   }
 
-  String? _getSoundPath(SoundType type) {
-    final resolved = _resolvedSoundPaths[type];
-    if (resolved != null) return resolved;
-    final candidates = _getSoundPathCandidates(type);
-    if (candidates.isEmpty) return null;
-    return candidates.first;
-  }
-
   List<String> _getSoundPathCandidates(SoundType type) {
     switch (type) {
       case SoundType.correct:
@@ -119,6 +113,7 @@ class GameSoundService {
         return const [
           'sounds/flip.mp3',
           'sounds/cardFlip.mp3',
+          'audio/music/sfx_card_flip.ogg',
           'audio/music/flip.mp3', // backward compatibility fallback
         ];
       case SoundType.match:
@@ -143,6 +138,7 @@ class GameSoundService {
         return const [
           'sounds/flip.mp3',
           'sounds/cardFlip.mp3',
+          'audio/music/sfx_card_flip.ogg',
           'audio/music/flip.mp3', // backward compatibility fallback
         ];
       case SoundType.levelComplete:
@@ -156,7 +152,6 @@ class GameSoundService {
   Future<bool> _assetExists(String relativePath) async {
     final normalized = _normalizeAssetRelativePath(relativePath);
     final candidates = <String>{
-      'assets/assets/$normalized',
       'assets/$normalized',
       normalized,
       relativePath.trim(),
@@ -227,7 +222,7 @@ class GameSoundService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('game_music_enabled', enabled);
       if (!enabled) {
-        await stopMusic();
+        await stopMusic(force: true);
       }
       LogService.info(
         '🎵 [GameSound] Music ${enabled ? "enabled" : "disabled"}',
@@ -360,10 +355,6 @@ class GameSoundService {
     for (final path in candidates) {
       try {
         final normalizedPath = _normalizeAssetRelativePath(path);
-        if (_currentMusicPath == normalizedPath) {
-          final resumed = await _ensureCurrentTrackIsPlaying();
-          if (resumed) return true;
-        }
         await _bgmPlayer.stop();
         // Keep background tracks audible; raise fallback loop volume.
         final isBgm = normalizedPath.contains('/bgm_');
@@ -372,6 +363,7 @@ class GameSoundService {
         await _setPlayerSourceWithFallback(_bgmPlayer, normalizedPath);
         await _bgmPlayer.resume();
         _currentMusicPath = normalizedPath;
+        _lastMusicStartAt = DateTime.now();
         LogService.info('🎵 [GameSound] Playing music track: $normalizedPath');
         return true;
       } catch (e) {
@@ -429,10 +421,23 @@ class GameSoundService {
     _pendingMusicForUserGesture = null;
   }
 
-  Future<void> stopMusic() async {
+  Future<void> stopMusic({bool force = false}) async {
     try {
+      if (!force && _lastMusicStartAt != null) {
+        final elapsed = DateTime.now().difference(_lastMusicStartAt!);
+        // During fast route replacement, old screen dispose can fire right after
+        // the next screen starts BGM; ignore this stale stop request.
+        if (elapsed < const Duration(milliseconds: 450)) {
+          LogService.debug(
+            '🎵 [GameSound] Ignoring stale stop request during transition '
+            '(${elapsed.inMilliseconds}ms since music start)',
+          );
+          return;
+        }
+      }
       _pendingMusicForUserGesture = null;
       _currentMusicPath = null;
+      _lastMusicStartAt = null;
       await _bgmPlayer.stop();
     } catch (_) {}
   }
@@ -443,23 +448,59 @@ class GameSoundService {
     if (!_musicEnabled || !_isInitialized) return;
     if (_currentMusicPath == null) return;
     final resumed = await _ensureCurrentTrackIsPlaying();
-    if (resumed) return;
+    if (resumed) {
+      // Some focus interruptions return "playing" state but keep low ducked volume.
+      try {
+        await _bgmPlayer.setVolume(_currentMusicBaseVolume * _musicVolume);
+      } catch (_) {}
+      return;
+    }
     final fallbackGameType = _lastRequestedMusicGameType;
     if (fallbackGameType != null) {
+      if (_lastMusicStartAt != null &&
+          DateTime.now().difference(_lastMusicStartAt!) <
+              const Duration(seconds: 2)) {
+        return;
+      }
       unawaited(playMusicForGame(fallbackGameType));
     }
+  }
+
+  /// Keep game music alive across aggressive Android audio-focus changes.
+  Future<void> ensureMusicForGame(GameType gameType) async {
+    if (!_musicEnabled) return;
+    if (!_isInitialized) await ensureInitialized();
+    if (!_isInitialized) return;
+    _lastRequestedMusicGameType = gameType;
+    if (_currentMusicPath != null) {
+      final ok = await _ensureCurrentTrackIsPlaying();
+      if (ok) return;
+    }
+    if (_lastMusicStartAt != null &&
+        DateTime.now().difference(_lastMusicStartAt!) <
+            const Duration(seconds: 3)) {
+      return;
+    }
+    await playMusicForGame(gameType);
   }
 
   Future<bool> _ensureCurrentTrackIsPlaying() async {
     final currentPath = _currentMusicPath;
     if (currentPath == null) return false;
     try {
-      if (_bgmPlayer.state == PlayerState.playing) return true;
+      await _bgmPlayer.setVolume(_currentMusicBaseVolume * _musicVolume);
+      if (_bgmPlayer.state == PlayerState.playing) {
+        // Force a no-op resume to recover from stale audio focus state on Android.
+        await _bgmPlayer.resume();
+        return true;
+      }
       await _bgmPlayer.resume();
       if (_bgmPlayer.state == PlayerState.playing) return true;
     } catch (_) {}
     try {
+      await _bgmPlayer.stop();
       await _setPlayerSourceWithFallback(_bgmPlayer, currentPath);
+      await _bgmPlayer.setVolume(_currentMusicBaseVolume * _musicVolume);
       await _bgmPlayer.resume();
       return _bgmPlayer.state == PlayerState.playing;
     } catch (_) {
@@ -480,21 +521,34 @@ class GameSoundService {
     // Always provide haptic feedback for key events (works even without sound files)
     _playHaptic(type);
 
+    bool played = false;
     try {
-      // Use preloaded player if available
-      if (_preloadedPlayers.containsKey(type)) {
+      // Preloaded players can stall on some Android devices for rapid SFX.
+      // Keep them only for long celebration sounds; use direct playback for taps/outcomes.
+      final canUsePreloaded = type == SoundType.complete || type == SoundType.levelComplete;
+      if (canUsePreloaded && _preloadedPlayers.containsKey(type)) {
         final player = _preloadedPlayers[type]!;
+        try {
         await player
             .stop(); // Stop so rapid repeats (e.g. card flips) each play fully
         await player.seek(Duration.zero);
         await player.setVolume(_volumeFor(type));
         await player.resume();
-        return;
+          played = true;
+        } catch (e) {
+          // Preloaded player can be stale on some devices; fallback to direct candidate playback.
+          LogService.warning(
+            '🎵 [GameSound] Preloaded playback failed for $type: $e',
+          );
+        }
       }
 
-      // Otherwise use main player
-      final soundPath = await _resolveSoundPath(type);
-      if (soundPath != null) {
+      if (!played) {
+        // Try all candidates in order so `sounds/flip.mp3` is preferred but
+        // runtime decode/load failures can gracefully fallback to alternates.
+        for (final candidate in _getSoundPathCandidates(type)) {
+          if (!await _assetExists(candidate)) continue;
+          try {
         if (type == SoundType.flip ||
             type == SoundType.cardFlip ||
             type == SoundType.piecePlace) {
@@ -502,8 +556,19 @@ class GameSoundService {
           await _audioPlayer.stop();
         }
         await _audioPlayer.setVolume(_volumeFor(type));
-        await _playAssetWithFallback(_audioPlayer, soundPath);
-      } else {
+            await _playAssetWithFallback(_audioPlayer, candidate);
+            _resolvedSoundPaths[type] = candidate;
+            played = true;
+            break;
+          } catch (e) {
+            LogService.warning(
+              '🎵 [GameSound] Candidate playback failed: $candidate, error: $e',
+            );
+          }
+        }
+      }
+
+      if (!played) {
         _playSystemFallback(type);
       }
     } catch (e) {
@@ -538,14 +603,14 @@ class GameSoundService {
     switch (type) {
       case SoundType.complete:
       case SoundType.levelComplete:
-        return 0.8 * _soundsVolume;
+        return 1.0 * _soundsVolume;
       case SoundType.correct:
       case SoundType.match:
       case SoundType.wordFound:
       case SoundType.click:
       case SoundType.piecePlace:
       case SoundType.pop:
-        return 0.55 * _soundsVolume;
+        return 0.75 * _soundsVolume;
       case SoundType.flip:
       case SoundType.cardFlip:
         return 1.0 * _soundsVolume;
@@ -583,11 +648,33 @@ class GameSoundService {
     } catch (_) {}
   }
 
-  /// Play correct answer sound
-  Future<void> playCorrect() => _playSound(SoundType.correct);
+  /// Play correct answer sound with immediate, louder dedicated path.
+  Future<void> playCorrect() async {
+    if (!kIsWeb) {
+      try {
+        SystemSound.play(SystemSoundType.click);
+      } catch (_) {}
+    }
+    await _playMatchingAssetCandidates([
+      'sounds/correct.mp3',
+      'sounds/match.mp3',
+      'audio/music/sfx_correct_chime.ogg',
+      'audio/music/sfx_streak_ping.ogg',
+    ], volume: (1.0 * _soundsVolume).clamp(0.0, 1.0).toDouble());
+  }
 
-  /// Play incorrect answer sound
-  Future<void> playIncorrect() => _playSound(SoundType.incorrect);
+  /// Play incorrect answer sound with immediate, louder dedicated path.
+  Future<void> playIncorrect() async {
+    if (!kIsWeb) {
+      try {
+        SystemSound.play(SystemSoundType.alert);
+      } catch (_) {}
+    }
+    await _playMatchingAssetCandidates([
+      'sounds/incorrect.mp3',
+      'audio/music/sfx_wrong_mute.ogg',
+    ], volume: (1.0 * _soundsVolume).clamp(0.0, 1.0).toDouble());
+  }
 
   /// Play card flip sound
   Future<void> playFlip() => _playSound(SoundType.flip);
@@ -595,11 +682,45 @@ class GameSoundService {
   /// Play match success sound
   Future<void> playMatch() => _playSound(SoundType.match);
 
-  /// Play game completion sound
-  Future<void> playComplete() => _playSound(SoundType.complete);
+  /// Play game completion sound with low-latency behavior.
+  /// Avoids delayed candidate scanning so completion SFX never arrives on a later screen.
+  Future<void> playComplete() async {
+    await _retryPendingMusicAfterUserGesture();
+    if (!_soundsEnabled) return;
+    if (!_isInitialized) await ensureInitialized();
+    if (!_isInitialized) return;
+    _playHaptic(SoundType.complete);
+    try {
+      final player = _preloadedPlayers[SoundType.complete];
+      if (player != null) {
+        await player.stop();
+        await player.seek(Duration.zero);
+        await player.setVolume(_volumeFor(SoundType.complete));
+        await player.resume();
+      } else {
+        _playSystemFallback(SoundType.complete);
+      }
+    } catch (_) {
+      _playSystemFallback(SoundType.complete);
+    } finally {
+      unawaited(resumeBgmIfNeeded());
+    }
+  }
 
-  /// Play button click sound
-  Future<void> playClick() => _playSound(SoundType.click);
+  /// Play button click sound with immediate, dedicated path.
+  Future<void> playClick() async {
+    if (!kIsWeb) {
+      try {
+        SystemSound.play(SystemSoundType.click);
+      } catch (_) {}
+    }
+    await _playMatchingAssetCandidates([
+      'sounds/click.mp3',
+      'sounds/flip.mp3',
+      'audio/music/sfx_tap_soft.ogg',
+      'audio/music/sfx_card_flip.ogg',
+    ], volume: (1.0 * _soundsVolume).clamp(0.0, 1.0).toDouble());
+  }
 
   /// Play bubble pop sound
   Future<void> playPop() => _playSound(SoundType.pop);
@@ -616,11 +737,92 @@ class GameSoundService {
   /// Play level complete sound (alias for complete)
   Future<void> playLevelComplete() => _playSound(SoundType.levelComplete);
 
-  /// Play a soft countdown tick (reuse click sound)
-  Future<void> playCountdownTick() => _playSound(SoundType.click);
+  /// Play a reliable, audible countdown tick for red-timer urgency.
+  Future<void> playCountdownTick() async {
+    if (!kIsWeb) {
+      try {
+        SystemSound.play(SystemSoundType.click);
+      } catch (_) {}
+    }
+    await _playMatchingAssetCandidates([
+      'sounds/click.mp3',
+      'sounds/flip.mp3',
+      'audio/music/sfx_tap_soft.ogg',
+      'audio/music/sfx_card_flip.ogg',
+      'audio/music/sfx_streak_ping.ogg',
+    ], volume: (1.0 * _soundsVolume).clamp(0.0, 1.0).toDouble());
+  }
 
-  /// Play a buzzer-style sound when time runs out (reuse incorrect/haptic)
-  Future<void> playCountdownBuzzer() => _playSound(SoundType.incorrect);
+  /// Play a buzzer-style sound when time runs out.
+  Future<void> playCountdownBuzzer() async {
+    if (!kIsWeb) {
+      try {
+        SystemSound.play(SystemSoundType.alert);
+      } catch (_) {}
+    }
+    await _playSound(SoundType.incorrect);
+  }
+
+  /// Matching-specific SFX: force lively mp3 assets first.
+  Future<void> playMatchingTap() async {
+    // Guarantee immediate tactile tap feedback even when asset decoding lags.
+    if (!kIsWeb) {
+      try {
+        SystemSound.play(SystemSoundType.click);
+      } catch (_) {}
+    }
+    await _playMatchingAssetCandidates([
+      'sounds/match.mp3',
+      'sounds/flip.mp3',
+      'sounds/click.mp3',
+      'audio/music/sfx_tap_soft.ogg',
+      'audio/music/sfx_card_flip.ogg',
+      'audio/music/sfx_streak_ping.ogg',
+    ], volume: (1.0 * _soundsVolume).clamp(0.0, 1.0).toDouble());
+  }
+
+  Future<void> playMatchingSuccess() async {
+    await _playMatchingAssetCandidates([
+      'sounds/match.mp3',
+      'sounds/correct.mp3',
+      'audio/music/sfx_streak_ping.ogg',
+      'audio/music/sfx_correct_chime.ogg',
+    ], volume: (1.0 * _soundsVolume).clamp(0.0, 1.0).toDouble());
+  }
+
+  Future<void> playMatchingWrong() async {
+    await _playMatchingAssetCandidates([
+      'sounds/incorrect.mp3',
+      'audio/music/sfx_wrong_mute.ogg',
+    ], volume: (0.9 * _soundsVolume).clamp(0.0, 1.0).toDouble());
+  }
+
+  Future<void> _playMatchingAssetCandidates(
+    List<String> candidates, {
+    required double volume,
+  }) async {
+    await _retryPendingMusicAfterUserGesture();
+    if (!_soundsEnabled) return;
+    if (!_isInitialized) await ensureInitialized();
+    if (!_isInitialized) return;
+    _playHaptic(SoundType.click);
+    try {
+      await _matchingSfxPlayer.stop();
+      await _matchingSfxPlayer.setVolume(volume);
+      for (final candidate in candidates) {
+        if (!await _assetExists(candidate)) continue;
+        try {
+          await _playAssetWithFallback(_matchingSfxPlayer, candidate);
+          return;
+        } catch (_) {}
+      }
+      _playSystemFallback(SoundType.click);
+    } catch (_) {
+      _playSystemFallback(SoundType.click);
+    } finally {
+      unawaited(resumeBgmIfNeeded());
+    }
+  }
 
   /// Explicitly call this from any UI tap handler if needed.
   Future<void> registerUserGesture() => _retryPendingMusicAfterUserGesture();
@@ -638,17 +840,16 @@ class GameSoundService {
   ) async {
     final normalizedPath = _normalizeAssetRelativePath(relativePath);
     try {
+      final bytes = await _loadAssetBytes(normalizedPath);
+      if (bytes != null) {
+        await player.play(BytesSource(bytes));
+        return;
+      }
       await player.play(AssetSource(normalizedPath));
       return;
     } catch (_) {
-      try {
-        await player.play(AssetSource('assets/$normalizedPath'));
-        return;
-      } catch (_) {}
-      // Fallback to bytes source when asset file descriptor/data source fails.
-      final bytes = await _loadAssetBytes(normalizedPath);
-      if (bytes == null) rethrow;
-      await player.play(BytesSource(bytes));
+      // Final fallback to asset source when bytes source fails unexpectedly.
+      await player.play(AssetSource(normalizedPath));
     }
   }
 
@@ -661,10 +862,6 @@ class GameSoundService {
       await player.setSource(AssetSource(normalizedPath));
       return;
     } catch (_) {
-      try {
-        await player.setSource(AssetSource('assets/$normalizedPath'));
-        return;
-      } catch (_) {}
       final bytes = await _loadAssetBytes(normalizedPath);
       if (bytes == null) rethrow;
       await player.setSource(BytesSource(bytes));
@@ -674,7 +871,6 @@ class GameSoundService {
   Future<Uint8List?> _loadAssetBytes(String relativePath) async {
     final normalized = _normalizeAssetRelativePath(relativePath);
     final candidates = <String>[
-      'assets/assets/$normalized',
       'assets/$normalized',
       normalized,
       relativePath.trim(),
@@ -716,6 +912,7 @@ class GameSoundService {
       _globalPointerRoute = null;
     }
     _audioPlayer.dispose();
+    _matchingSfxPlayer.dispose();
     _bgmPlayer.dispose();
     for (final player in _preloadedPlayers.values) {
       player.dispose();

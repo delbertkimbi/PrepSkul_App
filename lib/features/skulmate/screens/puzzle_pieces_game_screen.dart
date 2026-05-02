@@ -8,12 +8,15 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/game_model.dart';
+import '../models/skulmate_character_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/game_standard_widgets.dart';
 import 'game_results_screen.dart';
 
 /// Puzzle Pieces game screen
@@ -256,61 +259,44 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
 
   @override
   Widget build(BuildContext context) {
+    final placedCount = _pieces.where((p) => p.isPlaced).length;
+    final progress = _pieces.isEmpty ? 0.0 : (placedCount / _pieces.length);
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          widget.game.title,
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: SkulMateGameAppBar(
+        title: widget.game.title,
         actions: [
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Score: $_score',
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
+            padding: const EdgeInsets.only(right: 4, left: 0),
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.white.withOpacity(0.22),
+              child: ClipOval(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: const SkulMateCharacterWidget(
+                    character: SkulMateCharacters.middleMale,
+                    size: 24,
+                    animated: false,
+                    showName: false,
                   ),
                 ),
-                Text(
-                  '${_pieces.where((p) => p.isPlaced).length}/${_pieces.length}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: AppTheme.textMedium,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
       ),
       body: Column(
         children: [
-          AnimatedBuilder(
-            animation: _progressAnimation,
-            builder: (context, child) {
-              return LinearProgressIndicator(
-                value: _progressAnimation.value,
-                backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  AppTheme.primaryColor,
-                ),
-                minHeight: 6,
-              );
-            },
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: GameStandardsHud(
+              progressText: 'Placed $placedCount of ${_pieces.length}',
+              progressValue: progress.clamp(0.0, 1.0),
+              xpEarned: _xpEarned,
+              gameType: widget.game.gameType,
+            ),
           ),
           Expanded(
             child: Stack(
@@ -388,8 +374,10 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
               ],
             ),
           ),
-          if (_character != null)
-            SkulMateCharacterWidget(character: _character, size: 80),
+          const SkulMateCharacterWidget(
+            character: SkulMateCharacters.middleMale,
+            size: 80,
+          ),
         ],
       ),
     );

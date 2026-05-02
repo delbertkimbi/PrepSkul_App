@@ -11,6 +11,7 @@ import 'admin_tutor_detail_screen.dart';
 import 'admin_user_detail_screen.dart';
 import 'admin_tutor_request_detail_screen.dart';
 import 'admin_notification_diagnostics_screen.dart';
+import 'admin_recurring_quit_queue_screen.dart';
 
 /// Admin Dashboard Screen
 ///
@@ -295,6 +296,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     color: Colors.blue,
                     onTap: () {
                       Navigator.pushNamed(context, '/admin/tutor-requests');
+                    },
+                  ),
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveSpacing(
+                      context,
+                      mobile: 8,
+                      tablet: 10,
+                      desktop: 12,
+                    ),
+                  ),
+
+                  _buildActionCard(
+                    icon: PhosphorIcons.scales(),
+                    title: 'Recurring Quit Review',
+                    subtitle: 'Handle refund/intervention requests',
+                    color: const Color(0xFF8A4DFF),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminRecurringQuitQueueScreen(),
+                        ),
+                      );
                     },
                   ),
                   SizedBox(

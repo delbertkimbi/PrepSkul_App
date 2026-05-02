@@ -51,16 +51,10 @@ class SkulMateService {
       'skulmate_games_cache_updated_v1_';
 
   /// Get API base URL with smart fallback
-  /// Get API base URL (with localhost detection for local development)
-  /// Uses AppConfig.effectiveApiBaseUrl which automatically detects local development
+  /// Uses the dedicated SkulMate HTTP base, which applies web host normalization
+  /// (`app.prepskul.com` -> `www.prepskul.com`) to keep CORS/routes consistent.
   static String get _apiBaseUrl {
-    return AppConfig.effectiveApiBaseUrl;
-  }
-
-  /// Production API base URL (fallback)
-  /// Uses AppConfig for consistency with environment variables
-  static String get _productionApiBaseUrl {
-    return AppConfig.apiBaseUrl;
+    return AppConfig.skulMateHttpApiBase;
   }
 
   // Endpoint is relative to apiBaseUrl (which already includes /api)
@@ -86,6 +80,73 @@ class SkulMateService {
       // Use standard http package for mobile
       return await http.post(Uri.parse(url), headers: headers, body: body);
     }
+  }
+
+  static Map<String, dynamic> _sanitizedRequestLog(
+    Map<String, dynamic> requestBody,
+  ) {
+    final copy = Map<String, dynamic>.from(requestBody);
+    final rawFileUrl = copy['fileUrl']?.toString();
+    if (rawFileUrl != null && rawFileUrl.isNotEmpty) {
+      final uri = Uri.tryParse(rawFileUrl);
+      if (uri != null) {
+        copy['fileUrl'] = uri.replace(queryParameters: const {}).toString();
+      } else {
+        copy['fileUrl'] = '[redacted-file-url]';
+      }
+    }
+    return copy;
+  }
+
+  static bool _isTransientNetworkError(Object error) {
+    final s = error.toString().toLowerCase();
+    return s.contains('failed to fetch') ||
+        s.contains('failed host lookup') ||
+        s.contains('network is unreachable') ||
+        s.contains('connection reset') ||
+        s.contains('connection closed') ||
+        s.contains('[network]') ||
+        s.contains('[cors]') ||
+        s.contains('timeout');
+  }
+
+  static Future<http.Response> _postWithRetry({
+    required String url,
+    required Map<String, String> headers,
+    required String body,
+    int maxAttempts = 2,
+  }) async {
+    Object? lastError;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final response = await _makePostRequest(
+          url,
+          headers,
+          body,
+        ).timeout(
+          const Duration(seconds: 120),
+          onTimeout: () {
+            throw Exception(
+              'Request timeout - The request took too long to complete.\n\nPlease check your internet connection and try again. If this continues, contact support.',
+            );
+          },
+        );
+
+        // Retry once for transient server failures.
+        if (response.statusCode >= 500 && attempt < maxAttempts) {
+          await Future<void>.delayed(Duration(milliseconds: 450 * attempt));
+          continue;
+        }
+        return response;
+      } catch (e) {
+        lastError = e;
+        final shouldRetry =
+            attempt < maxAttempts && _isTransientNetworkError(e);
+        if (!shouldRetry) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 450 * attempt));
+      }
+    }
+    throw lastError ?? Exception('Request failed');
   }
 
   static Future<Map<String, dynamic>> fetchPricingUsage() async {
@@ -208,6 +269,7 @@ class SkulMateService {
     String? fileUrl,
     String? imageUrl,
     String? text,
+    String? sourceFileName,
     String? childId,
     String gameType = 'auto',
     String? difficulty,
@@ -220,6 +282,7 @@ class SkulMateService {
       fileUrl: fileUrl,
       imageUrl: imageUrl,
       text: text,
+      sourceFileName: sourceFileName,
       childId: childId,
       gameType: gameType,
       difficulty: difficulty,
@@ -234,6 +297,7 @@ class SkulMateService {
     String? fileUrl,
     String? imageUrl,
     String? text,
+    String? sourceFileName,
     String? childId,
     String gameType = 'auto',
     String? difficulty,
@@ -255,6 +319,75 @@ class SkulMateService {
           s.contains('openrouter api error');
     }
 
+    String? _readErrorCode(Map<String, dynamic>? body) {
+      if (body == null) return null;
+      final candidates = <dynamic>[
+        body['errorCode'],
+        body['error_code'],
+        body['code'],
+      ];
+      for (final c in candidates) {
+        final v = c?.toString().trim();
+        if (v != null && v.isNotEmpty) return v.toUpperCase();
+      }
+      return null;
+    }
+
+    Exception? _mapErrorCodeToException(String? code) {
+      if (code == null || code.isEmpty) return null;
+      switch (code) {
+        case 'IMAGE_PROVIDER_UNAVAILABLE':
+        case 'IMAGE_PROCESSING_UNAVAILABLE':
+          return Exception(
+            'Image processing is temporarily unavailable right now.\n\n'
+            'Please try again shortly, use "Enter text manually", or upload a DOCX/TXT/PDF file.',
+          );
+        case 'OCR_TEXT_EXTRACTION_FAILED':
+        case 'IMAGE_TEXT_NOT_READABLE':
+          return Exception(
+            'We couldn\'t read text from this file.\n\n'
+            'We can still continue: tap "Enter text manually", or upload a clearer image, or a DOCX/TXT/PDF file with readable text.',
+          );
+        case 'IMAGE_PROVIDER_QUOTA_EXCEEDED':
+        case 'GENERATION_QUOTA_EXCEEDED':
+          return Exception(
+            'Game generation service is temporarily limited.\n\n'
+            'Please try again shortly. If this continues, contact support so we can check service credits.',
+          );
+        case 'AUTH_REQUIRED':
+        case 'AUTH_INVALID':
+          return Exception('Authentication error: Please log in and try again.');
+        default:
+          return null;
+      }
+    }
+
+    dynamic decodeIfJsonString(dynamic value) {
+      if (value is! String) return value;
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return value;
+      if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return value;
+      try {
+        return jsonDecode(trimmed);
+      } catch (_) {
+        return value;
+      }
+    }
+
+    Map<String, dynamic>? asMap(dynamic value) {
+      final decoded = decodeIfJsonString(value);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return decoded.cast<String, dynamic>();
+      return null;
+    }
+
+    List<dynamic>? asList(dynamic value) {
+      final decoded = decodeIfJsonString(value);
+      if (decoded is List<dynamic>) return decoded;
+      if (decoded is List) return decoded.cast<dynamic>();
+      return null;
+    }
+
     try {
       LogService.info('🎮 [skulMate] Generating game via HTTP...');
 
@@ -269,6 +402,8 @@ class SkulMateService {
         if (imageUrl != null && fileUrl == null)
           'fileUrl': imageUrl, // Send imageUrl as fileUrl
         if (text != null) 'text': text,
+        if (sourceFileName != null && sourceFileName.isNotEmpty)
+          'sourceFileName': sourceFileName,
         'userId': userId,
         'language': LanguageService.languageCode,
         if (childId != null) 'childId': childId,
@@ -288,28 +423,23 @@ class SkulMateService {
 
       LogService.info('🎮 [skulMate] Calling API: $url');
       LogService.debug(
-        '🎮 [skulMate] Request body: ${jsonEncode(requestBody)}',
+        '🎮 [skulMate] Request body: ${jsonEncode(_sanitizedRequestLog(requestBody))}',
       );
 
-      // Make the API request
-      final httpResponse =
-          await _makePostRequest(url, {
-            'Content-Type': 'application/json',
-            if (token != null) 'Authorization': 'Bearer $token',
-          }, jsonEncode(requestBody)).timeout(
-            const Duration(
-              seconds: 120,
-            ), // 2 minutes for production (image processing can be slow)
-            onTimeout: () {
-              throw Exception(
-                'Request timeout - The request took too long to complete.\n\nPlease check your internet connection and try again. If this continues, contact support.',
-              );
-            },
-          );
+      // Make the API request (single retry for transient network/5xx failures).
+      final httpResponse = await _postWithRetry(
+        url: url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(requestBody),
+      );
 
       if (httpResponse.statusCode != 200) {
         String errorMessage = 'Unknown error';
         String errorDetails = '';
+        String? errorCode;
 
         // Check if response is HTML (error page) instead of JSON
         final responseBody = httpResponse.body.trim();
@@ -347,6 +477,7 @@ class SkulMateService {
           // Try to parse as JSON
           try {
             final jsonBody = jsonDecode(responseBody) as Map<String, dynamic>?;
+            errorCode = _readErrorCode(jsonBody);
             errorMessage =
                 jsonBody?['error'] as String? ??
                 jsonBody?['message'] as String? ??
@@ -363,6 +494,9 @@ class SkulMateService {
                 '🎮 [skulMate] API error details: $errorDetails',
               );
             }
+            if (errorCode != null && errorCode!.isNotEmpty) {
+              LogService.error('🎮 [skulMate] API error code: $errorCode');
+            }
           } catch (e) {
             LogService.error(
               '🎮 [skulMate] Failed to parse error response: $e',
@@ -377,6 +511,8 @@ class SkulMateService {
         final combinedError =
             '$errorMessage ${errorDetails.isNotEmpty ? errorDetails : ''}'
                 .toLowerCase();
+        final mappedByCode = _mapErrorCodeToException(errorCode);
+        if (mappedByCode != null) throw mappedByCode;
         if (httpResponse.statusCode == 400) {
           if (combinedError.contains('provider is temporarily unavailable') ||
               combinedError.contains('temporarily unavailable right now')) {
@@ -485,7 +621,7 @@ class SkulMateService {
           'Invalid response format.\n\nThe server returned data in an unexpected format. Please try again or contact support.',
         );
       }
-      final gameData = data['game'] as Map<String, dynamic>? ?? data;
+      final gameData = asMap(data['game']) ?? data;
 
       // Extract game ID - log if missing
       final gameId = gameData['id'] as String?;
@@ -499,12 +635,71 @@ class SkulMateService {
       }
 
       // Convert API response to GameModel
+      final itemsRaw = asList(gameData['items']) ?? const <dynamic>[];
+      final parsedItems = <GameItem>[];
+      for (final rawItem in itemsRaw) {
+        final itemMap = asMap(rawItem);
+        if (itemMap != null) {
+          parsedItems.add(GameItem.fromJson(itemMap));
+        }
+      }
+
+      // Some API responses place playable content at root/gameData level
+      // instead of inside an `items` array.
+      if (parsedItems.isEmpty) {
+        final rootPayload =
+            asMap(gameData['gameData']) ??
+            asMap(gameData['content']) ??
+            asMap(gameData['payload']) ??
+            gameData;
+        const playableKeys = {
+          'question',
+          'answer',
+          'options',
+          'choices',
+          'term',
+          'definition',
+          'pairs',
+          'words',
+          'grid',
+          'word',
+          'targetWord',
+          'letters',
+          'sentence',
+          'blank',
+          'clue',
+          'clues',
+          'room',
+          'rooms',
+          'scenario',
+          'scenarios',
+          'puzzle',
+        };
+        final hasPlayableRootContent = rootPayload.keys.any(playableKeys.contains);
+        if (hasPlayableRootContent) {
+          parsedItems.add(GameItem.fromJson(rootPayload));
+        }
+      }
+
+      final metadataMap = asMap(gameData['metadata']) ?? const <String, dynamic>{};
+
+      final gameTypeRaw = (gameData['gameType'] ?? gameData['game_type'])
+          ?.toString()
+          .trim();
+      final resolvedGameType = gameTypeRaw != null && gameTypeRaw.isNotEmpty
+          ? gameTypeRaw
+          : gameType;
+
+      final titleRaw = gameData['title']?.toString().trim();
+
       final game = GameModel(
         id: gameId ?? '',
         userId: userId,
         childId: childId,
-        title: gameData['title'] as String,
-        gameType: GameType.fromString(gameData['gameType'] as String),
+        title: (titleRaw == null || titleRaw.isEmpty)
+            ? 'Generated Game'
+            : titleRaw,
+        gameType: GameType.fromString(resolvedGameType),
         documentUrl: fileUrl ?? imageUrl,
         sourceType: fileUrl != null
             ? (fileUrl.endsWith('.pdf')
@@ -513,16 +708,14 @@ class SkulMateService {
                         ? 'docx'
                         : (fileUrl.endsWith('.txt') ? 'text' : 'image')))
             : (imageUrl != null ? 'image' : 'text'),
+        sourceFileName: sourceFileName,
+        sourceTextSnapshot: text != null && text.trim().length >= 50
+            ? text
+            : null,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
-        items:
-            (gameData['items'] as List<dynamic>?)
-                ?.map((item) => GameItem.fromJson(item as Map<String, dynamic>))
-                .toList() ??
-            [],
-        metadata: GameMetadata.fromJson(
-          gameData['metadata'] as Map<String, dynamic>? ?? {},
-        ),
+        items: parsedItems,
+        metadata: GameMetadata.fromJson(metadataMap),
       );
 
       LogService.success(
@@ -746,6 +939,8 @@ class SkulMateService {
             gameType: GameType.fromString(gameData['game_type'] as String),
             documentUrl: gameData['document_url'] as String?,
             sourceType: gameData['source_type'] as String?,
+            sourceFileName: gameData['source_file_name'] as String?,
+            sourceTextSnapshot: gameData['source_text_snapshot'] as String?,
             createdAt: DateTime.parse(gameData['created_at'] as String),
             updatedAt: DateTime.parse(gameData['updated_at'] as String),
             isDeleted: gameData['is_deleted'] as bool? ?? false,

@@ -1645,31 +1645,36 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         backgroundColor: AppTheme.backgroundColor,
         resizeToAvoidBottomInset: true,
         appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: true, // Enable back button
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
           onPressed: () async {
-            // Save progress before navigating back
+            // Save current edits and move to previous onboarding step.
+            // At step 0, route safely without using Navigator.pop() as this
+            // screen can be the root route.
             await _saveData(immediate: true);
-            if (mounted) {
-              // Check if we should go to dashboard or previous screen
-              final needsImprovement = widget.basicInfo['needsImprovement'] == true;
-              if (needsImprovement) {
-                // If editing, go back to dashboard
-                Navigator.pushReplacementNamed(context, '/tutor-nav');
-              } else {
-                // If new onboarding, go back normally
-                Navigator.of(context).pop();
-              }
+            if (!mounted) return;
+
+            if (_currentStep > 0) {
+              _previousStep();
+              return;
+            }
+
+            final needsImprovement = widget.basicInfo['needsImprovement'] == true;
+            if (needsImprovement) {
+              Navigator.pushReplacementNamed(context, '/tutor-nav');
+            } else {
+              Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
             }
           },
         ),
         title: Text(
           'Tutor Onboarding',
           style: GoogleFonts.poppins(
-            fontSize: 12,
+            fontSize: 13.5,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -1698,14 +1703,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         final isEditMode = widget.basicInfo['needsImprovement'] == true ||
                             widget.basicInfo['existingData'] != null;
                         return TextButton.icon(
-                          onPressed: _saveProgress,
+                          onPressed: _saveProgressAndExit,
                           icon: Icon(
                             isEditMode ? Icons.edit_outlined : Icons.save_outlined,
                             size: 16,
                             color: AppTheme.primaryColor,
                           ),
                           label: Text(
-                            isEditMode ? 'Save Changes' : 'Save Progress',
+                            isEditMode ? 'Save & Exit' : 'Save & Exit',
                             style: GoogleFonts.poppins(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -1915,7 +1920,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _authMethod == 'email'
               ? _buildInputField(
                   controller: _phoneController,
-                  label: 'Phone Number(WhatsApp)',
+                  label: 'Phone Number',
                   hint: '6 53 30 19 97',
                   icon: Icons.phone,
                   keyboardType: TextInputType.phone,

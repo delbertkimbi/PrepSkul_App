@@ -49,6 +49,47 @@ class NotificationHelperService {
   // Get API base URL from AppConfig (with localhost detection for local development)
   static String get _apiBaseUrl => AppConfig.effectiveApiBaseUrl;
 
+  // Guardrails to keep noisy dynamic notifications under control.
+  static const Map<String, Duration> _defaultCooldownByType = {
+    'payment_reminder': Duration(minutes: 30),
+    'session_expiring': Duration(minutes: 45),
+    'low_credits_balance': Duration(hours: 12),
+    'recurring_session_ended': Duration(hours: 6),
+  };
+
+  static Duration? _cooldownForType(String type) => _defaultCooldownByType[type];
+
+  static Future<bool> _isWithinCooldown({
+    required String userId,
+    required String type,
+    required String dedupeKey,
+    required Duration cooldown,
+  }) async {
+    try {
+      final cutoff = DateTime.now().subtract(cooldown).toIso8601String();
+      final rows = await SupabaseService.client
+          .from('notifications')
+          .select('metadata, created_at')
+          .eq('user_id', userId)
+          .eq('type', type)
+          .gte('created_at', cutoff)
+          .order('created_at', ascending: false)
+          .limit(30);
+
+      for (final row in rows as List) {
+        final metadata = row['metadata'];
+        if (metadata is Map && metadata['dedupe_key'] == dedupeKey) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      // Never block notifications if dedupe check fails.
+      LogService.warning('Notification cooldown check failed (non-blocking): $e');
+      return false;
+    }
+  }
+
   /// Send notification via API (handles in-app, push, and email)
   ///
   /// NOTIFICATION TYPES SENT:
@@ -67,10 +108,37 @@ class NotificationHelperService {
     String? actionText,
     String? icon,
     Map<String, dynamic>? metadata,
+    String? dedupeKey,
+    Duration? cooldown,
     bool sendEmail = true,
     bool sendPush =
         true, // Push notifications are always sent when API is available
   }) async {
+    final effectiveMetadata = <String, dynamic>{
+      ...(metadata ?? <String, dynamic>{}),
+    };
+    final computedDedupeKey = dedupeKey ??
+        (effectiveMetadata['dedupe_key'] as String?) ??
+        (actionUrl != null ? '$type:$actionUrl' : null);
+    if (computedDedupeKey != null && computedDedupeKey.isNotEmpty) {
+      effectiveMetadata['dedupe_key'] = computedDedupeKey;
+      final effectiveCooldown = cooldown ?? _cooldownForType(type);
+      if (effectiveCooldown != null) {
+        final throttled = await _isWithinCooldown(
+          userId: userId,
+          type: type,
+          dedupeKey: computedDedupeKey,
+          cooldown: effectiveCooldown,
+        );
+        if (throttled) {
+          LogService.info(
+            'Notification throttled: type=$type user=$userId dedupeKey=$computedDedupeKey',
+          );
+          return;
+        }
+      }
+    }
+
     // STEP 1: Always create in-app notification first (this always works)
     // This ensures users are notified even if API is unavailable
     await NotificationService.createNotification(
@@ -82,7 +150,7 @@ class NotificationHelperService {
       actionUrl: actionUrl,
       actionText: actionText,
       icon: icon,
-      metadata: metadata,
+      metadata: effectiveMetadata,
     );
 
     // STEP 2: Try to send push + email via API (optional - API might not be deployed)
@@ -103,7 +171,7 @@ class NotificationHelperService {
               'actionUrl': actionUrl,
               'actionText': actionText,
               'icon': icon,
-              'metadata': metadata,
+              'metadata': effectiveMetadata,
               'sendEmail': sendEmail,
               'sendPush': sendPush, // Explicitly include push notification flag
             }),
@@ -158,8 +226,11 @@ class NotificationHelperService {
     }
   }
 
-  /// Send SkulMate social notification (friend request, challenge, etc.) — in-app + push via API.
-  /// Same flow as friend requests: challengee gets in-app and push when challenged.
+  /// SkulMate **real-time** notifications (friend request, challenge, streak-adjacent social, etc.).
+  ///
+  /// **Policy:** Always **in-app** + **push**; **never email** for routine SkulMate social/game
+  /// events. Email is reserved for the **weekly** learning/gaming digest
+  /// ([sendSkulMateWeeklyLearningDigest]), sent ~1×/week from a server job.
   static Future<void> sendSkulmateNotification({
     required String userId,
     required String type,
@@ -179,6 +250,38 @@ class NotificationHelperService {
       metadata: data,
       sendEmail: false,
       sendPush: true,
+    );
+  }
+
+  /// Weekly SkulMate **learning + gaming progress** summary.
+  ///
+  /// **Policy:** Intended to run **at most once per week** per user (e.g. Sunday cron on
+  /// the Next.js API). Sends **email** (branded report) + **in-app** notification record.
+  /// Push is **off** by default so the channel isn’t noisy; set [sendPush] to `true` if you
+  /// want a single “Your weekly report is ready” system notification.
+  ///
+  /// The Flutter app does not schedule this; a backend job should call the same
+  /// `/api/notifications/send` payload or invoke this from tooling.
+  static Future<void> sendSkulMateWeeklyLearningDigest({
+    required String userId,
+    required String title,
+    required String message,
+    String? actionUrl,
+    String? actionText,
+    Map<String, dynamic>? metadata,
+    bool sendPush = false,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'skulmate_weekly_digest',
+      title: title,
+      message: message,
+      priority: 'normal',
+      actionUrl: actionUrl ?? '/skulmate',
+      actionText: actionText ?? 'View progress',
+      metadata: metadata,
+      sendEmail: true,
+      sendPush: sendPush,
     );
   }
 
@@ -367,6 +470,168 @@ class NotificationHelperService {
           'cancellation_reason': cancellationReason,
       },
       sendEmail: true,
+    );
+  }
+
+  /// Notify the other party when a recurring booking is ended by tutor/student/parent.
+  static Future<void> notifyRecurringSessionEnded({
+    required String recipientUserId,
+    required String recurringSessionId,
+    required String endedByName,
+    required String endedByRole, // tutor | student | parent
+    required String subject,
+    String? reason,
+    int? affectedFutureSessions,
+  }) async {
+    final roleLabel = endedByRole == 'tutor'
+        ? 'Tutor'
+        : endedByRole == 'parent'
+            ? 'Parent'
+            : 'Student';
+    final trimmedReason = reason?.trim();
+    final reasonText =
+        (trimmedReason != null && trimmedReason.isNotEmpty) ? ' Reason: $trimmedReason' : '';
+    final affectedText = affectedFutureSessions != null
+        ? ' $affectedFutureSessions upcoming session${affectedFutureSessions == 1 ? '' : 's'} will no longer be available.'
+        : '';
+
+    await _sendNotificationViaAPI(
+      userId: recipientUserId,
+      type: 'recurring_session_ended',
+      title: 'Recurring Booking Ended',
+      message:
+          '$roleLabel $endedByName ended this recurring booking for $subject.$affectedText$reasonText',
+      priority: 'high',
+      actionUrl: '/sessions',
+      actionText: 'View Sessions',
+      icon: '🛑',
+      metadata: {
+        'recurring_session_id': recurringSessionId,
+        'ended_by_name': endedByName,
+        'ended_by_role': endedByRole,
+        'subject': subject,
+        if (trimmedReason != null && trimmedReason.isNotEmpty) 'reason': trimmedReason,
+        if (affectedFutureSessions != null)
+          'affected_future_sessions': affectedFutureSessions,
+      },
+      sendEmail: true,
+      sendPush: true,
+    );
+  }
+
+  /// Notify admins when a recurring booking quit includes refund/intervention request.
+  static Future<void> notifyAdminsAboutRecurringQuitRequest({
+    required String recurringSessionId,
+    required String actorUserId,
+    required String actorName,
+    required String actorRole,
+    required String subject,
+    required String requestedOutcome, // complete_paid_sessions | admin_refund_review
+    String? reason,
+    int? paidSessionsRemaining,
+  }) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final adminResponse = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('is_admin', true);
+
+      if (adminResponse.isEmpty) return;
+
+      final reasonText =
+          (reason != null && reason.trim().isNotEmpty) ? ' Reason: ${reason.trim()}' : '';
+      final paidText = paidSessionsRemaining != null
+          ? ' Paid upcoming sessions: $paidSessionsRemaining.'
+          : '';
+      final outcomeText = requestedOutcome == 'admin_refund_review'
+          ? 'requested admin refund/intervention review'
+          : 'requested to complete already paid sessions only';
+
+      for (final admin in adminResponse as List) {
+        final adminId = admin['id'] as String;
+        await _sendNotificationViaAPI(
+          userId: adminId,
+          type: 'recurring_quit_admin_review',
+          title: 'Recurring Quit Needs Review',
+          message:
+              '$actorRole $actorName ($actorUserId) $outcomeText for $subject.$paidText$reasonText',
+          priority: 'high',
+          actionUrl: '/admin/sessions/$recurringSessionId',
+          actionText: 'Review Case',
+          icon: '🧾',
+          metadata: {
+            'recurring_session_id': recurringSessionId,
+            'actor_user_id': actorUserId,
+            'actor_name': actorName,
+            'actor_role': actorRole,
+            'subject': subject,
+            'requested_outcome': requestedOutcome,
+            if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+            if (paidSessionsRemaining != null)
+              'paid_sessions_remaining': paidSessionsRemaining,
+          },
+          sendEmail: true,
+          sendPush: true,
+        );
+      }
+    } catch (e) {
+      LogService.warning('Error notifying admins about recurring quit request: $e');
+    }
+  }
+
+  /// Notify tutor/learner/parent with the admin decision on recurring quit case.
+  static Future<void> notifyRecurringQuitDecision({
+    required String recipientUserId,
+    required String recurringSessionId,
+    required String decision, // approve_refund_review | continue_paid_only | decline_refund_request
+    String? note,
+  }) async {
+    String title;
+    String message;
+    String priority = 'high';
+
+    switch (decision) {
+      case 'approve_refund_review':
+        title = 'Recurring Quit Review Approved';
+        message =
+            'Admin approved your recurring quit refund/intervention review request. Our team will follow up.';
+        break;
+      case 'continue_paid_only':
+        title = 'Recurring Quit Decision Updated';
+        message =
+            'Admin set this case to continue already paid sessions while stopping unpaid ones.';
+        break;
+      case 'decline_refund_request':
+        title = 'Recurring Quit Refund Request Declined';
+        message =
+            'Admin declined the refund/intervention request for this recurring quit case.';
+        break;
+      default:
+        title = 'Recurring Quit Decision';
+        message = 'Admin updated your recurring quit request.';
+    }
+
+    if (note != null && note.trim().isNotEmpty) {
+      message = '$message Note: ${note.trim()}';
+    }
+
+    await _sendNotificationViaAPI(
+      userId: recipientUserId,
+      type: 'recurring_quit_decision',
+      title: title,
+      message: message,
+      priority: priority,
+      actionUrl: '/sessions',
+      actionText: 'View Sessions',
+      icon: '✅',
+      metadata: {
+        'recurring_session_id': recurringSessionId,
+        'decision': decision,
+        if (note != null && note.trim().isNotEmpty) 'admin_note': note.trim(),
+      },
+      sendEmail: true,
+      sendPush: true,
     );
   }
 
@@ -918,6 +1183,8 @@ class NotificationHelperService {
         'amount': amount,
         'currency': currency,
       },
+      dedupeKey: 'payment_reminder:$sessionId:$reminderType',
+      cooldown: const Duration(minutes: 30),
       sendEmail: true,
       sendPush: reminderType == '2_hours', // Push only for urgent reminders
     );
@@ -946,6 +1213,8 @@ class NotificationHelperService {
         'session_type': sessionType,
         'session_start': sessionStart.toIso8601String(),
       },
+      dedupeKey: 'session_expiring:$sessionId',
+      cooldown: const Duration(hours: 2),
       sendEmail: true,
       sendPush: true,
     );
@@ -2058,6 +2327,10 @@ class NotificationHelperService {
         'threshold': threshold,
         if (paymentRequestId != null) 'payment_request_id': paymentRequestId,
       },
+      dedupeKey: paymentRequestId != null
+          ? 'low_credits:$paymentRequestId'
+          : 'low_credits:$userId:${threshold.toStringAsFixed(0)}',
+      cooldown: const Duration(hours: 12),
       sendEmail: true,
       sendPush: false,
     );

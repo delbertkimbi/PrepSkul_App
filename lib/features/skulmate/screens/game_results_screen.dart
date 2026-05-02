@@ -15,6 +15,10 @@ import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
 import 'package:prepskul/core/services/whatsapp_support_service.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_companion_banner.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
+import '../widgets/skulmate_surface_styles.dart';
 import 'game_library_screen.dart';
 import 'quiz_game_screen.dart';
 
@@ -69,8 +73,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
     _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _scaleController, curve: Curves.elasticOut),
     );
-    _soundService.initialize();
-    unawaited(_soundService.playResultsMusic());
+    unawaited(_startResultsMusicSafely());
     _loadStats();
     _loadCharacter();
     if (widget.isPerfectScore) {
@@ -85,9 +88,33 @@ class _GameResultsScreenState extends State<GameResultsScreen>
     });
   }
 
+  Future<void> _startResultsMusicSafely() async {
+    await _soundService.initialize();
+    if (!mounted) return;
+    // Route replacement disposals can call stopMusic slightly after this screen
+    // is created; retry once after a short delay so results BGM always starts.
+    await _soundService.playResultsMusic();
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 220), () async {
+        if (!mounted) return;
+        await _soundService.playResultsMusic();
+      }),
+    );
+  }
+
   Future<void> _loadCharacter() async {
     final character = await CharacterSelectionService.getSelectedCharacter();
     if (mounted) safeSetState(() => _character = character);
+  }
+
+  String _companionMessageForScore(int percentage) {
+    if (percentage >= 90) {
+      return 'Legendary work. Keep this pace and you will master this topic quickly.';
+    }
+    if (percentage >= 70) {
+      return 'Strong run! Review the weak spots below and you will level up fast.';
+    }
+    return 'Nice effort. Let us review the tricky parts and bounce back stronger.';
   }
 
   @override
@@ -145,6 +172,39 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.softCard,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.softBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: SkulMateMascotMediaWidget(
+                              state: SkulMateMascotState.neutral,
+                              useLandscapeFrame: false,
+                              borderRadius: 999,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'SkulMate team would love your quick feedback.',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: AppTheme.textMedium,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     Text(
                       'How was your first SkulMate game experience?',
                       style: GoogleFonts.poppins(fontSize: 13),
@@ -216,20 +276,20 @@ class _GameResultsScreenState extends State<GameResultsScreen>
   @override
   Widget build(BuildContext context) {
     final percentage = (widget.score / widget.totalQuestions * 100).round();
+    final companionTone = percentage >= 70
+        ? CompanionTone.success
+        : CompanionTone.tip;
+    final (toneStart, toneEnd) = companionTone == CompanionTone.success
+        ? (AppTheme.accentGreen, AppTheme.skyBlue)
+        : (AppTheme.primaryColor, AppTheme.skyBlue);
     final timeText = widget.timeTakenSeconds != null
         ? '${widget.timeTakenSeconds! ~/ 60}:${(widget.timeTakenSeconds! % 60).toString().padLeft(2, '0')}'
         : 'N/A';
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        title: Text(
-          'Game complete!',
-          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white ),
-        ),
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
+      appBar: SkulMateGameAppBar(
+        title: 'Game complete!',
         leading: widget.fromGenerationFlow
             ? IconButton(
                 icon: const Icon(Icons.close),
@@ -251,8 +311,9 @@ class _GameResultsScreenState extends State<GameResultsScreen>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  AppTheme.primaryColor.withOpacity(0.12),
-                  AppTheme.accentPurple.withOpacity(0.08),
+                  toneStart.withValues(alpha: 0.14),
+                  toneEnd.withValues(alpha: 0.09),
+                  toneEnd.withValues(alpha: 0.05),
                   AppTheme.softBackground,
                 ],
                 begin: Alignment.topCenter,
@@ -261,141 +322,59 @@ class _GameResultsScreenState extends State<GameResultsScreen>
             ),
           ),
           SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppTheme.primaryColor,
-                        AppTheme.skyBlue,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.textDark.withOpacity(0.16),
-                        blurRadius: 12,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      if (_character != null)
-                        ScaleTransition(
-                          scale: _scaleAnimation,
-                          child: ClipOval(
-                            child: Container(
-                              width: 64,
-                              height: 64,
-                              color: Colors.white.withOpacity(0.16),
-                              child: Center(
-                                child: SkulMateCharacterWidget(
-                                  character: _character,
-                                  size: 52,
-                                  animated: true,
-                                  showName: false,
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        const Icon(Icons.videogame_asset_rounded,
-                            color: Colors.white, size: 52),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.game.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.isPerfectScore
-                                  ? 'Legendary run! 🏆'
-                                  : percentage >= 70
-                                      ? 'Great job! Keep it going.'
-                                      : 'Nice try — next round will be better.',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.white.withOpacity(0.92),
-                              ),
-                            ),
-                            if (_character != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  _characterShortName(_character),
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    color: Colors.white.withOpacity(0.92),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
+                ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: SkulMateCompanionBanner(
+                    tone: companionTone,
+                    label: widget.game.title,
+                    message: widget.isPerfectScore
+                        ? 'Legendary run! Keep the streak alive.'
+                        : percentage >= 70
+                            ? 'Great job! Keep it going.'
+                            : 'Nice try - next round will be better.',
+                    celebrate: percentage >= 90,
+                    useBrandMascot: _character == null,
+                    character: _character,
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 6),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.textDark.withOpacity(0.08),
-                        blurRadius: 10,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 18),
                   child: Column(
                     children: [
                       Text(
                         '$percentage%',
                         style: GoogleFonts.poppins(
-                          fontSize: 34,
+                          fontSize: 44,
                           fontWeight: FontWeight.w800,
                           color: AppTheme.primaryColor,
+                          height: 1.05,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${widget.score}/${widget.totalQuestions} correct',
                         style: GoogleFonts.poppins(
-                          fontSize: 13,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
                           color: AppTheme.textMedium,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(6),
                         child: LinearProgressIndicator(
                           value: widget.totalQuestions > 0
                               ? widget.score / widget.totalQuestions
                               : 0,
-                          minHeight: 8,
-                          backgroundColor: AppTheme.softBorder.withOpacity(0.7),
+                          minHeight: 10,
+                          backgroundColor: AppTheme.softBorder.withValues(alpha: 0.7),
                           valueColor: AlwaysStoppedAnimation<Color>(
                             percentage >= 70
                                 ? AppTheme.softYellow
@@ -406,7 +385,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final cards = <Widget>[
@@ -422,15 +401,15 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       crossAxisCount: 2,
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: 1.9,
+                      mainAxisSpacing: 6,
+                      crossAxisSpacing: 6,
+                      childAspectRatio: 1.75,
                       children: cards,
                     );
                   },
                 ),
                 if (widget.questionBreakdown.isNotEmpty) ...[
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -442,17 +421,17 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   _buildQuestionList(
                     widget.questionBreakdown.where((q) => !q.isCorrect).toList(),
                     emptyLabel: 'No weak spots in this round – great job.',
                     accentColor: AppTheme.skyBlue,
                   ),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 if (widget.game.gameType == GameType.quiz && !widget.isPerfectScore)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.only(bottom: 8),
                     child: SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -561,11 +540,10 @@ class _GameResultsScreenState extends State<GameResultsScreen>
 
   Widget _buildCompactStat(String label, String value, IconData icon) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: SkulMateSurfaceStyles.neumorphicCard(
         color: AppTheme.softCard,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.softBorder),
+        radius: 12,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -573,23 +551,25 @@ class _GameResultsScreenState extends State<GameResultsScreen>
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: AppTheme.primaryColor),
+              Icon(icon, size: 18, color: AppTheme.primaryColor),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  color: AppTheme.textMedium,
+              Expanded(
+                child: Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.textMedium,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
               color: AppTheme.textDark,
             ),
           ),

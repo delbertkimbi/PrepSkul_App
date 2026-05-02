@@ -112,7 +112,9 @@ class PushNotificationService {
 
           // Listen for token refresh
           _firebaseMessaging.onTokenRefresh.listen((newToken) {
-            LogService.info('FCM token refreshed: $newToken');
+            LogService.info(
+              'FCM token refreshed (length ${newToken.length})',
+            );
             _updateTokenInDatabase(newToken);
           });
 
@@ -154,7 +156,9 @@ class PushNotificationService {
           return null;
         });
         _firebaseMessaging.onTokenRefresh.listen((newToken) {
-          LogService.info('FCM token refreshed: $newToken');
+          LogService.info(
+            'FCM token refreshed (length ${newToken.length})',
+          );
           _updateTokenInDatabase(newToken);
         });
       }
@@ -442,7 +446,9 @@ class PushNotificationService {
 
       // Listen for token refresh
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
-        LogService.info('FCM token refreshed: $newToken');
+        LogService.info(
+          'FCM token refreshed (length ${newToken.length})',
+        );
         _updateTokenInDatabase(newToken);
       });
 

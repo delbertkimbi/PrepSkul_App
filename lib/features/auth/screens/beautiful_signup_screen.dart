@@ -5,7 +5,10 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
 class BeautifulSignupScreen extends StatefulWidget {
@@ -26,6 +29,11 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
   String? _selectedRole;
   bool _isLoading = false;
 
+  String _phoneAliasEmail(String phoneNumber) {
+    final digitsOnly = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
+    return 'p$digitsOnly@phone.prepskul.local';
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
@@ -35,7 +43,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // Curved wave background at top
+          // Curved gradient hero header
           Positioned(
             top: 0,
             left: 0,
@@ -43,7 +51,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
             child: ClipPath(
               clipper: WaveClipper(),
               child: Container(
-                height: 200,
+                height: 190,
                 decoration: const BoxDecoration(
                   gradient: AppTheme.headerGradient,
                 ),
@@ -55,18 +63,18 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Header content inside the wave
+                // Header content
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 20.0),
+                  padding: const EdgeInsets.fromLTRB(24.0, 22.0, 24.0, 18.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 15),
+                      const SizedBox(height: 10),
                       Center(
                         child: Text(
                           t.authSignUpTitle,
                           style: GoogleFonts.poppins(
-                            fontSize: 32,
+                            fontSize: 30,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                           ),
@@ -95,7 +103,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 22),
                         // Form
                         Form(
                           key: _formKey,
@@ -629,28 +637,111 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
     safeSetState(() => _isLoading = true);
 
     try {
-      // Send OTP via Supabase
-      await SupabaseService.sendPhoneOTP(phoneNumber);
+      // Always verify phone number is not already attributed to an existing account.
+      final matchingProfiles = await SupabaseService.client
+          .from('profiles')
+          .select('id')
+          .eq('phone_number', phoneNumber)
+          .limit(2);
 
-      // Navigate to OTP verification screen
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => OTPVerificationScreen(
-              phoneNumber: phoneNumber,
-              fullName: _nameController.text.trim(),
-              userRole: _selectedRole!,
+      if (matchingProfiles.isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'This phone number is already linked to another account. Please log in instead.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: AppTheme.primaryColor,
             ),
-          ),
+          );
+        }
+        return;
+      }
+
+      // Toggle OTP flow from AppConfig.
+      if (AppConfig.enablePhoneOtpVerification) {
+        await SupabaseService.sendPhoneOTP(phoneNumber);
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => OTPVerificationScreen(
+                phoneNumber: phoneNumber,
+                fullName: _nameController.text.trim(),
+                userRole: _selectedRole!,
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Password-based phone signup (no OTP): use deterministic email alias
+      // to avoid Supabase phone OTP requirement for phone sign-up.
+      final phoneAliasEmail = _phoneAliasEmail(phoneNumber);
+      final response = await SupabaseService.client.auth.signUp(
+        email: phoneAliasEmail,
+        password: _passwordController.text,
+        data: {
+          'full_name': _nameController.text.trim(),
+          'phone_number': phoneNumber,
+        },
+      );
+
+      // Ensure we have an active Supabase session before saving local session.
+      // Otherwise NavigationService will clear local auth and bounce to auth screen.
+      if (response.session == null && SupabaseService.currentUser == null) {
+        await SupabaseService.client.auth.signInWithPassword(
+          email: phoneAliasEmail,
+          password: _passwordController.text,
         );
+      }
+
+      final user = SupabaseService.currentUser ?? response.user;
+      if (user == null) {
+        throw Exception('Could not create account');
+      }
+
+      await SupabaseService.client.from('profiles').upsert({
+        'id': user.id,
+        'full_name': _nameController.text.trim(),
+        'phone_number': phoneNumber,
+        'user_type': _selectedRole!,
+      });
+
+      await AuthService.saveSession(
+        userId: user.id,
+        userRole: _selectedRole!,
+        phone: phoneNumber,
+        fullName: _nameController.text.trim(),
+        surveyCompleted: false,
+        rememberMe: true,
+      );
+
+      if (mounted) {
+        final navService = NavigationService();
+        if (navService.isReady) {
+          final routeResult = await navService.determineInitialRoute();
+          await navService.navigateToRoute(
+            routeResult.route,
+            arguments: routeResult.arguments,
+            replace: true,
+          );
+        } else {
+          Navigator.pushReplacementNamed(
+            context,
+            '/profile-setup',
+            arguments: {'userRole': _selectedRole},
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Failed to send verification code. Please check your phone number.',
+              AuthService.parseAuthError(e),
               style: GoogleFonts.poppins(),
             ),
             backgroundColor: AppTheme.primaryColor,

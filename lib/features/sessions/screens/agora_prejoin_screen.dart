@@ -170,7 +170,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     });
   }
 
-  /// Request permissions via custom UI (like Google Meet)
+  /// Request permissions via custom in-app UI
   Future<void> _requestPermissions() async {
     setState(() {
       _isLoading = true;
@@ -354,7 +354,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     );
   }
 
-  /// Build permission request dialog (Google Meet style)
+  /// Build permission request dialog (PrepSkul in-app)
   Widget _buildPermissionDialog() {
     if (!_showPermissionDialog) return const SizedBox.shrink();
 
@@ -428,7 +428,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                       child: Text(
                         'Cancel',
                         style: GoogleFonts.poppins(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey[600],
                         ),
@@ -464,7 +464,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                                   ? 'Open Settings'
                                   : 'Allow',
                               style: GoogleFonts.poppins(
-                                fontSize: 16,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white,
                               ),
@@ -543,10 +543,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                           icon: _micEnabled ? Icons.mic : Icons.mic_off,
                           label: _micEnabled ? 'Mic on' : 'Mic off',
                           isActive: _micEnabled,
-                          onTap: () {
-                            setState(() {
-                              _micEnabled = !_micEnabled;
-                            });
+                          onTap: () async {
+                            setState(() => _micEnabled = !_micEnabled);
+                            if (_previewStarted) {
+                              await _agoraService.setPreJoinMicEnabled(_micEnabled);
+                            }
                           },
                         ),
                         const SizedBox(width: 16),
@@ -621,10 +622,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                           icon: _micEnabled ? Icons.mic : Icons.mic_off,
                           label: _micEnabled ? 'Mic on' : 'Mic off',
                           isActive: _micEnabled,
-                          onTap: () {
-                            setState(() {
-                              _micEnabled = !_micEnabled;
-                            });
+                          onTap: () async {
+                            setState(() => _micEnabled = !_micEnabled);
+                            if (_previewStarted) {
+                              await _agoraService.setPreJoinMicEnabled(_micEnabled);
+                            }
                           },
                         ),
                         const SizedBox(width: 16),
@@ -801,20 +803,20 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             padding: const EdgeInsets.all(10),
             margin: const EdgeInsets.only(bottom: 10),
             decoration: BoxDecoration(
-              color: Colors.orange[50],
+              color: AppTheme.softYellowLight.withOpacity(0.55),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange),
+              border: Border.all(color: AppTheme.softYellow),
             ),
             child: Row(
               children: [
-                Icon(Icons.warning, color: Colors.orange[700], size: 18),
+                const Icon(Icons.warning_amber_rounded, color: AppTheme.softYellow, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _errorMessage!,
                     style: GoogleFonts.poppins(
                       fontSize: 11,
-                      color: Colors.orange[900],
+                      color: AppTheme.primaryDark,
                     ),
                   ),
                 ),
@@ -865,10 +867,10 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             ? 'Fair – you can join'
             : 'Poor – try moving closer to your router';
     final color = q == 'good'
-        ? Colors.green[700]
+        ? AppTheme.success
         : q == 'fair'
-            ? Colors.orange[700]
-            : Colors.red[700];
+            ? AppTheme.softYellow
+            : AppTheme.error;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -892,7 +894,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           label,
           style: GoogleFonts.poppins(
             fontSize: 12,
-            color: Colors.grey[600],
+            color: AppTheme.neutral600,
           ),
         ),
         if (!_isTestingConnection) ...[
@@ -938,12 +940,19 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 48),
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: AppTheme.softYellow,
+                        size: 48,
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         _previewError!,
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(color: Colors.grey[700], fontSize: 14),
+                        style: GoogleFonts.poppins(
+                          color: AppTheme.neutral700,
+                          fontSize: 14,
+                        ),
                       ),
                     ],
                   ),

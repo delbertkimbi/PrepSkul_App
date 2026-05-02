@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../widgets/generation_context_sheet.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
 import '../models/game_stats_model.dart';
 import '../services/game_stats_service.dart';
 import '../services/game_sound_service.dart';
@@ -17,7 +18,16 @@ class GameSetupFlowScreen extends StatefulWidget {
 
 class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
   static const int _totalSteps = 3;
-  static const Set<String> _comingSoonGameTypes = {'diagram_label'};
+  static const Set<String> _comingSoonGameTypes = {
+    'diagram_label',
+    'match3',
+    'bubble_pop',
+    'word_search',
+    'crossword',
+    'simulation',
+    'mystery',
+    'escape_room',
+  };
   int _currentStep = 0;
 
   final TextEditingController _topicController = TextEditingController();
@@ -140,9 +150,23 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
       showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(
-            'Coming soon',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+          title: Row(
+            children: [
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: SkulMateMascotMediaWidget(
+                  state: SkulMateMascotState.encouraging,
+                  useLandscapeFrame: false,
+                  borderRadius: 999,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Coming soon',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+              ),
+            ],
           ),
           content: Text(
             '$label is not available yet. Please choose another game type.',
@@ -162,6 +186,9 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
   }
 
   Color _gameTypeIconColor(String value) {
+    if (_comingSoonGameTypes.contains(value)) {
+      return const Color(0xFF9CA3AF);
+    }
     switch (value) {
       case 'auto':
         return AppTheme.primaryColor;
@@ -461,13 +488,15 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
           itemBuilder: (context, index) {
             final option = _gameTypeOptions[index];
             final value = option['value'] as String;
+            final inactive = _comingSoonGameTypes.contains(value);
             return _GameTypeCard(
               value: value,
               label: option['label'] as String,
-              subtitle: option['subtitle'] as String,
+              subtitle: inactive ? 'Coming soon' : option['subtitle'] as String,
               icon: option['icon'] as IconData,
               iconColor: _gameTypeIconColor(value),
               isSelected: _gameType == value,
+              isInactive: inactive,
               onTap: () => _onSelectGameType(value),
             );
           },
@@ -550,6 +579,7 @@ class _GameTypeCard extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final bool isSelected;
+  final bool isInactive;
   final VoidCallback onTap;
 
   const _GameTypeCard({
@@ -559,6 +589,7 @@ class _GameTypeCard extends StatelessWidget {
     required this.icon,
     required this.iconColor,
     required this.isSelected,
+    required this.isInactive,
     required this.onTap,
   });
 
@@ -572,11 +603,13 @@ class _GameTypeCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isInactive ? const Color(0xFFF3F4F6) : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? iconColor : AppTheme.softBorder,
-              width: isSelected ? 2 : 1,
+              color: isInactive
+                  ? const Color(0xFFD1D5DB)
+                  : (isSelected ? iconColor : AppTheme.softBorder),
+              width: isInactive ? 1 : (isSelected ? 2 : 1),
             ),
           ),
           child: Column(
@@ -585,7 +618,7 @@ class _GameTypeCard extends StatelessWidget {
               Icon(
                 icon,
                 size: 32,
-                color: iconColor,
+                color: isInactive ? const Color(0xFF9CA3AF) : iconColor,
               ),
               const SizedBox(height: 8),
               Text(
@@ -593,7 +626,7 @@ class _GameTypeCard extends StatelessWidget {
                 style: GoogleFonts.poppins(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
+                  color: isInactive ? const Color(0xFF6B7280) : AppTheme.textDark,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -602,7 +635,7 @@ class _GameTypeCard extends StatelessWidget {
                 subtitle,
                 style: GoogleFonts.poppins(
                   fontSize: 11,
-                  color: AppTheme.textMedium,
+                  color: isInactive ? const Color(0xFF9CA3AF) : AppTheme.textMedium,
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 1,
