@@ -166,9 +166,11 @@ flutter:
     - assets/characters/mascots/thinking.png
     - assets/characters/mascots/encouraging.png
     - assets/characters/mascots/celebration.png
-    # KYC status mascots (explicit paths — subfolder assets under images/ can be omitted on some builds)
-    - assets/images/kyc/kyc_pending.png
+    # KYC flow mascots (explicit paths — subfolder assets under images/ can be omitted on some builds)
+    - assets/images/kyc/kyc_intro.png
     - assets/images/kyc/kyc_submitted.png
+    - assets/images/kyc/kyc_pending.png
+    - assets/images/kyc/kyc_rejected.png
     - assets/characters/animations/Neutral.mp4
     - assets/characters/animations/Think.mp4
     - assets/characters/animations/Encouraging.mp4

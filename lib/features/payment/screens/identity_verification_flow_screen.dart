@@ -340,13 +340,21 @@ class _IdentityVerificationFlowScreenState
   }
 
   Widget _buildIntroStep() {
+    final wasRejected =
+        _rejectionReason != null && _rejectionReason!.trim().isNotEmpty;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_rejectionReason != null && _rejectionReason!.isNotEmpty)
-            _buildRejectedBanner(),
+          KycMascotIllustration(
+            variant: wasRejected
+                ? KycMascotVariant.rejected
+                : KycMascotVariant.intro,
+          ),
+          const SizedBox(height: 16),
+          if (wasRejected) _buildRejectedBanner(),
           _buildStepEyebrow('What you\'ll need'),
           const SizedBox(height: 8),
           Text(

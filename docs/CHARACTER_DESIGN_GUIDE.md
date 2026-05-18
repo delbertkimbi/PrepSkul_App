@@ -1,8 +1,13 @@
 # skulMate Character Design Guide
 
+## PrepSkul brand bear vs SkulMate learner characters
+
+- **Friendly bear** — single PrepSkul platform mascot (KYC, payments, companion HUD, trust moments). Image prompts: `docs/MASCOT_IMAGE_PROMPTS.md`.
+- **Six learner avatars below** — optional human characters kids pick inside SkulMate games only. Do not replace the bear.
+
 ## Current Status
 
-**Important**: The character system is code-only. No visual designs have been created yet. The system is structured to accept character images once they're designed.
+**Important**: The learner character system is code-only. No visual designs have been created yet. The system is structured to accept character images once they're designed.
 
 ## Character Appearance
 

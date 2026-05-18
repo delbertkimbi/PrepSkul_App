@@ -102,7 +102,7 @@ All recurring Pay entry points call `PaymentNavigationHelper.openPayFlow` → `P
 
 **Code:** `payment_gate_service.dart`, `identity_verification_flow_screen.dart`, `kyc_verification_service.dart`, `payment_navigation_helper.dart`.
 
-**Illustration assets** (optional, `assets/images/kyc/`): flat 2D PrepSkul cat mascot, deep blue `#1B2C4F`, no text — `kyc_intro.png`, `kyc_whose_id.png`, `kyc_upload.png`, `kyc_pending.png` (see plan prompts).
+**Illustration assets** (optional, `assets/images/kyc/`): friendly PrepSkul **bear** mascot — `kyc_intro.png`, `kyc_submitted.png`, `kyc_pending.png`, `kyc_rejected.png`. Prompts: `docs/MASCOT_IMAGE_PROMPTS.md`. No heroes on whose-ID or upload steps.
 
 ---
 
