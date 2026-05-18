@@ -13,6 +13,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_tts
   geolocator_windows
   iris_method_channel
+  pdfx
   share_plus
   url_launcher_windows
 )

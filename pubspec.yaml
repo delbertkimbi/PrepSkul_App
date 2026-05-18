@@ -72,6 +72,7 @@ dependencies:
   url_launcher: ^6.2.5
   youtube_player_flutter: ^9.0.3
   agora_rtc_engine: ^6.3.0  # Agora RTC SDK for live video sessions
+  pointer_interceptor: ^0.10.1+2  # Keeps call chrome above web platform views
 
   # Local Storage
   shared_preferences: ^2.2.2
@@ -116,6 +117,7 @@ dependencies:
   games_services: ^5.0.0
   video_player: ^2.10.1
   pdf: ^3.12.0
+  pdfx: ^2.9.2
 
 dev_dependencies:
   flutter_test:
@@ -164,6 +166,9 @@ flutter:
     - assets/characters/mascots/thinking.png
     - assets/characters/mascots/encouraging.png
     - assets/characters/mascots/celebration.png
+    # KYC status mascots (explicit paths — subfolder assets under images/ can be omitted on some builds)
+    - assets/images/kyc/kyc_pending.png
+    - assets/images/kyc/kyc_submitted.png
     - assets/characters/animations/Neutral.mp4
     - assets/characters/animations/Think.mp4
     - assets/characters/animations/Encouraging.mp4

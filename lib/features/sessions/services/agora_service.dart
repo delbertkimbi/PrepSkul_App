@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert'; // For UTF-8 encoding/decoding of emojis
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:prepskul/core/config/app_config.dart';
@@ -15,6 +16,7 @@ import 'package:prepskul/features/sessions/domain/reconnect_grace_policy.dart';
 import 'package:prepskul/features/sessions/domain/stream_priority_policy.dart';
 import 'package:prepskul/features/sessions/domain/network_quality_combine.dart';
 import 'package:prepskul/features/sessions/services/qoe_telemetry_service.dart';
+import 'package:prepskul/features/sessions/services/session_mode_statistics_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Agora RTC Service
@@ -56,6 +58,7 @@ class AgoraService {
       const StreamPriorityPolicy();
   final Set<int> _remoteParticipantUids = <int>{};
   int? _spotlightRemoteUid;
+
   /// Gallery-only: pinned tile requests HIGH dual-stream alongside speaker spotlight.
   int? _dualStreamPinnedRemoteUid;
 
@@ -64,6 +67,12 @@ class AgoraService {
   String?
   _currentQualityTier; // Track current quality tier: '1080p', '720p', '480p'
   String? _qoeCorrelationId;
+  final SessionModeStatisticsService _talkStats =
+      SessionModeStatisticsService();
+
+  /// Live speaking-time estimates from volume indication (best-effort, tutor UX).
+  SessionTalkTimeSnapshot get talkTimeSnapshot => _talkStats.snapshot();
+
   bool _reconnectTelemetryActive = false;
   final Map<int, DateTime> _freezeStartedAt = <int, DateTime>{};
   final Map<int, VideoStreamType> _lastAppliedRemoteStreamType =
@@ -105,6 +114,8 @@ class AgoraService {
   // Screen sharing state (so we don't double-start and can reset UI on cancel)
   bool _isPublishingScreen = false;
   int? _screenShareOwnerUid;
+  DateTime _screenShareOwnerLockUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _kScreenShareStopGuard = Duration(milliseconds: 900);
   bool get isPublishingScreen => _isPublishingScreen;
   int? get screenShareOwnerUid => _screenShareOwnerUid;
 
@@ -122,6 +133,9 @@ class AgoraService {
   final _userOfflineController = StreamController<int>.broadcast();
   final _connectionStateController =
       StreamController<ConnectionStateType>.broadcast();
+
+  /// Latest value from [onConnectionStateChanged] (for UI that opens before the next stream tick).
+  ConnectionStateType? _lastRtcConnectionState;
   final _errorController = StreamController<String>.broadcast();
 
   // Remote state tracking streams
@@ -167,23 +181,74 @@ class AgoraService {
       >.broadcast(); // {uid: int, screenOff: bool}
   /// UIDs currently speaking (volume above threshold). Used for talking indicator UI.
   final _speakingController = StreamController<Set<int>>.broadcast();
+  final _preJoinMicLevelController = StreamController<double>.broadcast();
+
   Stream<Set<int>> get speakingStream => _speakingController.stream;
-  static const int _speakingVolumeThreshold = 25;
+
+  /// Normalized approximate level (0–1) for **pre-channel** microphone feedback UI.
+  Stream<double> get preJoinMicLevelStream => _preJoinMicLevelController.stream;
+
+  /// Smoothed 0–1 level for **in-channel** local mic UI (dock wave without full `setState` storms).
+  final _inCallLocalMicLevelController = StreamController<double>.broadcast();
+
+  Stream<double> get inCallLocalMicLevelStream =>
+      _inCallLocalMicLevelController.stream;
+
+  double _smoothedInCallLocalMicLevel = 0;
+  static const double _kInCallMicLevelSmooth = 0.38;
+
+  /// Web browsers often report lower peak volumes; tune separately from native.
+  int get _effectiveSpeakingVolumeThreshold => kIsWeb ? 10 : 25;
+  static const int _mutedMicHintVolumeThreshold = 58;
+  static const int _mutedMicHintRequiredSamples = 3;
 
   /// Volume briefly crosses threshold while [isAudioEnabled] is false (mic muted in PrepSkul).
   DateTime? _lastMutedMicSpeechHintAt;
-  static const Duration _mutedMicSpeechHintCooldown = Duration(seconds: 12);
+  static const Duration _mutedMicSpeechHintCooldown = Duration(seconds: 24);
+  int _mutedMicHotSampleCount = 0;
+  DateTime? _lastMutedMicHotSampleAt;
   final _mutedMicSpeechHintController = StreamController<void>.broadcast();
 
   /// Hint when Agora reports local speech energy but the mic is muted (single listener shows SnackBar).
   Stream<void> get mutedMicSpeechHintStream =>
       _mutedMicSpeechHintController.stream;
 
+  /// First capturing/encoding signal for the **camera** stream this session (not screen share).
+  final _localCameraPublishingSignalController =
+      StreamController<void>.broadcast();
+
+  /// Stream emits once when Agora reports local camera capturing or encoding.
+  Stream<void> get localCameraPublishingSignalStream =>
+      _localCameraPublishingSignalController.stream;
+
+  bool _localCameraPublishingSignalReceived = false;
+
+  bool get localCameraPublishingSignalReceived =>
+      _localCameraPublishingSignalReceived;
+
+  void _markLocalCameraPublishingSignal() {
+    if (_localCameraPublishingSignalReceived) return;
+    _localCameraPublishingSignalReceived = true;
+    if (!_localCameraPublishingSignalController.isClosed) {
+      _localCameraPublishingSignalController.add(null);
+    }
+  }
+
+  void _resetLocalCameraPublishingSignal() {
+    _localCameraPublishingSignalReceived = false;
+  }
+
   void _resetCallMediaPolicyState() {
     _qualityController.reset();
     _speakingDebouncer.reset();
     _lastMutedMicSpeechHintAt = null;
+    _mutedMicHotSampleCount = 0;
+    _lastMutedMicHotSampleAt = null;
     _dualStreamPinnedRemoteUid = null;
+    _smoothedInCallLocalMicLevel = 0;
+    if (_inCallLocalMicLevelController.hasListener) {
+      _inCallLocalMicLevelController.add(0);
+    }
     unawaited(clearGalleryPagingVideoSubscriptions());
     if (_speakingController.hasListener) {
       _speakingController.add(<int>{});
@@ -252,12 +317,24 @@ class AgoraService {
   void _considerMutedMicSpeechHint(List<AudioVolumeInfo> speakers) {
     if (!_isInChannel || _isAudioEnabled || _currentUID == null) return;
     final self = _currentUID!;
+    final now = DateTime.now();
+    final recentWindow =
+        _lastMutedMicHotSampleAt != null &&
+        now.difference(_lastMutedMicHotSampleAt!) < const Duration(seconds: 2);
+    if (!recentWindow) {
+      _mutedMicHotSampleCount = 0;
+    }
     for (final s in speakers) {
       final uid = s.uid ?? 0;
       final vol = s.volume ?? 0;
-      if (vol <= _speakingVolumeThreshold) continue;
+      if (vol <= _mutedMicHintVolumeThreshold) continue;
       if (uid != 0 && uid != self) continue;
-      final now = DateTime.now();
+      _lastMutedMicHotSampleAt = now;
+      _mutedMicHotSampleCount += 1;
+      if (_mutedMicHotSampleCount < _mutedMicHintRequiredSamples) {
+        return;
+      }
+      _mutedMicHotSampleCount = 0;
       if (_lastMutedMicSpeechHintAt != null &&
           now.difference(_lastMutedMicSpeechHintAt!) <
               _mutedMicSpeechHintCooldown) {
@@ -384,6 +461,8 @@ class AgoraService {
   Stream<int> get userOfflineStream => _userOfflineController.stream;
   Stream<ConnectionStateType> get connectionStateStream =>
       _connectionStateController.stream;
+
+  ConnectionStateType? get lastRtcConnectionState => _lastRtcConnectionState;
   Stream<String> get errorStream => _errorController.stream;
   Stream<Map<String, dynamic>> get remoteVideoMutedStream =>
       _remoteVideoMutedController.stream;
@@ -495,17 +574,7 @@ class AgoraService {
         LogService.warning('Could not set video encoder configuration: $e');
       }
 
-      // Configure audio for optimal clarity (speech‑optimized)
-      try {
-        await _engine!
-            .setAudioProfile(
-              profile: AudioProfileType.audioProfileSpeechStandard,
-            )
-            .timeout(const Duration(seconds: 3));
-        LogService.success('✅ Audio profile configured for speech / education');
-      } catch (e) {
-        LogService.warning('Could not set audio profile: $e');
-      }
+      await _applyTutoringAudioProfile();
 
       // CRITICAL: Configure for low-latency real-time communication
       // This prevents buffering and catch-up playback when network recovers
@@ -629,6 +698,7 @@ class AgoraService {
   }
 
   Future<void> _forceStopMediaAndReset({required String reason}) async {
+    _emitTalkTimeSummary();
     final engine = _engine;
     if (engine != null) {
       try {
@@ -670,6 +740,8 @@ class AgoraService {
     _lastSessionId = null;
     _lastUserId = null;
     _lastUserRole = null;
+    _talkStats.reset();
+    _resetLocalCameraPublishingSignal();
     _lastInitialCameraEnabled = false;
     _lastInitialMicEnabled = false;
     _isVideoEnabled = false;
@@ -699,6 +771,7 @@ class AgoraService {
     if (_isInitialized && _engine != null) {
       try {
         await _engine!.enableVideo();
+        await _engine!.enableAudio();
         await _engine!.muteLocalVideoStream(false);
         if (kIsWeb) {
           await _engine!.setupLocalVideo(
@@ -709,6 +782,15 @@ class AgoraService {
           );
           await _engine!.startPreview();
           await Future.delayed(const Duration(milliseconds: 300));
+        }
+        try {
+          await _engine!.enableAudioVolumeIndication(
+            interval: 500,
+            smooth: 3,
+            reportVad: true,
+          );
+        } catch (e) {
+          LogService.warning('Pre-join enableAudioVolumeIndication(reuse): $e');
         }
         // On Android/iOS, do NOT call startPreview here — let _PreJoinVideoHost call
         // startPreJoinPreviewCapture() after the view is in the tree to avoid black preview.
@@ -748,6 +830,7 @@ class AgoraService {
       _isInitialized = true;
       LogService.info('Engine initialized for pre-join preview');
       await _engine!.enableVideo();
+      await _engine!.enableAudio();
       await _engine!.muteLocalVideoStream(false);
       // Enable volume indication so pre-join and in-call can show talking indicator
       try {
@@ -782,6 +865,89 @@ class AgoraService {
     }
   }
 
+  /// Audio-engine-only lobby path (voice-only lessons or mic check with camera off).
+  /// Enables Agora mic capture locally without joining — drives [preJoinMicLevelStream].
+  Future<void> startPreJoinAudioMeterOnly(String sessionId) async {
+    if (_isInChannel) return;
+    for (var i = 0; i < 50 && _preJoinInitInProgress; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (_isInitialized && _engine != null) {
+      try {
+        await _engine!.stopPreview();
+        await _engine!.muteLocalVideoStream(true);
+        await _engine!.disableVideo();
+        await _engine!.enableAudio();
+        try {
+          await _engine!.enableAudioVolumeIndication(
+            interval: 500,
+            smooth: 3,
+            reportVad: true,
+          );
+        } catch (e) {
+          LogService.warning('Pre-join audio meter indication(reuse): $e');
+        }
+        await _engine!.muteLocalAudioStream(false);
+        _isVideoEnabled = false;
+        LogService.info('Pre-join audio meter started (reuse engine)');
+      } catch (e) {
+        LogService.warning('Pre-join audio meter(reuse engine) failed: $e');
+        rethrow;
+      }
+      return;
+    }
+    _preJoinInitInProgress = true;
+    try {
+      final tokenData = await AgoraTokenService.fetchToken(sessionId);
+      final appId = tokenData['appId'] as String?;
+      if (appId == null || appId.isEmpty) {
+        LogService.warning(
+          'No appId in token - cannot start lobby audio meter',
+        );
+        return;
+      }
+      if (_engine != null) {
+        try {
+          await _engine!.release().timeout(const Duration(seconds: 2));
+        } catch (e) {
+          LogService.warning('Error releasing engine: $e');
+        }
+        _engine = null;
+        _isInitialized = false;
+      }
+      _engine = createAgoraRtcEngine();
+      await _engine!.initialize(
+        RtcEngineContext(
+          appId: appId,
+          channelProfile: ChannelProfileType.channelProfileCommunication,
+        ),
+      );
+      _registerEventHandlers();
+      _isInitialized = true;
+      LogService.info('Engine initialized for pre-join audio meter');
+      await _engine!.muteLocalVideoStream(true);
+      await _engine!.disableVideo();
+      await _engine!.enableAudio();
+      await _engine!.muteLocalAudioStream(false);
+      try {
+        await _engine!.enableAudioVolumeIndication(
+          interval: 400,
+          smooth: 3,
+          reportVad: true,
+        );
+      } catch (e) {
+        LogService.warning('Pre-join enableAudioVolumeIndication(audio): $e');
+      }
+      _isVideoEnabled = false;
+      LogService.info('Lobby audio meter path ready');
+    } catch (e) {
+      LogService.warning('Failed to start lobby audio meter: $e');
+      rethrow;
+    } finally {
+      _preJoinInitInProgress = false;
+    }
+  }
+
   /// On Android, the platform view must exist before startPreview() or the preview stays black.
   /// Call this from the pre-join screen after the AgoraVideoView has been built (e.g. in a post-frame callback).
   Future<void> startPreJoinPreviewCapture() async {
@@ -804,14 +970,18 @@ class AgoraService {
       if (enabled) {
         // Re-enable camera capture and preview.
         await _engine!.enableVideo();
-        await _engine!.setupLocalVideo(
-          const VideoCanvas(
-            uid: 0,
-            sourceType: VideoSourceType.videoSourceCamera,
-          ),
-        );
-        await _engine!.startPreview();
+        // Web must bind preview to HtmlElementView. On Android/iOS, [setupLocalVideo] without
+        // the plugin's canvas breaks [AgoraVideoView]'s binding and freezes preview after toggle.
+        if (kIsWeb) {
+          await _engine!.setupLocalVideo(
+            const VideoCanvas(
+              uid: 0,
+              sourceType: VideoSourceType.videoSourceCamera,
+            ),
+          );
+        }
         await _engine!.muteLocalVideoStream(false);
+        await _engine!.startPreview();
       } else {
         // Explicitly stop capture so browser webcam indicator/light turns off.
         await _engine!.muteLocalVideoStream(true);
@@ -837,6 +1007,19 @@ class AgoraService {
   /// Release engine if not in a channel (e.g. user cancelled pre-join).
   Future<void> releasePreviewIfNotInChannel() async {
     if (_isInChannel) return;
+    if (_joinInProgress) {
+      LogService.info(
+        'Skipping pre-join engine release: join already in progress',
+      );
+      return;
+    }
+    if (_state == AgoraSessionState.joining ||
+        _state == AgoraSessionState.reconnecting) {
+      LogService.info(
+        'Skipping pre-join engine release: session state is $_state',
+      );
+      return;
+    }
     await _safeReleaseEngine(reason: 'pre-join cancelled');
   }
 
@@ -863,6 +1046,8 @@ class AgoraService {
     _lastUserRole = userRole;
     _lastInitialCameraEnabled = initialCameraEnabled;
     _lastInitialMicEnabled = initialMicEnabled;
+    _talkStats.reset();
+    _resetLocalCameraPublishingSignal();
 
     // Reset reconnection attempts on new join
     _reconnectionAttempts = 0;
@@ -987,7 +1172,10 @@ class AgoraService {
                   sourceType: VideoSourceType.videoSourceCamera,
                 ),
               );
-              await Future.delayed(const Duration(milliseconds: 300));
+              await Future.delayed(const Duration(milliseconds: 90));
+              // Match [toggleVideo] web path — joinChannel previously skipped preview,
+              // which can leave "camera on" without a visible self-view until toggle.
+              await _engine!.startPreview();
               await _engine!.muteLocalVideoStream(false);
               LogService.info('✅ Local video set up (camera enabled)');
             } catch (e) {
@@ -1152,6 +1340,44 @@ class AgoraService {
           _reactionController.add({'uid': fromUid, 'emoji': emoji});
         },
       );
+      _reactionChannel!.onBroadcast(
+        event: 'screen_share',
+        callback: (payload, [ref]) {
+          final fromUid = payload['fromUid'] as int?;
+          final sharing = payload['sharing'] as bool?;
+          if (fromUid == null || sharing == null) return;
+          if (!_isValidRemoteUid(fromUid)) return;
+          _applyScreenShareSignal(
+            uid: fromUid,
+            sharing: sharing,
+            source: 'realtime_broadcast',
+          );
+          LogService.info(
+            '📺 [Realtime] screen_share fromUid=$fromUid sharing=$sharing',
+          );
+        },
+      );
+      _reactionChannel!.onBroadcast(
+        event: 'camera_state',
+        callback: (payload, [ref]) {
+          final fromUid = payload['fromUid'] as int?;
+          final enabled = payload['enabled'] as bool?;
+          if (fromUid == null || enabled == null) return;
+          if (fromUid == _currentUID) return;
+          if (!_isValidRemoteUid(fromUid)) return;
+          LogService.info(
+            '📹 [Realtime] camera_state fromUid=$fromUid enabled=$enabled',
+          );
+          _remoteVideoMutedController.add({
+            'uid': fromUid,
+            'muted': !enabled,
+          });
+          _remoteVideoFrameController.add({
+            'uid': fromUid,
+            'ready': enabled,
+          });
+        },
+      );
       _reactionChannel!.subscribe();
       LogService.success(
         '✅ Reaction Realtime channel subscribed: session_reactions_$sessionId',
@@ -1164,6 +1390,7 @@ class AgoraService {
 
   /// Leave Agora channel
   Future<void> leaveChannel() async {
+    _emitTalkTimeSummary();
     if (_engine == null) {
       // Engine already disposed or not initialized
       _isInChannel = false;
@@ -1174,6 +1401,8 @@ class AgoraService {
       _reactionChannel?.unsubscribe();
       _reactionChannel = null;
       _qoeCorrelationId = null;
+      _talkStats.reset();
+      _resetLocalCameraPublishingSignal();
       _resetCallMediaPolicyState();
       _updateState(AgoraSessionState.disconnected);
       return;
@@ -1182,6 +1411,8 @@ class AgoraService {
     if (!_isInChannel) {
       // Already left
       _qoeCorrelationId = null;
+      _talkStats.reset();
+      _resetLocalCameraPublishingSignal();
       _resetCallMediaPolicyState();
       _updateState(AgoraSessionState.disconnected);
       return;
@@ -1201,6 +1432,8 @@ class AgoraService {
       _isReconnecting = false;
       _joinInProgress = false;
       _qoeCorrelationId = null;
+      _talkStats.reset();
+      _resetLocalCameraPublishingSignal();
       _videoRecoveryAttempts.clear();
       _lastRecoveryAttempt.clear();
       _cameraRecoveryAttempts = 0;
@@ -1328,12 +1561,10 @@ class AgoraService {
           LogService.debug('Screen capture not active or already stopped: $e');
         }
 
-        // On Web (especially iOS Safari/Chrome), calling disableVideo/disableAudio after muting can throw:
-        // "cannot set enabled while the track is muted". Leaving the channel already tears down tracks, so
-        // we skip capability disabling on web to avoid noisy errors and UI glitches.
+        // Desktop/mobile: disable capabilities + stop preview in one parallel batch.
+        // Web: we still must stopPreview + tear down capability — muteLocalVideoStream alone often
+        // leaves the browser camera indicator on until tracks are stopped or the engine is released.
         if (!kIsWeb) {
-          // Disable video and audio capabilities to stop all media tracks
-          // Do these in parallel for faster shutdown
           await Future.wait([
             _engine!
                 .disableVideo()
@@ -1357,11 +1588,9 @@ class AgoraService {
                 .catchError((e) {
                   LogService.warning('Disable audio error (continuing): $e');
                 }),
-          ], eagerError: false); // Don't fail if one times out
+          ], eagerError: false);
 
-          // CRITICAL: On mobile, also stop preview if it was started
           try {
-            // On mobile, stop preview if it was started
             await _engine!
                 .stopPreview()
                 .timeout(
@@ -1371,13 +1600,48 @@ class AgoraService {
                   },
                 )
                 .catchError((e) {
-                  // Preview might not be active - this is okay
                   LogService.debug('Preview not active: $e');
                 });
           } catch (e) {
             LogService.warning(
               'Error stopping preview (continuing anyway): $e',
             );
+          }
+        } else {
+          try {
+            await _engine!
+                .stopPreview()
+                .timeout(
+                  const Duration(seconds: 2),
+                  onTimeout: () {
+                    LogService.warning('Web stop preview timeout - continuing');
+                  },
+                )
+                .catchError((e) {
+                  LogService.debug('Web preview stop: $e');
+                });
+          } catch (e) {
+            LogService.debug('Web stopPreview: $e');
+          }
+          try {
+            await _engine!
+                .disableVideo()
+                .timeout(const Duration(seconds: 2))
+                .catchError((e) {
+                  LogService.debug('Web disableVideo (ignored): $e');
+                });
+          } catch (e) {
+            LogService.debug('Web disableVideo: $e');
+          }
+          try {
+            await _engine!
+                .disableAudio()
+                .timeout(const Duration(seconds: 2))
+                .catchError((e) {
+                  LogService.debug('Web disableAudio (ignored): $e');
+                });
+          } catch (e) {
+            LogService.debug('Web disableAudio: $e');
           }
         }
 
@@ -1434,12 +1698,14 @@ class AgoraService {
           try {
             await _engine!.enableVideo();
             LogService.info('📹 Video capability enabled');
-            await _engine!.setupLocalVideo(
-              const VideoCanvas(
-                uid: 0,
-                sourceType: VideoSourceType.videoSourceCamera,
-              ),
-            );
+            if (!_isPublishingScreen) {
+              await _engine!.setupLocalVideo(
+                const VideoCanvas(
+                  uid: 0,
+                  sourceType: VideoSourceType.videoSourceCamera,
+                ),
+              );
+            }
             await _engine!.startPreview();
             LogService.info('✅ Local video view set up (camera source)');
             await Future.delayed(const Duration(milliseconds: 300));
@@ -1447,7 +1713,13 @@ class AgoraService {
             LogService.warning('Could not set up local video view: $e');
           }
         } else {
-          // On mobile, start preview
+          // Mobile: never call setupLocalVideo here — Flutter AgoraVideoView owns the
+          // native surface; only ensure capture is running after unmute.
+          try {
+            await _engine!.enableVideo();
+          } catch (e) {
+            LogService.warning('enableVideo on toggle: $e');
+          }
           try {
             await _engine!.startPreview();
             LogService.info('✅ Local video preview started');
@@ -1480,22 +1752,13 @@ class AgoraService {
         }
         LogService.info('✅ Video enabled - should be visible to remote users');
 
-        // One immediate verification is enough; avoid rapid repeated unmute thrash.
-        await _ensureVideoUnmuted(
-          reason: 'toggle_video_on_verify',
-          force: true,
-          logOnSuccess: true,
-        );
-
-        // On web, also try setupLocalVideo again after unmuting
-        if (kIsWeb) {
-          try {
-            await Future.delayed(const Duration(milliseconds: 500));
-            await _engine!.setupLocalVideo(const VideoCanvas(uid: 0));
-            LogService.info('📹 Re-setup local video after unmuting');
-          } catch (e) {
-            LogService.warning('Could not re-setup local video: $e');
-          }
+        // Avoid aggressive verify loops on web; they can cause publish/mute churn.
+        if (!kIsWeb) {
+          await _ensureVideoUnmuted(
+            reason: 'toggle_video_on_verify',
+            force: true,
+            logOnSuccess: true,
+          );
         }
 
         if (kIsWeb) {
@@ -1513,14 +1776,16 @@ class AgoraService {
         }
 
         // Also schedule a check after a delay to ensure it stays unmuted.
-        Future.delayed(const Duration(seconds: 2), () async {
-          if (_engine != null && _isInChannel && _isVideoEnabled) {
-            await _ensureVideoUnmuted(
-              reason: 'toggle_video_on_final_check',
-              logOnSuccess: true,
-            );
-          }
-        });
+        if (!kIsWeb) {
+          Future.delayed(const Duration(seconds: 2), () async {
+            if (_engine != null && _isInChannel && _isVideoEnabled) {
+              await _ensureVideoUnmuted(
+                reason: 'toggle_video_on_final_check',
+                logOnSuccess: true,
+              );
+            }
+          });
+        }
       } else {
         // Disabling camera - mute video stream and explicitly stop publishing
         if (kIsWeb) {
@@ -1603,6 +1868,34 @@ class AgoraService {
     }
   }
 
+  /// Preview-only camera enable/disable while screen sharing is active.
+  ///
+  /// Does *not* call `updateChannelMediaOptions`, so we don't fight the
+  /// single-publish screen-share mode (camera publishing can conflict on
+  /// certain platforms / browsers).
+  Future<void> setLocalVideoPreviewEnabledDuringScreenShare(
+    bool enabled,
+  ) async {
+    if (_engine == null || !_isInitialized) return;
+
+    _isVideoEnabled = enabled;
+    try {
+      if (enabled) {
+        if (kIsWeb) {
+          await _engine!.enableVideo();
+        }
+        await _engine!.startPreview();
+        await _engine!.muteLocalVideoStream(false);
+      } else {
+        await _engine!.muteLocalVideoStream(true);
+      }
+    } catch (e) {
+      LogService.warning(
+        'setLocalVideoPreviewEnabledDuringScreenShare failed: $e',
+      );
+    }
+  }
+
   /// Toggle local audio (microphone mute/unmute)
   /// On web, Agora can take longer to apply mute/unmute; use a longer timeout to avoid TimeoutException.
   Future<void> toggleAudio() async {
@@ -1633,9 +1926,13 @@ class AgoraService {
   }
 
   /// Configure local camera canvas after channel join.
-  /// UI should call this service method instead of touching engine APIs directly.
+  /// **Web only:** `setupLocalVideo` without a platform view handle must not run on
+  /// Android/iOS — it clears the binding that [AgoraVideoView] establishes and freezes
+  /// the preview after camera toggles (see `agora_video_view.dart`).
   Future<void> setupLocalVideoAfterJoin() async {
     if (_engine == null) return;
+    if (!kIsWeb) return;
+    if (_isPublishingScreen) return;
     try {
       await _engine!.setupLocalVideo(
         const VideoCanvas(
@@ -1655,6 +1952,7 @@ class AgoraService {
     bool startPreviewOnWeb = true,
   }) async {
     if (_engine == null || !_isInChannel || !_isVideoEnabled) return;
+    if (_isPublishingScreen) return;
     try {
       if (kIsWeb && startPreviewOnWeb) {
         await _engine!.startPreview();
@@ -1666,8 +1964,7 @@ class AgoraService {
     }
   }
 
-  /// Start screen sharing
-  /// Both tutor and learner can share their screen.
+  /// Start screen sharing (engine primitive; UI hides learner start unless [AppConfig.enableLearnerScreenShare]).
   /// Tracks state so double-sharing is avoided and cancel resets UI.
   Future<void> startScreenSharing() async {
     if (_engine == null || !_isInChannel) {
@@ -1748,16 +2045,15 @@ class AgoraService {
       }
 
       _isPublishingScreen = true;
-      _screenShareOwnerUid = _currentUID;
       LogService.success('✅ Screen sharing started');
       LogService.info(
         '📺 Screen sharing stream is now active - remote users should see your screen',
       );
-      _screenSharingController.add({
-        'uid': _currentUID,
-        'sharing': true,
-        'ownerUid': _screenShareOwnerUid,
-      });
+      _applyScreenShareSignal(
+        uid: _currentUID ?? 0,
+        sharing: true,
+        source: 'local_start',
+      );
 
       // Mute camera AFTER screen capture is ready - avoids blackout on remote
       if (_isVideoEnabled && _engine != null) {
@@ -1783,12 +2079,22 @@ class AgoraService {
           errorStr.contains('denied');
       if (isUserCancel || isPermissionDenied) {
         LogService.info('Screen sharing cancelled or denied by user');
-        _screenSharingController.add({'uid': _currentUID, 'sharing': false});
+        _applyScreenShareSignal(
+          uid: _currentUID ?? 0,
+          sharing: false,
+          source: 'local_start_cancel',
+          forceStopOwner: true,
+        );
         return;
       }
 
       LogService.warning('Screen sharing error (not showing to user): $e');
-      _screenSharingController.add({'uid': _currentUID, 'sharing': false});
+      _applyScreenShareSignal(
+        uid: _currentUID ?? 0,
+        sharing: false,
+        source: 'local_start_error',
+        forceStopOwner: true,
+      );
     }
   }
 
@@ -1839,42 +2145,96 @@ class AgoraService {
       }
 
       _isPublishingScreen = false;
-      _screenShareOwnerUid = null;
       LogService.success('[SCREEN_SHARE] ✅ Screen sharing stopped');
-      _screenSharingController.add({
-        'uid': _currentUID,
-        'sharing': false,
-        'ownerUid': _screenShareOwnerUid,
-      });
+      _applyScreenShareSignal(
+        uid: _currentUID ?? 0,
+        sharing: false,
+        source: 'local_stop',
+        forceStopOwner: true,
+      );
       // CRITICAL: Notify remote so learner receives screen_share_stop and shows tutor camera again
       await _notifyRemoteUsersScreenSharing(false);
     } catch (e) {
       _isPublishingScreen = false;
-      _screenShareOwnerUid = null;
-      _screenSharingController.add({
-        'uid': _currentUID,
-        'sharing': false,
-        'ownerUid': _screenShareOwnerUid,
-      });
+      _applyScreenShareSignal(
+        uid: _currentUID ?? 0,
+        sharing: false,
+        source: 'local_stop_error',
+        forceStopOwner: true,
+      );
       LogService.error('Failed to stop screen sharing: $e');
       _errorController.add('Failed to stop screen sharing: $e');
     }
   }
 
-  /// Notify remote users about screen sharing state via data stream
+  void _applyScreenShareSignal({
+    required int uid,
+    required bool sharing,
+    required String source,
+    bool forceStopOwner = false,
+  }) {
+    if (uid <= 0) return;
+    final selfUid = _currentUID;
+    final isSelf = selfUid != null && uid == selfUid;
+    if (!isSelf && !_isValidRemoteUid(uid)) return;
+
+    final now = DateTime.now();
+    if (sharing) {
+      _screenShareOwnerUid = uid;
+      _screenShareOwnerLockUntil = now.add(_kScreenShareStopGuard);
+    } else if (_screenShareOwnerUid == uid) {
+      final guardActive = now.isBefore(_screenShareOwnerLockUntil);
+      if (!forceStopOwner && guardActive) {
+        LogService.debug(
+          '📺 [SCREEN_SHARE] Ignored early stop during guard: uid=$uid source=$source',
+        );
+      } else {
+        _screenShareOwnerUid = null;
+      }
+    }
+
+    _screenSharingController.add(<String, dynamic>{
+      'uid': uid,
+      'sharing': sharing,
+      'ownerUid': _screenShareOwnerUid,
+    });
+  }
+
+  /// Notify remote users about screen sharing state via Supabase Realtime (works when
+  /// Agora data stream is missing on web) and via Agora data stream when available.
   Future<void> _notifyRemoteUsersScreenSharing(bool isSharing) async {
+    final message = isSharing ? 'screen_share_start' : 'screen_share_stop';
+
+    if (_reactionChannel != null && _currentUID != null) {
+      try {
+        await _reactionChannel!.sendBroadcastMessage(
+          event: 'screen_share',
+          payload: <String, dynamic>{
+            'fromUid': _currentUID,
+            'sharing': isSharing,
+          },
+        );
+        LogService.success('✅ Screen share signalled via Realtime: $message');
+      } catch (e) {
+        LogService.warning('Realtime screen_share broadcast failed: $e');
+      }
+    }
+
     if (_dataStreamId == null || _engine == null || !_isInChannel) {
-      LogService.warning(
-        'Cannot send screen sharing notification: dataStreamId=$_dataStreamId, engine=${_engine != null}, inChannel=$_isInChannel',
-      );
+      if (_dataStreamId == null) {
+        LogService.info(
+          'Screen share: Agora data stream unavailable — using Realtime only',
+        );
+      } else if (!_isInChannel || _engine == null) {
+        LogService.warning(
+          'Cannot send screen sharing data stream: dataStreamId=$_dataStreamId, engine=${_engine != null}, inChannel=$_isInChannel',
+        );
+      }
       return;
     }
 
     try {
-      final message = isSharing ? 'screen_share_start' : 'screen_share_stop';
-      final messageBytes = message.codeUnits;
-      final data = Uint8List.fromList(messageBytes);
-
+      final data = Uint8List.fromList(utf8.encode(message));
       await _engine!.sendStreamMessage(
         streamId: _dataStreamId!,
         data: data,
@@ -1943,29 +2303,112 @@ class AgoraService {
     }
   }
 
-  /// Send camera state to remote users via data stream
-  /// This is a fallback for when onRemoteVideoStateChanged doesn't fire reliably
+  /// Send camera state via Agora data stream when available, with Realtime fallback
+  /// when [createDataStream] is unavailable (common on web).
   Future<void> sendCameraState(bool isEnabled) async {
-    if (_dataStreamId == null || _engine == null || !_isInChannel) {
-      LogService.warning(
-        '📹 Cannot send camera state: dataStreamId=$_dataStreamId, engine=${_engine != null}, inChannel=$_isInChannel',
+    var sentViaStream = false;
+    if (_dataStreamId != null && _engine != null && _isInChannel) {
+      try {
+        final message = isEnabled ? 'camera_on' : 'camera_off';
+        final messageBytes = message.codeUnits;
+        final data = Uint8List.fromList(messageBytes);
+
+        await _engine!.sendStreamMessage(
+          streamId: _dataStreamId!,
+          data: data,
+          length: data.length,
+        );
+        LogService.info('📹 Sent camera state via data stream: $message');
+        sentViaStream = true;
+      } catch (e) {
+        LogService.warning('📹 Failed to send camera state via data stream: $e');
+      }
+    }
+
+    if (sentViaStream) {
+      return;
+    }
+
+    if (_reactionChannel != null &&
+        _currentUID != null) {
+      try {
+        await _reactionChannel!.sendBroadcastMessage(
+          event: 'camera_state',
+          payload: <String, dynamic>{
+            'fromUid': _currentUID,
+            'enabled': isEnabled,
+          },
+        );
+        LogService.info(
+          '📹 Sent camera state via Realtime: enabled=$isEnabled',
+        );
+        return;
+      } catch (e) {
+        LogService.warning('📹 Failed to send camera state via Realtime: $e');
+      }
+    }
+
+    LogService.warning(
+      '📹 Cannot send camera state: dataStreamId=$_dataStreamId, '
+      'reactionChannel=${_reactionChannel != null}, engine=${_engine != null}, inChannel=$_isInChannel',
+    );
+  }
+
+  bool _videoSourceLooksLikeRemoteScreenCapture(VideoSourceType sourceType) {
+    return sourceType == VideoSourceType.videoSourceScreen ||
+        sourceType == VideoSourceType.videoSourceScreenPrimary ||
+        sourceType == VideoSourceType.videoSourceScreenSecondary;
+  }
+
+  /// When [createDataStream] fails (common on web: id 0), `screen_share_start`
+  /// datagrams never arrive and the learner keeps rendering camera while the tutor
+  /// publishes only screen. [onVideoSizeChanged] carries [VideoSourceType], so use
+  /// it as a telemetry fallback aligned with datagram signaling.
+  void _applyRemoteScreenShareHintFromVideoSize({
+    required int uid,
+    required VideoSourceType sourceType,
+    required int width,
+    required int height,
+  }) {
+    if (!_isValidRemoteUid(uid)) return;
+
+    final isScreen = _videoSourceLooksLikeRemoteScreenCapture(sourceType);
+    final hasDims = width > 0 && height > 0;
+
+    if (isScreen && hasDims) {
+      if (_screenShareOwnerUid == uid) return;
+      LogService.info(
+        '📺 [SCREEN_TELEM] Remote screen via onVideoSizeChanged: uid=$uid ${width}x$height',
+      );
+      _applyScreenShareSignal(
+        uid: uid,
+        sharing: true,
+        source: 'video_size_hint_start',
       );
       return;
     }
 
-    try {
-      final message = isEnabled ? 'camera_on' : 'camera_off';
-      final messageBytes = message.codeUnits;
-      final data = Uint8List.fromList(messageBytes);
-
-      await _engine!.sendStreamMessage(
-        streamId: _dataStreamId!,
-        data: data,
-        length: data.length,
+    if (isScreen && !hasDims && _screenShareOwnerUid == uid) {
+      LogService.info(
+        '📺 [SCREEN_TELEM] Remote screen zero-sized — treating as stopped: uid=$uid',
       );
-      LogService.info('📹 Sent camera state via data stream: $message');
-    } catch (e) {
-      LogService.warning('📹 Failed to send camera state: $e');
+      _applyScreenShareSignal(
+        uid: uid,
+        sharing: false,
+        source: 'video_size_hint_zero',
+      );
+      return;
+    }
+
+    if (!isScreen && hasDims && _screenShareOwnerUid == uid) {
+      LogService.info(
+        '📺 [SCREEN_TELEM] Remote camera track after screen share: uid=$uid',
+      );
+      _applyScreenShareSignal(
+        uid: uid,
+        sharing: false,
+        source: 'video_size_hint_camera_restore',
+      );
     }
   }
 
@@ -1976,7 +2419,11 @@ class AgoraService {
     LogService.info(
       '📺 Manual screen sharing detection: UID=$remoteUid, sharing=$isSharing',
     );
-    _screenSharingController.add({'uid': remoteUid, 'sharing': isSharing});
+    _applyScreenShareSignal(
+      uid: remoteUid,
+      sharing: isSharing,
+      source: 'manual_detect',
+    );
   }
 
   /// Switch camera (front/back)
@@ -2030,6 +2477,7 @@ class AgoraService {
   /// Adapt video (encoder + remote stream type) based on network conditions.
   Future<void> _adaptVideoQuality(QualityType quality) async {
     if (_engine == null || !_isInChannel) return;
+    if (!_isVideoEnabled || _isPublishingScreen) return;
 
     final decision = _qualityController.onSample(
       network: quality,
@@ -2202,6 +2650,14 @@ class AgoraService {
     RtcConnection connection,
   ) async {
     if (_engine == null || !_isInChannel) return;
+
+    final owner = _screenShareOwnerUid;
+    if (owner != null && owner == remoteUid) {
+      LogService.debug(
+        '[RECOVERY] Skipping video recovery — UID=$remoteUid is the active screen-share publisher',
+      );
+      return;
+    }
 
     // Check cooldown
     final lastAttempt = _lastRecoveryAttempt[remoteUid];
@@ -2899,6 +3355,24 @@ class AgoraService {
                 'ready': true,
               });
             },
+        // Carries VideoSourceType (unlike onRemoteVideoStateChanged) — fallback when
+        // data-stream screen_share_* signals are unavailable on web.
+        onVideoSizeChanged:
+            (
+              RtcConnection connection,
+              VideoSourceType sourceType,
+              int uid,
+              int width,
+              int height,
+              int rotation,
+            ) {
+              _applyRemoteScreenShareHintFromVideoSize(
+                uid: uid,
+                sourceType: sourceType,
+                width: width,
+                height: height,
+              );
+            },
         // Also detect when remote audio is first decoded (do not emit userJoined - join is from onUserJoined only)
         onFirstRemoteAudioDecoded:
             (RtcConnection connection, int remoteUid, int elapsed) {
@@ -2923,12 +3397,53 @@ class AgoraService {
               int totalVolume,
             ) {
               try {
+                _talkStats.ingestVolumeSample(
+                  at: DateTime.now(),
+                  speakers: speakers,
+                  volumeThreshold: _effectiveSpeakingVolumeThreshold,
+                );
                 final speaking = <int>{};
-                for (final s in speakers) {
-                  if (s.volume != null &&
-                      s.volume! > _speakingVolumeThreshold) {
+                if (!_isInChannel) {
+                  var bestLobby = 0;
+                  for (final s in speakers) {
+                    bestLobby = math.max(bestLobby, s.volume ?? 0);
+                  }
+                  final normLobby = math.min(1.0, bestLobby / 255.0);
+                  if (_preJoinMicLevelController.hasListener) {
+                    _preJoinMicLevelController.add(normLobby);
+                  }
+                  if (bestLobby > _effectiveSpeakingVolumeThreshold) {
+                    speaking.add(0);
+                  }
+                } else {
+                  var localPeak = 0;
+                  final selfUid = _currentUID;
+                  for (final s in speakers) {
+                    final vol = s.volume ?? 0;
                     final uid = s.uid ?? 0;
-                    if (uid != 0 && _isValidRemoteUid(uid)) {
+                    if (selfUid != null && (uid == selfUid || uid == 0)) {
+                      if (vol > localPeak) localPeak = vol;
+                    }
+                  }
+                  final rawNorm = (localPeak / 255.0).clamp(0.0, 1.0);
+                  _smoothedInCallLocalMicLevel +=
+                      _kInCallMicLevelSmooth *
+                      (rawNorm - _smoothedInCallLocalMicLevel);
+                  if (_inCallLocalMicLevelController.hasListener) {
+                    _inCallLocalMicLevelController.add(
+                      _smoothedInCallLocalMicLevel.clamp(0.0, 1.0),
+                    );
+                  }
+                  for (final s in speakers) {
+                    final vol = s.volume ?? 0;
+                    if (vol <= _effectiveSpeakingVolumeThreshold) continue;
+                    final uid = s.uid ?? 0;
+                    final self = _currentUID;
+                    // Web/native volume indication often reports the local user as uid 0;
+                    // only matching [self] misses local speech and breaks the mic wave UI.
+                    if (self != null && (uid == self || uid == 0)) {
+                      speaking.add(self);
+                    } else if (uid != 0 && _isValidRemoteUid(uid)) {
                       speaking.add(uid);
                     }
                   }
@@ -3049,6 +3564,14 @@ class AgoraService {
                       '📱 Remote video stopped but audio active - possible screen-off detected',
                     );
                     _startScreenOffDetection(remoteUid);
+                  } else if (_screenShareOwnerUid == remoteUid &&
+                      reason !=
+                          RemoteVideoStateReason
+                              .remoteVideoStateReasonRemoteMuted) {
+                    LogService.debug(
+                      '📺 Skipping video recovery — UID=$remoteUid is screen-share presenter '
+                      '(camera track idle while screen is active, reason=$reason)',
+                    );
                   } else {
                     LogService.warning(
                       '⚠️ Remote video stopped and audio inactive - attempting recovery',
@@ -3133,6 +3656,9 @@ class AgoraService {
                   sourceType.toString().toLowerCase().contains('screen');
               if (state ==
                   LocalVideoStreamState.localVideoStreamStateCapturing) {
+                if (!isScreenSource) {
+                  _markLocalCameraPublishingSignal();
+                }
                 LogService.success(
                   '✅ Local video is capturing (camera active)',
                 );
@@ -3145,6 +3671,9 @@ class AgoraService {
                 }
               } else if (state ==
                   LocalVideoStreamState.localVideoStreamStateEncoding) {
+                if (!isScreenSource) {
+                  _markLocalCameraPublishingSignal();
+                }
                 LogService.success(
                   '✅ Local video is encoding (publishing to remote users)',
                 );
@@ -3172,10 +3701,12 @@ class AgoraService {
                     '📹 [SCREEN_SHARE] Cancel/deny – restoring camera (no error dialog)',
                   );
                   _isPublishingScreen = false;
-                  _screenSharingController.add({
-                    'uid': _currentUID,
-                    'sharing': false,
-                  });
+                  _applyScreenShareSignal(
+                    uid: _currentUID ?? 0,
+                    sharing: false,
+                    source: 'screen_cancel_restore',
+                    forceStopOwner: true,
+                  );
                   Future.microtask(() async {
                     if (_engine == null) return;
                     try {
@@ -3257,10 +3788,12 @@ class AgoraService {
                     '📹 [SCREEN_SHARE] Local screen stream stopped – restoring camera',
                   );
                   _isPublishingScreen = false;
-                  _screenSharingController.add({
-                    'uid': _currentUID,
-                    'sharing': false,
-                  });
+                  _applyScreenShareSignal(
+                    uid: _currentUID ?? 0,
+                    sharing: false,
+                    source: 'screen_stopped_restore',
+                    forceStopOwner: true,
+                  );
                   Future.microtask(() async {
                     if (_engine == null) return;
                     try {
@@ -3339,6 +3872,7 @@ class AgoraService {
               LogService.info(
                 '[VIDEO] Connection details: channelId=${connection.channelId}, localUid=${connection.localUid}',
               );
+              _lastRtcConnectionState = state;
               _connectionStateController.add(state);
 
               // Update connection when we have valid channelId
@@ -3492,13 +4026,12 @@ class AgoraService {
             _updateState(AgoraSessionState.error);
           }
         },
-        onTokenPrivilegeWillExpire:
-            (RtcConnection connection, String token) {
-              LogService.info(
-                '[CALL] Token privilege will expire soon — refreshing',
-              );
-              unawaited(_renewRtcToken(trigger: 'privilege_will_expire'));
-            },
+        onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
+          LogService.info(
+            '[CALL] Token privilege will expire soon — refreshing',
+          );
+          unawaited(_renewRtcToken(trigger: 'privilege_will_expire'));
+        },
         onRequestToken: (RtcConnection connection) {
           LogService.warning(
             '[CALL] onRequestToken — privilege expired or invalid; renewing',
@@ -3517,8 +4050,10 @@ class AgoraService {
               // QualityType: excellent(0), good(1), poor(2), bad(3), veryBad(4), down(5), unsupported(6)
               if (remoteUid == 0) {
                 _lastObservedTxQuality = txQuality;
-                final combinedLocal =
-                    worstLocalNetworkQuality(txQuality, rxQuality);
+                final combinedLocal = worstLocalNetworkQuality(
+                  txQuality,
+                  rxQuality,
+                );
                 _adaptVideoQuality(combinedLocal);
 
                 // Update buffer settings based on network quality
@@ -3568,12 +4103,11 @@ class AgoraService {
                     '💡 UI will rebuild to show screen sharing stream',
                   );
 
-                  _screenShareOwnerUid = remoteUid;
-                  _screenSharingController.add({
-                    'uid': remoteUid,
-                    'sharing': true,
-                    'ownerUid': _screenShareOwnerUid,
-                  });
+                  _applyScreenShareSignal(
+                    uid: remoteUid,
+                    sharing: true,
+                    source: 'agora_stream_message',
+                  );
                 } else if (message == 'screen_share_stop') {
                   LogService.info(
                     '📺 Remote user stopped screen sharing: UID=$remoteUid',
@@ -3584,14 +4118,11 @@ class AgoraService {
                   // The UI will rebuild when _screenSharingController emits the event
                   LogService.info('💡 UI will rebuild to show camera stream');
 
-                  if (_screenShareOwnerUid == remoteUid) {
-                    _screenShareOwnerUid = null;
-                  }
-                  _screenSharingController.add({
-                    'uid': remoteUid,
-                    'sharing': false,
-                    'ownerUid': _screenShareOwnerUid,
-                  });
+                  _applyScreenShareSignal(
+                    uid: remoteUid,
+                    sharing: false,
+                    source: 'agora_stream_message',
+                  );
                 } else if (message == 'camera_on') {
                   LogService.info(
                     '📹 Remote user turned camera ON: UID=$remoteUid',
@@ -3662,12 +4193,12 @@ class AgoraService {
 
     _userConfirmedLeft[remoteUid] = true;
     if (_screenShareOwnerUid == remoteUid) {
-      _screenShareOwnerUid = null;
-      _screenSharingController.add({
-        'uid': remoteUid,
-        'sharing': false,
-        'ownerUid': _screenShareOwnerUid,
-      });
+      _applyScreenShareSignal(
+        uid: remoteUid,
+        sharing: false,
+        source: 'confirm_user_left',
+        forceStopOwner: true,
+      );
     }
     _remoteParticipantUids.remove(remoteUid);
     if (_spotlightRemoteUid == remoteUid) {
@@ -3778,4 +4309,112 @@ class AgoraService {
       ),
     );
   }
+
+  Future<void> _applyTutoringAudioProfile() async {
+    final mode = AppConfig.classroomAudioProfileMode;
+    final selected = _resolveAudioProfilePreset(mode: mode);
+    try {
+      await _engine!
+          .setAudioProfile(
+            profile: selected.profile,
+            scenario: selected.scenario,
+          )
+          .timeout(const Duration(seconds: 3));
+      LogService.success(
+        '✅ Audio profile configured: ${selected.label} '
+        '(mode=$mode, profile=${selected.profile.name}, scenario=${selected.scenario.name})',
+      );
+      _emitQoe('audio_profile_selected', <String, dynamic>{
+        'mode': mode,
+        'variant': selected.variant,
+        'profile': selected.profile.name,
+        'scenario': selected.scenario.name,
+        if (_lastSessionId != null) 'session_id': _lastSessionId,
+      });
+    } catch (e) {
+      LogService.warning(
+        'Could not set tutoring audio profile (mode=$mode, '
+        'profile=${selected.profile.name}, scenario=${selected.scenario.name}): $e',
+      );
+    }
+  }
+
+  _AudioProfilePreset _resolveAudioProfilePreset({required String mode}) {
+    switch (mode) {
+      case 'music':
+        return const _AudioProfilePreset(
+          label: 'music clarity / instrument-friendly',
+          variant: 'music',
+          profile: AudioProfileType.audioProfileMusicStandard,
+          scenario: AudioScenarioType.audioScenarioGameStreaming,
+        );
+      case 'balanced':
+        return const _AudioProfilePreset(
+          label: 'balanced voice fidelity',
+          variant: 'balanced',
+          profile: AudioProfileType.audioProfileSpeechStandard,
+          scenario: AudioScenarioType.audioScenarioMeeting,
+        );
+      case 'ab':
+        final bucket = _stableSessionBucket(
+          _lastSessionId ?? _currentChannelName,
+        );
+        if (bucket == 0) {
+          return const _AudioProfilePreset(
+            label: 'A/B A speech focus',
+            variant: 'a_speech',
+            profile: AudioProfileType.audioProfileSpeechStandard,
+            scenario: AudioScenarioType.audioScenarioChatroom,
+          );
+        }
+        return const _AudioProfilePreset(
+          label: 'A/B B balanced voice fidelity',
+          variant: 'b_balanced',
+          profile: AudioProfileType.audioProfileSpeechStandard,
+          scenario: AudioScenarioType.audioScenarioMeeting,
+        );
+      case 'speech':
+      default:
+        return const _AudioProfilePreset(
+          label: 'speech clarity / tutoring default',
+          variant: 'speech',
+          profile: AudioProfileType.audioProfileSpeechStandard,
+          scenario: AudioScenarioType.audioScenarioChatroom,
+        );
+    }
+  }
+
+  int _stableSessionBucket(String? seed) {
+    if (seed == null || seed.isEmpty) return 0;
+    var hash = 0;
+    for (final unit in seed.codeUnits) {
+      hash = ((hash * 31) + unit) & 0x7fffffff;
+    }
+    return hash % 2;
+  }
+
+  void _emitTalkTimeSummary() {
+    final snapshot = _talkStats.snapshot();
+    if (snapshot.totalMs < 1000) return; // Ignore near-empty sessions.
+    final role = _lastUserRole ?? 'unknown';
+    _emitQoe('talk_time_summary', <String, dynamic>{
+      ...snapshot.toJson(),
+      'local_user_role': role,
+      'session_type': _lastSessionId == null ? 'unknown' : 'live',
+    });
+  }
+}
+
+class _AudioProfilePreset {
+  const _AudioProfilePreset({
+    required this.label,
+    required this.variant,
+    required this.profile,
+    required this.scenario,
+  });
+
+  final String label;
+  final String variant;
+  final AudioProfileType profile;
+  final AudioScenarioType scenario;
 }

@@ -7,7 +7,6 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/whatsapp_support_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
-import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_webhook_service.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
@@ -18,10 +17,9 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
-import 'package:prepskul/features/payment/services/kyc_verification_service.dart';
-import 'package:prepskul/core/widgets/image_picker_bottom_sheet.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
+import 'package:prepskul/features/payment/screens/identity_verification_flow_screen.dart';
+import 'package:prepskul/features/payment/services/payment_gate_service.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
@@ -63,18 +61,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   double _subtotal = 0.0;
   double _charges = 0.0;
   double _total = 0.0;
-
-  // KYC / identity verification state
-  bool _isKycRequired = false; // Only for onsite/hybrid + not yet verified
-  String? _kycStatus; // null, 'pending', 'verified', 'rejected'
-  bool _isSubmittingKyc = false;
-  String? _selectedDocumentType; // e.g. 'national_id'
-  String? _selectedWhoseId; // 'self', 'parent_guardian', 'other_adult'
-  String? _relationship;
-  dynamic _kycFrontFile;
-  dynamic _kycBackFile;
-  String? _kycFrontFileName;
-  String? _kycBackFileName;
 
   // Confetti controller for success dialog
   late final ConfettiController _confettiController;
@@ -129,21 +115,19 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         widget.paymentRequestId,
       );
       if (request != null && mounted) {
-        final originalAmount =
-            (request['original_amount'] as num?)?.toDouble() ??
-            (request['amount'] as num).toDouble();
-        final charges = originalAmount * 0.02;
-        final total = originalAmount + charges;
+        // `amount` is what this installment charges (weekly/bi-weekly/monthly slice).
+        final installmentAmount = (request['amount'] as num).toDouble();
+        final charges = installmentAmount * 0.02;
+        final total = installmentAmount + charges;
         safeSetState(() {
           _paymentRequest = request;
-          _subtotal = originalAmount;
+          _subtotal = installmentAmount;
           _charges = charges;
           _total = total;
           _isLoading = false;
         });
 
-        // After loading payment request, determine if KYC is required for this payment
-        await _evaluateKycRequirement();
+        await _redirectIfKycRequired();
       } else {
         if (mounted) {
           safeSetState(() {
@@ -163,61 +147,37 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     }
   }
 
-  /// Determine if identity verification (KYC) is required for this payment.
-  ///
-  /// KYC is required when:
-  /// - The underlying booking location is onsite or hybrid, AND
-  /// - The account is not yet marked identity verified.
-  Future<void> _evaluateKycRequirement() async {
-    try {
-      final request = _paymentRequest;
-      if (request == null) return;
+  Map<String, dynamic>? _parseMetadata(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
 
-      // Metadata contains booking location for this payment request
-      final metadata = request['metadata'] as Map<String, dynamic>?;
-      final location = metadata?['location'] as String? ?? '';
-      final isOnsiteLike = location == 'onsite' || location == 'hybrid';
+  /// Safety net if checkout opened without passing through the payment gate.
+  Future<void> _redirectIfKycRequired() async {
+    final destination = await PaymentGateService.resolve(
+      paymentRequestId: widget.paymentRequestId,
+      bookingRequestId: widget.bookingRequestId,
+    );
+    if (!mounted || destination == PaymentGateDestination.payment) return;
 
-      if (!isOnsiteLike) {
-        // Online-only or unknown location: no KYC gate
-        if (mounted) {
-          safeSetState(() {
-            _isKycRequired = false;
-            _kycStatus = null;
-          });
-        }
-        return;
-      }
+    final screen = destination == PaymentGateDestination.kycPending
+        ? IdentityVerificationFlowScreen(
+            paymentRequestId: widget.paymentRequestId,
+            bookingRequestId: widget.bookingRequestId,
+            mode: IdentityVerificationMode.pending,
+          )
+        : IdentityVerificationFlowScreen(
+            paymentRequestId: widget.paymentRequestId,
+            bookingRequestId: widget.bookingRequestId,
+            mode: IdentityVerificationMode.wizard,
+          );
 
-      // Fetch latest verification status for current user
-      final latest =
-          await KycVerificationService.getLatestVerificationForCurrentUser();
-
-      if (!mounted) return;
-
-      if (latest == null) {
-        // No record and not identity_verified_at -> require KYC
-        safeSetState(() {
-          _isKycRequired = true;
-          _kycStatus = null;
-        });
-      } else {
-        final status = latest['status'] as String? ?? 'pending';
-        safeSetState(() {
-          _kycStatus = status;
-          _isKycRequired = status != 'verified';
-        });
-      }
-    } catch (e) {
-      // If KYC check fails, log but do not block payment completely
-      LogService.error('Error evaluating KYC requirement: $e');
-      if (mounted) {
-        safeSetState(() {
-          // Fail open: do not require KYC if check itself fails
-          _isKycRequired = false;
-        });
-      }
-    }
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
+    );
   }
 
   Future<void> _loadUserPhone() async {
@@ -250,8 +210,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   bool get _canInitiatePayment {
     final hasPhone = _phoneController.text.trim().isNotEmpty;
     final hasProvider = _detectedProvider != null;
-    final kycOk = !_isKycRequired || _kycStatus == 'verified';
-    return hasPhone && hasProvider && !_isProcessing && kycOk;
+    return hasPhone && hasProvider && !_isProcessing;
   }
 
   Future<void> _initiatePayment() async {
@@ -877,7 +836,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     final paymentPlan =
         _paymentRequest!['payment_plan'] as String? ?? 'monthly';
     final description = _paymentRequest!['description'] as String?;
-    final metadata = _paymentRequest!['metadata'] as Map<String, dynamic>?;
+    final metadata = _parseMetadata(_paymentRequest!['metadata']);
     final tutorName = metadata?['tutor_name'] as String? ?? 'Tutor';
 
     return Scaffold(
@@ -914,13 +873,13 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildCompactBookingSummary(tutorName, description, paymentPlan),
+          _buildPaymentHeader(),
+          const SizedBox(height: 16),
+          _buildPaymentPlanSummary(tutorName, description, paymentPlan),
           const SizedBox(height: 16),
           _buildInlinePhoneInput(),
           const SizedBox(height: 16),
           _buildCompactPaymentBreakdown(),
-          const SizedBox(height: 16),
-          if (_isKycRequired) _buildKycBlock(),
           const SizedBox(height: 16),
           if (_errorMessage != null) ...[
             _buildCompactErrorMessage(),
@@ -964,509 +923,234 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  Widget _buildKycBlock() {
-    final isPending = _kycStatus == 'pending';
-    final isVerified = _kycStatus == 'verified';
-    final isRejected = _kycStatus == 'rejected';
+  Widget _buildPaymentHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primaryColor,
+            AppTheme.primaryColor.withOpacity(0.85),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.lock_outline, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mobile Money',
+                  style: GoogleFonts.poppins(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _providerBadge('mtn'),
+                    const SizedBox(width: 8),
+                    _providerBadge('orange'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    // If already verified, hide the block (safety net)
-    if (isVerified) {
-      return const SizedBox.shrink();
+  Widget _providerBadge(String provider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.35)),
+      ),
+      child: Text(
+        PaymentProviderHelper.getProviderName(provider),
+        style: GoogleFonts.poppins(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  String _planLabel(String plan) {
+    switch (plan.toLowerCase()) {
+      case 'weekly':
+        return 'Weekly';
+      case 'biweekly':
+        return 'Bi-weekly';
+      case 'monthly':
+        return 'Monthly';
+      default:
+        return plan.isEmpty ? 'Installment' : plan;
     }
+  }
+
+  Widget _buildPlanChip(IconData icon, String label, {Color? accent}) {
+    final color = accent ?? AppTheme.primaryColor;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentPlanSummary(
+    String tutorName,
+    String? description,
+    String paymentPlan,
+  ) {
+    final metadata = _parseMetadata(_paymentRequest?['metadata']);
+    final location = (metadata?['location'] as String?)?.trim().toLowerCase() ?? '';
+    final frequency = metadata?['frequency'] as int? ??
+        (metadata?['frequency'] as num?)?.toInt();
+    final paymentIndex = metadata?['payment_number'] as int? ??
+        (metadata?['payment_number'] as num?)?.toInt();
+    final paymentTotal = metadata?['total_payments'] as int? ??
+        (metadata?['total_payments'] as num?)?.toInt();
+    final planLabel = _planLabel(paymentPlan);
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.25)),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryColor.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.verified_user, color: AppTheme.primaryColor, size: 20),
+              Icon(Icons.receipt_long, color: AppTheme.primaryColor, size: 20),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Identity verification for onsite bookings',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
-                  ),
+              Text(
+                'What you\'re paying for',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            'For onsite sessions, we verify who is hosting the tutor once per account. '
-            'Upload an ID (National ID, Passport, Voter card, or Driver’s licence) to complete this first onsite booking.',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: AppTheme.textMedium,
-              height: 1.4,
-            ),
-          ),
           const SizedBox(height: 12),
-          if (isPending)
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppTheme.accentOrange.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppTheme.accentOrange.withOpacity(0.4),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.hourglass_top,
-                    size: 18,
-                    color: AppTheme.accentOrange,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Your identity verification is under review. Once approved, you’ll be able to complete payment for onsite bookings.',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppTheme.accentOrange,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (isPending) const SizedBox(height: 8),
-          if (isRejected)
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.shade200),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 18,
-                    color: Colors.red.shade700,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Your previous verification was not approved. Please review your details and upload clear photos of the ID.',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.red.shade800,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (isRejected) const SizedBox(height: 12),
-          if (!isPending) ...[
-            _buildKycForm(),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isSubmittingKyc ? null : _submitKyc,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: _isSubmittingKyc
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                      )
-                    : Text(
-                        'Submit verification',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Once your identity is verified, you’ll be able to complete payment for onsite sessions. This is a one-time step per account.',
-              style: GoogleFonts.poppins(
-                fontSize: 11,
-                color: AppTheme.textMedium,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildKycForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Whose ID?
-        Text(
-          'Whose ID are you uploading?',
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildChoiceChip(
-              label: 'My ID (I am the parent/guardian)',
-              value: 'self',
-              groupValue: _selectedWhoseId,
-              onSelected: (val) {
-                safeSetState(() {
-                  _selectedWhoseId = val;
-                  _relationship = null;
-                });
-              },
-            ),
-            _buildChoiceChip(
-              label: 'Parent/guardian ID',
-              value: 'parent_guardian',
-              groupValue: _selectedWhoseId,
-              onSelected: (val) {
-                safeSetState(() {
-                  _selectedWhoseId = val;
-                });
-              },
-            ),
-            _buildChoiceChip(
-              label: 'Other responsible adult',
-              value: 'other_adult',
-              groupValue: _selectedWhoseId,
-              onSelected: (val) {
-                safeSetState(() {
-                  _selectedWhoseId = val;
-                });
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (_selectedWhoseId == 'parent_guardian' ||
-            _selectedWhoseId == 'other_adult')
-          TextField(
-            decoration: InputDecoration(
-              labelText: 'Relationship (e.g. mother, uncle, guardian)',
-              labelStyle: GoogleFonts.poppins(fontSize: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-            ),
-            style: GoogleFonts.poppins(fontSize: 13),
-            onChanged: (value) {
-              safeSetState(() {
-                _relationship = value;
-              });
-            },
-          ),
-        const SizedBox(height: 12),
-        // Document type
-        Text(
-          'Type of document',
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          value: _selectedDocumentType,
-          decoration: InputDecoration(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
-          ),
-          items: const [
-            DropdownMenuItem(value: 'national_id', child: Text('National ID')),
-            DropdownMenuItem(value: 'passport', child: Text('Passport')),
-            DropdownMenuItem(value: 'voter_card', child: Text('Voter card')),
-            DropdownMenuItem(
-              value: 'drivers_licence',
-              child: Text('Driver’s licence'),
-            ),
-            DropdownMenuItem(
-              value: 'residence_permit',
-              child: Text('Residence permit'),
-            ),
-            DropdownMenuItem(
-              value: 'other',
-              child: Text('Other government-issued ID'),
-            ),
-          ],
-          onChanged: (value) {
-            safeSetState(() {
-              _selectedDocumentType = value;
-            });
-          },
-        ),
-        const SizedBox(height: 12),
-        // Front / back upload
-        Text(
-          'Upload ID photos',
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _pickKycFile(isFront: true),
-                icon: const Icon(Icons.upload_file, size: 18),
-                label: Text(
-                  _kycFrontFileName != null
-                      ? 'ID front selected'
-                      : 'Upload ID front',
-                  style: GoogleFonts.poppins(fontSize: 12),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _pickKycFile(isFront: false),
-                icon: const Icon(Icons.upload_file, size: 18),
-                label: Text(
-                  _kycBackFileName != null
-                      ? 'Back selected'
-                      : 'Upload back (optional)',
-                  style: GoogleFonts.poppins(fontSize: 12),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Clear photo of the ID is enough — this is a one-time step.',
-          style: GoogleFonts.poppins(fontSize: 11, color: AppTheme.textMedium),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildChoiceChip({
-    required String label,
-    required String value,
-    required String? groupValue,
-    required void Function(String value) onSelected,
-  }) {
-    final isSelected = value == groupValue;
-    return ChoiceChip(
-      label: Text(
-        label,
-        style: GoogleFonts.poppins(
-          fontSize: 11,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-        ),
-      ),
-      selected: isSelected,
-      onSelected: (_) => onSelected(value),
-      selectedColor: AppTheme.primaryColor.withOpacity(0.15),
-      labelPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    );
-  }
-
-  Future<void> _pickKycFile({required bool isFront}) async {
-    try {
-      final pickedFile = await showModalBottomSheet<dynamic>(
-        context: context,
-        builder: (context) => const ImagePickerBottomSheet(),
-        isScrollControlled: true,
-      );
-      if (pickedFile == null || !mounted) return;
-
-      safeSetState(() {
-        if (isFront) {
-          _kycFrontFile = pickedFile;
-          _kycFrontFileName = _inferFileName(pickedFile);
-        } else {
-          _kycBackFile = pickedFile;
-          _kycBackFileName = _inferFileName(pickedFile);
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to pick file: $e',
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  String _inferFileName(dynamic file) {
-    try {
-      // XFile has .name, PlatformFile has .name, File has path
-      if (file is XFile) {
-        return file.name.isNotEmpty ? file.name : 'selected_image.jpg';
-      }
-      // Fallback: best-effort string
-      return 'selected_file';
-    } catch (_) {
-      return 'selected_file';
-    }
-  }
-
-  Future<void> _submitKyc() async {
-    if (_selectedDocumentType == null ||
-        _selectedWhoseId == null ||
-        _kycFrontFile == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please select whose ID, choose a document type, and upload the front of the ID.',
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    safeSetState(() {
-      _isSubmittingKyc = true;
-    });
-
-    try {
-      await KycVerificationService.submitVerification(
-        documentType: _selectedDocumentType!,
-        whoseId: _selectedWhoseId!,
-        relationship: _relationship,
-        frontFile: _kycFrontFile,
-        backFile: _kycBackFile,
-      );
-
-      if (!mounted) return;
-      safeSetState(() {
-        _isSubmittingKyc = false;
-        _kycStatus = 'pending';
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Verification submitted. We will review and notify you once it is approved.',
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: AppTheme.primaryColor,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      safeSetState(() {
-        _isSubmittingKyc = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            ErrorHandler.getUserFriendlyMessage(e),
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Widget _buildCompactBookingSummary(
-    String tutorName,
-    String? description,
-    String paymentPlan,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Session Details',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 8),
           Text(
             tutorName,
             style: GoogleFonts.poppins(
-              fontSize: 16,
+              fontSize: 17,
               fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
           ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildPlanChip(Icons.calendar_month, planLabel),
+              if (paymentIndex != null && paymentTotal != null)
+                _buildPlanChip(
+                  Icons.payments_outlined,
+                  'Payment $paymentIndex of $paymentTotal',
+                ),
+              if (location == 'onsite' || location == 'hybrid')
+                _buildPlanChip(
+                  Icons.location_on_outlined,
+                  location.toUpperCase(),
+                  accent: Colors.orange.shade700,
+                ),
+              if (frequency != null && frequency > 0)
+                _buildPlanChip(Icons.event_repeat, '$frequency× per week'),
+            ],
+          ),
           if (description != null && description.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 12),
             Text(
               description,
               style: GoogleFonts.poppins(
-                fontSize: 13,
+                fontSize: 12,
                 color: AppTheme.textMedium,
+                height: 1.45,
               ),
             ),
           ],
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 16, color: AppTheme.primaryColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'After payment, sessions for this $planLabel period are scheduled. '
+                    'You\'ll be prompted for the next installment when it\'s due.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: AppTheme.textDark,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

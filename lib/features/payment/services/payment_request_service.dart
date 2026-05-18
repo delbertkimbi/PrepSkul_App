@@ -2,6 +2,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/payment/services/payment_request_amounts.dart';
 
 /// Payment Request Service
 /// 
@@ -22,6 +23,21 @@ class PaymentRequestService {
   ) async {
     try {
       LogService.info('Creating payment request(s) for approved booking: ${approvedRequest.id}');
+
+      // Idempotent: do not create duplicate rows on re-approval or double callbacks.
+      final existingId = await _findExistingOpenPaymentRequestId(approvedRequest.id);
+      if (existingId != null) {
+        LogService.warning(
+          'Payment request(s) already exist for ${approvedRequest.id}; '
+          'reusing payable request $existingId',
+        );
+        return existingId;
+      }
+
+      // Trials: single charge at trial list price (booking_request_id = trial_sessions.id).
+      if (approvedRequest.isTrial) {
+        return await _createTrialPaymentRequest(approvedRequest);
+      }
 
       // Handle multi-learner partial acceptance
       // If only some learners accepted, recalculate monthly total
@@ -50,18 +66,20 @@ class PaymentRequestService {
         }
       }
 
-      final paymentPlan = approvedRequest.paymentPlan.toLowerCase();
-      
-      if (paymentPlan == 'monthly') {
-        return await _createSinglePaymentRequest(approvedRequest, adjustedMonthlyTotal: adjustedMonthlyTotal);
-      } else if (paymentPlan == 'bi-weekly' || paymentPlan == 'biweekly') {
-        return await _createRecurringPaymentRequests(approvedRequest, count: 2, adjustedMonthlyTotal: adjustedMonthlyTotal);
-      } else if (paymentPlan == 'weekly') {
-        return await _createRecurringPaymentRequests(approvedRequest, count: 4, adjustedMonthlyTotal: adjustedMonthlyTotal);
-      } else {
-        // Default to monthly
-        return await _createSinglePaymentRequest(approvedRequest, adjustedMonthlyTotal: adjustedMonthlyTotal);
+      final plan = PaymentRequestAmounts.normalizePlan(approvedRequest.paymentPlan);
+      final count = PaymentRequestAmounts.installmentCountForPlan(plan);
+
+      if (count == 1) {
+        return await _createSinglePaymentRequest(
+          approvedRequest,
+          adjustedMonthlyTotal: adjustedMonthlyTotal,
+        );
       }
+      return await _createRecurringPaymentRequests(
+        approvedRequest,
+        count: count,
+        adjustedMonthlyTotal: adjustedMonthlyTotal,
+      );
     } catch (e) {
       LogService.error('Error creating payment request: $e');
       if (e.toString().contains('relation "payment_requests" does not exist')) {
@@ -72,26 +90,125 @@ class PaymentRequestService {
     }
   }
 
+  /// Returns first pending installment id when payment rows already exist.
+  static Future<String?> _findExistingOpenPaymentRequestId(
+    String bookingRequestId,
+  ) async {
+    try {
+      final response = await SupabaseService.client
+          .from('payment_requests')
+          .select('id, status, metadata, due_date, created_at')
+          .eq('booking_request_id', bookingRequestId)
+          .order('created_at', ascending: true);
+
+      final rows = List<Map<String, dynamic>>.from(response as List);
+      if (rows.isEmpty) return null;
+
+      final pending = rows.where((r) => r['status'] == 'pending').toList();
+      if (pending.isEmpty) {
+        // Paid/failed history exists — do not create duplicates on approval retry.
+        if (rows.isNotEmpty) {
+          return rows.first['id'] as String?;
+        }
+        return null;
+      }
+
+      pending.sort((a, b) {
+        final aMeta = a['metadata'];
+        final bMeta = b['metadata'];
+        final aNum = _paymentNumberFromMetadata(aMeta);
+        final bNum = _paymentNumberFromMetadata(bMeta);
+        if (aNum != null && bNum != null) return aNum.compareTo(bNum);
+        final aDue = a['due_date'] as String? ?? '';
+        final bDue = b['due_date'] as String? ?? '';
+        return aDue.compareTo(bDue);
+      });
+      return pending.first['id'] as String?;
+    } catch (e) {
+      LogService.warning('Could not check existing payment requests: $e');
+      return null;
+    }
+  }
+
+  static int? _paymentNumberFromMetadata(dynamic metadata) {
+    if (metadata is! Map) return null;
+    final raw = metadata['payment_number'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return null;
+  }
+
+  static PaymentInstallmentQuote _quoteForRequest(
+    BookingRequest request, {
+    double? adjustedSessionFeeMonthly,
+  }) {
+    return PaymentRequestAmounts.quoteInstallment(
+      sessionFeeMonthly: adjustedSessionFeeMonthly ?? request.monthlyTotal,
+      location: request.location,
+      transportationPerSession: request.estimatedTransportationCost ?? 0.0,
+      sessionsPerWeek: request.frequency,
+      paymentPlan: request.paymentPlan,
+    );
+  }
+
+  /// One-off trial payment (booking_request_id = trial_sessions.id).
+  static Future<String> _createTrialPaymentRequest(
+    BookingRequest approvedRequest,
+  ) async {
+    final quote = _quoteForRequest(approvedRequest);
+    final dueDate = DateTime.now().add(const Duration(days: 3)).toIso8601String();
+
+    final paymentRequestData = {
+      'booking_request_id': approvedRequest.id,
+      'recurring_session_id': null,
+      'student_id': approvedRequest.studentId,
+      'tutor_id': approvedRequest.tutorId,
+      'amount': quote.installmentAmount,
+      'original_amount': quote.installmentAmount,
+      'discount_percent': 0.0,
+      'discount_amount': 0.0,
+      'payment_plan': 'trial',
+      'status': 'pending',
+      'due_date': dueDate,
+      'description': 'Trial session with ${approvedRequest.tutorName}',
+      'metadata': {
+        'is_trial': true,
+        'location': approvedRequest.location,
+        'student_name': approvedRequest.studentName,
+        'tutor_name': approvedRequest.tutorName,
+        'payment_number': 1,
+        'total_payments': 1,
+        if (approvedRequest.subject != null) 'subject': approvedRequest.subject,
+      },
+      'created_at': DateTime.now().toIso8601String(),
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    final response = await SupabaseService.client
+        .from('payment_requests')
+        .insert(paymentRequestData)
+        .select('id')
+        .maybeSingle();
+
+    if (response == null) {
+      throw Exception('Failed to create trial payment request');
+    }
+
+    final id = response['id'] as String;
+    LogService.success(
+      'Trial payment request created: $id (${PricingService.formatPrice(quote.installmentAmount)})',
+    );
+    return id;
+  }
+
   /// Create a single payment request (for monthly plan)
   static Future<String> _createSinglePaymentRequest(
     BookingRequest approvedRequest, {
     double? adjustedMonthlyTotal,
   }) async {
-    // Use adjusted monthly total if provided (for partial multi-learner acceptance)
-    final monthlyTotal = adjustedMonthlyTotal ?? approvedRequest.monthlyTotal;
-    
-    final paymentAmount = _calculatePaymentAmount(
-      monthlyTotal: monthlyTotal,
-      paymentPlan: approvedRequest.paymentPlan,
-    );
-
-    final baseAmount = _getBaseAmountForPlan(
-      monthlyTotal: monthlyTotal,
-      paymentPlan: approvedRequest.paymentPlan,
-    );
-    final pricingDetails = PricingService.calculateDiscount(
-      monthlyTotal: baseAmount,
-      paymentPlan: approvedRequest.paymentPlan,
+    final quote = _quoteForRequest(
+      approvedRequest,
+      adjustedSessionFeeMonthly: adjustedMonthlyTotal,
     );
 
     final paymentRequestData = {
@@ -99,11 +216,11 @@ class PaymentRequestService {
       'recurring_session_id': null,
       'student_id': approvedRequest.studentId,
       'tutor_id': approvedRequest.tutorId,
-      'amount': paymentAmount,
-      'original_amount': monthlyTotal,
-      'discount_percent': pricingDetails['discountPercent'] as double,
-      'discount_amount': pricingDetails['discountAmount'] as double,
-      'payment_plan': approvedRequest.paymentPlan,
+      'amount': quote.installmentAmount,
+      'original_amount': quote.totalMonthlyAmount,
+      'discount_percent': quote.discountPercent,
+      'discount_amount': quote.discountAmount,
+      'payment_plan': quote.paymentPlan,
       'status': 'pending',
       'due_date': _calculateDueDate(approvedRequest.paymentPlan),
       'description': _generatePaymentDescription(approvedRequest),
@@ -131,7 +248,10 @@ class PaymentRequestService {
     }
 
     final paymentRequestId = response['id'] as String;
-    LogService.success('Payment request created: $paymentRequestId (Amount: ${PricingService.formatPrice(paymentAmount)})');
+    LogService.success(
+      'Payment request created: $paymentRequestId '
+      '(Amount: ${PricingService.formatPrice(quote.installmentAmount)})',
+    );
 
     return paymentRequestId;
   }
@@ -143,33 +263,22 @@ class PaymentRequestService {
     required int count,
     double? adjustedMonthlyTotal,
   }) async {
-    // Use adjusted monthly total if provided (for partial multi-learner acceptance)
-    final baseMonthlyTotal = adjustedMonthlyTotal ?? approvedRequest.monthlyTotal;
-    
-    // Calculate total monthly payment (session fee + transportation)
-    final isOnsite = approvedRequest.location == 'onsite' || approvedRequest.location == 'hybrid';
-    final estimatedTransportationCost = approvedRequest.estimatedTransportationCost ?? 0.0;
+    final quote = _quoteForRequest(
+      approvedRequest,
+      adjustedSessionFeeMonthly: adjustedMonthlyTotal,
+    );
+    final estimatedTransportationCost =
+        approvedRequest.estimatedTransportationCost ?? 0.0;
     final frequency = approvedRequest.frequency;
     final sessionsPerMonth = frequency * 4;
+    final isOnsite = approvedRequest.location == 'onsite' ||
+        approvedRequest.location == 'hybrid';
     final monthlyTransportationTotal = (isOnsite && estimatedTransportationCost > 0)
         ? estimatedTransportationCost * sessionsPerMonth
         : 0.0;
-    final totalMonthlyAmount = baseMonthlyTotal + monthlyTransportationTotal;
-    
-    final baseAmount = _getBaseAmountForPlan(
-      monthlyTotal: totalMonthlyAmount, // Include transportation in base amount
-      paymentPlan: approvedRequest.paymentPlan,
-    );
-    final pricingDetails = PricingService.calculateDiscount(
-      monthlyTotal: baseAmount,
-      paymentPlan: approvedRequest.paymentPlan,
-    );
-    final paymentAmount = pricingDetails['finalAmount'] as double;
 
-    final paymentPlan = approvedRequest.paymentPlan.toLowerCase();
-    
-    // Calculate interval between payments
-    final daysInterval = paymentPlan == 'weekly' ? 7 : 14;
+    final daysInterval =
+        PaymentRequestAmounts.daysBetweenInstallments(approvedRequest.paymentPlan);
     
     // Calculate first due date
     final firstDueDate = _calculateDueDate(approvedRequest.paymentPlan);
@@ -186,11 +295,11 @@ class PaymentRequestService {
         'recurring_session_id': null,
         'student_id': approvedRequest.studentId,
         'tutor_id': approvedRequest.tutorId,
-        'amount': paymentAmount,
-        'original_amount': totalMonthlyAmount, // Total including transportation
-        'discount_percent': pricingDetails['discountPercent'] as double,
-        'discount_amount': pricingDetails['discountAmount'] as double,
-        'payment_plan': approvedRequest.paymentPlan,
+        'amount': quote.installmentAmount,
+        'original_amount': quote.totalMonthlyAmount,
+        'discount_percent': quote.discountPercent,
+        'discount_amount': quote.discountAmount,
+        'payment_plan': quote.paymentPlan,
         'status': 'pending',
         'due_date': dueDate.toIso8601String(),
         'description': _generateRecurringPaymentDescription(
@@ -248,52 +357,6 @@ class PaymentRequestService {
     return '$plan payment $paymentNumber of $totalPayments for $frequency session${frequency > 1 ? 's' : ''} per week ($days) with ${request.tutorName} - Due: $dueDateStr';
   }
 
-  /// Get base amount for the payment plan period
-  /// 
-  /// - Monthly: monthlyTotal
-  /// - Bi-weekly: monthlyTotal / 2
-  /// - Weekly: monthlyTotal / 4
-  static double _getBaseAmountForPlan({
-    required double monthlyTotal,
-    required String paymentPlan,
-  }) {
-    switch (paymentPlan.toLowerCase()) {
-      case 'monthly':
-        return monthlyTotal;
-      case 'biweekly':
-      case 'bi-weekly':
-        return monthlyTotal / 2;
-      case 'weekly':
-        return monthlyTotal / 4;
-      default:
-        return monthlyTotal; // Default to monthly
-    }
-  }
-
-  /// Calculate payment amount based on plan
-  /// 
-  /// - Monthly: monthlyTotal (with discount applied)
-  /// - Bi-weekly: monthlyTotal / 2 (with discount applied)
-  /// - Weekly: monthlyTotal / 4 (no discount)
-  static double _calculatePaymentAmount({
-    required double monthlyTotal,
-    required String paymentPlan,
-  }) {
-    // Get base amount for the payment period
-    final baseAmount = _getBaseAmountForPlan(
-      monthlyTotal: monthlyTotal,
-      paymentPlan: paymentPlan,
-    );
-
-    // Apply discount
-    final pricingDetails = PricingService.calculateDiscount(
-      monthlyTotal: baseAmount,
-      paymentPlan: paymentPlan,
-    );
-
-    return pricingDetails['finalAmount'] as double;
-  }
-
   /// Calculate due date based on payment plan
   /// 
   /// - Monthly: 7 days from now
@@ -303,19 +366,21 @@ class PaymentRequestService {
     final now = DateTime.now();
     late DateTime dueDate;
 
-    switch (paymentPlan.toLowerCase()) {
+    switch (PaymentRequestAmounts.normalizePlan(paymentPlan)) {
       case 'monthly':
         dueDate = now.add(const Duration(days: 7));
         break;
       case 'biweekly':
-      case 'bi-weekly':
         dueDate = now.add(const Duration(days: 3));
         break;
       case 'weekly':
         dueDate = now.add(const Duration(days: 1));
         break;
+      case 'trial':
+        dueDate = now.add(const Duration(days: 3));
+        break;
       default:
-        dueDate = now.add(const Duration(days: 7)); // Default to 7 days
+        dueDate = now.add(const Duration(days: 7));
     }
 
     return dueDate.toIso8601String();
@@ -474,18 +539,18 @@ class PaymentRequestService {
     String bookingRequestId,
   ) async {
     try {
+      final pendingId = await _findExistingOpenPaymentRequestId(bookingRequestId);
+      if (pendingId != null) return pendingId;
+
       final response = await SupabaseService.client
           .from('payment_requests')
           .select('id')
           .eq('booking_request_id', bookingRequestId)
-          .order('created_at', ascending: false)
+          .order('created_at', ascending: true)
           .limit(1)
           .maybeSingle();
 
-      if (response != null) {
-        return response['id'] as String?;
-      }
-      return null;
+      return response?['id'] as String?;
     } catch (e) {
       LogService.error('Error fetching payment request by booking request ID: $e');
       return null;

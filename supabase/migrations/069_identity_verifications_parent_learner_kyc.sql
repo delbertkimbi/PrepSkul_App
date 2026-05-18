@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS public.identity_verifications (
       'voter_card',
       'drivers_licence',
       'residence_permit',
+      'school_id',
       'other'
     )
   ),
@@ -72,7 +73,7 @@ COMMENT ON COLUMN public.identity_verifications.account_id IS
   'Account (profiles.id) that this verification applies to (booking/paying user).';
 
 COMMENT ON COLUMN public.identity_verifications.document_type IS
-  'Type of ID document: national_id, passport, voter_card, drivers_licence, residence_permit, other.';
+  'Type of ID document: national_id, passport, voter_card, drivers_licence, residence_permit, school_id, other.';
 
 COMMENT ON COLUMN public.identity_verifications.whose_id IS
   'Whose ID is stored: self (account owner), parent_guardian, or other_adult.';

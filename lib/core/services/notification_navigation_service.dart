@@ -778,6 +778,35 @@ class NotificationNavigationService {
         }
         break;
 
+      case 'identity_verification_approved':
+        final approvedPaymentId = metadata?['payment_request_id'] as String?;
+        if (approvedPaymentId != null) {
+          await navService.navigateToRoute(
+            '/payments/$approvedPaymentId',
+            replace: false,
+          );
+        } else {
+          final role = userType == 'parent' ? 'parent' : 'student';
+          final route = role == 'parent' ? '/parent-nav' : '/student-nav';
+          await navService.navigateToRoute(
+            route,
+            arguments: {'initialTab': 2},
+            replace: true,
+          );
+        }
+        break;
+
+      case 'identity_verification_rejected':
+        final roleRejected = userType == 'parent' ? 'parent' : 'student';
+        final routeRejected =
+            roleRejected == 'parent' ? '/parent-nav' : '/student-nav';
+        await navService.navigateToRoute(
+          routeRejected,
+          arguments: {'initialTab': 2},
+          replace: true,
+        );
+        break;
+
       default:
         // Unknown notification type, do nothing
         break;

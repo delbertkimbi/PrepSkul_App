@@ -18,6 +18,7 @@ class Message {
   
   // Metadata
   final DateTime createdAt;
+  final Map<String, dynamic>? metadata;
   
   // Denormalized data for display
   final String? senderName;
@@ -46,6 +47,7 @@ class Message {
     this.replyToMessageId,
     this.replyToContent,
     this.replyToSenderName,
+    this.metadata,
   });
 
   /// Create from JSON (from Supabase)
@@ -70,6 +72,9 @@ class Message {
       replyToMessageId: json['reply_to_message_id'] as String?,
       replyToContent: json['reply_to_content'] as String?,
       replyToSenderName: json['reply_to_sender_name'] as String?,
+      metadata: json['metadata'] is Map
+          ? Map<String, dynamic>.from(json['metadata'] as Map)
+          : null,
     );
   }
 
@@ -89,6 +94,7 @@ class Message {
       'reply_to_message_id': replyToMessageId,
       'reply_to_content': replyToContent,
       'reply_to_sender_name': replyToSenderName,
+      'metadata': metadata,
     };
   }
 
@@ -110,6 +116,7 @@ class Message {
     String? replyToMessageId,
     String? replyToContent,
     String? replyToSenderName,
+    Map<String, dynamic>? metadata,
   }) {
     return Message(
       id: id ?? this.id,
@@ -128,7 +135,16 @@ class Message {
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       replyToContent: replyToContent ?? this.replyToContent,
       replyToSenderName: replyToSenderName ?? this.replyToSenderName,
+      metadata: metadata ?? this.metadata,
     );
+  }
+
+  bool get isVocabularyCandidate {
+    final explicit = metadata?['isVocabularyCandidate'];
+    if (explicit is bool) return explicit;
+    final fallback = metadata?['is_vocabulary_candidate'];
+    if (fallback is bool) return fallback;
+    return false;
   }
 }
 

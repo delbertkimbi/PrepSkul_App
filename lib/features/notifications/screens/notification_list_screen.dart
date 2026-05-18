@@ -639,9 +639,13 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
     final actionUrl = notification['action_url'] as String?;
     final url = actionUrl != null && actionUrl.isNotEmpty
         ? actionUrl
-        : (notificationType == 'trial_payment_completed' || notificationType == 'trial_payment_received')
+        : (notificationType == 'trial_payment_completed' ||
+                notificationType == 'trial_payment_received')
             ? '/sessions'
-            : null;
+            : (notificationType == 'identity_verification_approved' ||
+                    notificationType == 'identity_verification_rejected')
+                ? '/student/requests'
+                : null;
 
     if (url != null) {
       await NotificationNavigationService.navigateToAction(

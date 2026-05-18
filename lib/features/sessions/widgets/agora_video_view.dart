@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:agora_rtc_engine/agora_rtc_engine.dart' as agora_rtc_engine;
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/features/sessions/services/agora_service.dart';
 
 /// Agora Video View Widget
 ///
@@ -10,7 +11,7 @@ import 'package:prepskul/core/services/log_service.dart';
 /// 
 /// STABILITY: Uses stable keys internally to prevent unnecessary widget recreation
 /// which can cause video blackouts during network fluctuations.
-class AgoraVideoViewWidget extends StatelessWidget {
+class AgoraVideoViewWidget extends StatefulWidget {
   final agora_rtc_engine.RtcEngine engine;
   final int? uid;
   final bool isLocal;
@@ -25,13 +26,6 @@ class AgoraVideoViewWidget extends StatelessWidget {
     this.connection,
     this.sourceType,
   }) : super(key: key);
-  
-  /// Generate a stable key for the video view to prevent unnecessary recreation
-  String get _stableKey {
-    final type = isLocal ? 'local' : 'remote';
-    final source = sourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen ? 'screen' : 'camera';
-    return 'agora_video_${type}_${uid ?? 0}_$source';
-  }
 
   // Prevent repeated local web setup calls on every rebuild.
   static final Map<String, String> _lastLocalSetupSignatureByUid = <String, String>{};
@@ -40,8 +34,77 @@ class AgoraVideoViewWidget extends StatelessWidget {
   static final Map<String, DateTime> _lastRemoteRenderLogAtByUid = <String, DateTime>{};
 
   @override
+  State<AgoraVideoViewWidget> createState() => _AgoraVideoViewWidgetState();
+}
+
+class _AgoraVideoViewWidgetState extends State<AgoraVideoViewWidget> {
+  agora_rtc_engine.VideoViewControllerBase? _controller;
+  String? _controllerSignature;
+
+  String _buildSignature({
+    required bool isLocal,
+    required int uid,
+    required agora_rtc_engine.VideoSourceType sourceType,
+    required String? channelId,
+  }) {
+    final source = sourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen
+        ? 'screen'
+        : 'camera';
+    final role = isLocal ? 'local' : 'remote';
+    return '$role-$uid-$source-${channelId ?? "none"}';
+  }
+
+  String _stableKey({
+    required bool isLocal,
+    required int uid,
+    required agora_rtc_engine.VideoSourceType sourceType,
+  }) {
+    final source = sourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen
+        ? 'screen'
+        : 'camera';
+    return 'agora_video_${isLocal ? "local" : "remote"}_${uid}_$source';
+  }
+
+  void _ensureController({
+    required agora_rtc_engine.RtcEngine engine,
+    required bool isLocal,
+    required int uid,
+    required agora_rtc_engine.VideoSourceType sourceType,
+    required agora_rtc_engine.RenderModeType renderMode,
+    required agora_rtc_engine.RtcConnection? connection,
+  }) {
+    final signature = _buildSignature(
+      isLocal: isLocal,
+      uid: uid,
+      sourceType: sourceType,
+      channelId: connection?.channelId,
+    );
+    if (_controller != null && _controllerSignature == signature) return;
+
+    _controllerSignature = signature;
+    _controller = isLocal
+        ? agora_rtc_engine.VideoViewController(
+            rtcEngine: engine,
+            canvas: agora_rtc_engine.VideoCanvas(
+              uid: 0,
+              sourceType: sourceType,
+              renderMode: renderMode,
+            ),
+          )
+        : agora_rtc_engine.VideoViewController.remote(
+            rtcEngine: engine,
+            connection: connection!,
+            canvas: agora_rtc_engine.VideoCanvas(
+              uid: uid,
+              sourceType: sourceType,
+              renderMode: renderMode,
+            ),
+          );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (uid == null) {
+    if (widget.uid == null) {
       return Container(
         color: Colors.black,
         child: const Center(
@@ -52,12 +115,17 @@ class AgoraVideoViewWidget extends StatelessWidget {
 
     // For remote video, we need a connection with channelId
     // If connection is not provided or doesn't have channelId, show loading
-    if (!isLocal && (connection == null || connection!.channelId == null)) {
+    if (!widget.isLocal &&
+        (widget.connection == null || widget.connection!.channelId == null)) {
       // Debug: Log why we're showing loading
-      if (connection == null) {
-        debugPrint('⚠️ [AgoraVideoView] Remote video: connection is null for UID=$uid');
-      } else if (connection!.channelId == null) {
-        debugPrint('⚠️ [AgoraVideoView] Remote video: connection.channelId is null for UID=$uid');
+      if (widget.connection == null) {
+        debugPrint(
+          '⚠️ [AgoraVideoView] Remote video: connection is null for UID=${widget.uid}',
+        );
+      } else if (widget.connection!.channelId == null) {
+        debugPrint(
+          '⚠️ [AgoraVideoView] Remote video: connection.channelId is null for UID=${widget.uid}',
+        );
       }
       return Container(
         color: Colors.black,
@@ -68,7 +136,9 @@ class AgoraVideoViewWidget extends StatelessWidget {
     }
 
     // Determine the actual source type to use
-    final actualSourceType = sourceType ?? agora_rtc_engine.VideoSourceType.videoSourceCamera;
+    final actualSourceType =
+        widget.sourceType ??
+        agora_rtc_engine.VideoSourceType.videoSourceCamera;
     
     // Choose render mode:
     // - Camera: use HIDDEN (crop to fill, typical for faces)
@@ -80,7 +150,7 @@ class AgoraVideoViewWidget extends StatelessWidget {
     // CRITICAL: For screen sharing, we need to explicitly set up the video source
     // before creating the view controller
     final canvas = agora_rtc_engine.VideoCanvas(
-      uid: isLocal ? 0 : uid!,
+      uid: widget.isLocal ? 0 : widget.uid!,
       sourceType: actualSourceType,
       renderMode: renderMode,
       // mirrorMode is optional - only set if available
@@ -91,82 +161,99 @@ class AgoraVideoViewWidget extends StatelessWidget {
     // On Android/iOS we must NOT call setupLocalVideo here — the plugin's AgoraVideoView
     // creates the native view and binds it; our calling setupLocalVideo(canvas without view)
     // would clear that binding and cause a black preview.
-    if (isLocal) {
+    if (widget.isLocal) {
       if (kIsWeb) {
-        try {
-          final sourceSig = actualSourceType.name;
-          final uidKey = 'local_${uid ?? 0}';
-          final now = DateTime.now();
-          final previousSig = _lastLocalSetupSignatureByUid[uidKey];
-          final previousAt = _lastLocalSetupAtByUid[uidKey];
-          final shouldSetup = previousSig != sourceSig ||
-              previousAt == null ||
-              now.difference(previousAt) > const Duration(seconds: 10);
+        final skipCameraSetupWhileSharing =
+            actualSourceType ==
+                agora_rtc_engine.VideoSourceType.videoSourceCamera &&
+            AgoraService().isPublishingScreen;
+        if (!skipCameraSetupWhileSharing) {
+          try {
+            final sourceSig = actualSourceType.name;
+            final uidKey = 'local_${widget.uid ?? 0}';
+            final now = DateTime.now();
+            final previousSig =
+                AgoraVideoViewWidget._lastLocalSetupSignatureByUid[uidKey];
+            final previousAt =
+                AgoraVideoViewWidget._lastLocalSetupAtByUid[uidKey];
+            final shouldSetup = previousSig != sourceSig ||
+                previousAt == null ||
+                now.difference(previousAt) > const Duration(seconds: 10);
 
-          if (shouldSetup) {
-            _lastLocalSetupSignatureByUid[uidKey] = sourceSig;
-            _lastLocalSetupAtByUid[uidKey] = now;
-            engine.setupLocalVideo(canvas);
-            if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen) {
-              LogService.info('✅ [AgoraVideoView] Set up LOCAL video with SCREEN source (web)');
-            } else {
-              LogService.info('✅ [AgoraVideoView] Set up LOCAL video with CAMERA source (web)');
+            if (shouldSetup) {
+              AgoraVideoViewWidget._lastLocalSetupSignatureByUid[uidKey] =
+                  sourceSig;
+              AgoraVideoViewWidget._lastLocalSetupAtByUid[uidKey] = now;
+              widget.engine.setupLocalVideo(canvas);
+              if (actualSourceType ==
+                  agora_rtc_engine.VideoSourceType.videoSourceScreen) {
+                LogService.info(
+                  '✅ [AgoraVideoView] Set up LOCAL video with SCREEN source (web)',
+                );
+              } else {
+                LogService.info(
+                  '✅ [AgoraVideoView] Set up LOCAL video with CAMERA source (web)',
+                );
+              }
+              // Do not force-unmute from widget layer. AgoraService owns publish/mute policy.
             }
-            // Do not force-unmute from widget layer. AgoraService owns publish/mute policy.
+          } catch (e) {
+            LogService.warning(
+              '⚠️ [AgoraVideoView] Failed to set up local video on web: $e',
+            );
           }
-        } catch (e) {
-          LogService.warning('⚠️ [AgoraVideoView] Failed to set up local video on web: $e');
         }
       }
       // On mobile, do not call setupLocalVideo — AgoraVideoView binds the view internally.
     } else {
       // For remote video, the VideoViewController.remote will handle setup
       // The canvas with sourceType is passed to the controller
-      final remoteKey = 'remote_${uid ?? 0}';
+      final remoteKey = 'remote_${widget.uid ?? 0}';
       final sourceSig = actualSourceType.name;
       final now = DateTime.now();
-      final previousSig = _lastRemoteRenderSignatureByUid[remoteKey];
-      final previousAt = _lastRemoteRenderLogAtByUid[remoteKey];
+      final previousSig =
+          AgoraVideoViewWidget._lastRemoteRenderSignatureByUid[remoteKey];
+      final previousAt =
+          AgoraVideoViewWidget._lastRemoteRenderLogAtByUid[remoteKey];
       final shouldLog = previousSig != sourceSig ||
           previousAt == null ||
           now.difference(previousAt) > const Duration(seconds: 10);
       if (shouldLog) {
-        _lastRemoteRenderSignatureByUid[remoteKey] = sourceSig;
-        _lastRemoteRenderLogAtByUid[remoteKey] = now;
+        AgoraVideoViewWidget._lastRemoteRenderSignatureByUid[remoteKey] =
+            sourceSig;
+        AgoraVideoViewWidget._lastRemoteRenderLogAtByUid[remoteKey] = now;
         if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen) {
-          debugPrint('✅ [AgoraVideoView] Setting up REMOTE video with SCREEN source for UID=$uid');
+          debugPrint(
+            '✅ [AgoraVideoView] Setting up REMOTE video with SCREEN source for UID=${widget.uid}',
+          );
         } else {
-          debugPrint('✅ [AgoraVideoView] Setting up REMOTE video with CAMERA source for UID=$uid');
+          debugPrint(
+            '✅ [AgoraVideoView] Setting up REMOTE video with CAMERA source for UID=${widget.uid}',
+          );
         }
       }
     }
 
-    final controller = isLocal
-        ? agora_rtc_engine.VideoViewController(
-            rtcEngine: engine,
-            canvas: agora_rtc_engine.VideoCanvas(
-              uid: 0,
-              sourceType: actualSourceType,
-              renderMode: renderMode,
-              // mirrorMode is optional - only set if available
-            ),
-          )
-        : agora_rtc_engine.VideoViewController.remote(
-            rtcEngine: engine,
-            connection: connection!, // Safe to use ! here because we checked above
-            canvas: agora_rtc_engine.VideoCanvas(
-              uid: uid!,
-              sourceType: actualSourceType,
-              renderMode: renderMode,
-              // mirrorMode is optional - only set if available
-            ),
-          );
+    _ensureController(
+      engine: widget.engine,
+      isLocal: widget.isLocal,
+      uid: widget.uid!,
+      sourceType: actualSourceType,
+      renderMode: renderMode,
+      connection: widget.connection,
+    );
 
     // Use stable key to prevent unnecessary widget recreation during network fluctuations
     return SizedBox.expand(
-      key: ValueKey(_stableKey),
+      key: ValueKey(
+        _stableKey(
+          isLocal: widget.isLocal,
+          uid: widget.uid!,
+          sourceType: actualSourceType,
+        ),
+      ),
       child: agora_rtc_engine.AgoraVideoView(
-        controller: controller,
+        controller: _controller!,
       ),
     );
   }

@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/feedback/app_feedback.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
-import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
+import 'package:prepskul/features/payment/utils/payment_navigation_helper.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
@@ -22,7 +23,6 @@ import 'package:prepskul/features/discovery/widgets/tutor_card.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
-import 'package:prepskul/core/services/supabase_service.dart';
 
 /// RequestDetailScreen
 ///
@@ -203,27 +203,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         
         if (!mounted) return;
         Navigator.pop(context, true); // Go back so list refreshes and item is removed
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Request canceled successfully',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
+        AppFeedback.showSuccess(context, 'Request canceled successfully');
       } catch (e) {
         LogService.error('Error canceling request: $e');
         if (!mounted) return;
         safeSetState(() => _isCanceling = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to cancel: ${e.toString().replaceFirst('Exception: ', '')}',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.red,
-          ),
+        AppFeedback.showErrorToast(
+          context,
+          'Failed to cancel: ${e.toString().replaceFirst('Exception: ', '')}',
         );
       }
     }
@@ -233,14 +220,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     try {
       final bookingRequestId = request['id'] as String?;
       if (bookingRequestId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Unable to start conversation. Booking request ID not found.',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.red,
-          ),
+        AppFeedback.showErrorToast(
+          context,
+          'Unable to start conversation. Booking request ID not found.',
         );
         return;
       }
@@ -264,14 +246,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
       if (conversationData == null || conversationData['id'] == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Unable to start conversation. Please try again.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: Colors.red,
-            ),
+          AppFeedback.showErrorToast(
+            context,
+            'Unable to start conversation. Please try again.',
           );
         }
         return;
@@ -287,14 +264,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
       if (conversationResponse == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Conversation not found. Please try again.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: Colors.red,
-            ),
+          AppFeedback.showErrorToast(
+            context,
+            'Conversation not found. Please try again.',
           );
         }
         return;
@@ -304,15 +276,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       final currentUserId = SupabaseService.currentUser?.id;
       if (currentUserId == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'You must be logged in to message.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppFeedback.showErrorToast(context, 'You must be logged in to message.');
         }
         return;
       }
@@ -363,14 +327,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         // Dismiss loading if still showing
         Navigator.of(context, rootNavigator: true).popUntil((route) => !route.navigator!.canPop() || route.settings.name != null);
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Unable to start conversation. Please try again.',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.red,
-          ),
+        AppFeedback.showErrorToast(
+          context,
+          'Unable to start conversation. Please try again.',
         );
       }
     }
@@ -1210,12 +1169,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 } catch (e) {
                   LogService.error('Error loading tutor for modification: $e');
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error loading tutor information'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                    AppFeedback.showErrorToast(context, 'Error loading tutor information');
                   }
                 }
               },
@@ -1358,12 +1312,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   } catch (e) {
                     LogService.error('Error loading tutor for date change: $e');
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error loading tutor information'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
+                      AppFeedback.showErrorToast(context, 'Error loading tutor information');
                     }
                   }
                 }
@@ -1533,12 +1482,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             } catch (e) {
               LogService.error('Error loading tutor for reschedule: $e');
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error loading tutor information'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
+                AppFeedback.showErrorToast(context, 'Error loading tutor information');
               }
             }
           },
@@ -1649,12 +1593,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       } catch (e) {
         LogService.error('Error loading tutor for modification: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error loading tutor information'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppFeedback.showErrorToast(context, 'Error loading tutor information');
         }
       }
     }
@@ -1757,23 +1696,18 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         );
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${requireReason ? 'Session' : 'Request'} deleted successfully'),
-              backgroundColor: Colors.green,
-            ),
+          AppFeedback.showSuccess(
+            context,
+            '${requireReason ? 'Session' : 'Request'} deleted successfully',
           );
           Navigator.pop(context, true); // Return to previous screen with refresh flag
         }
       } catch (e) {
         LogService.error('Error deleting session: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString().replaceFirst('Exception: ', '')}'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
+          AppFeedback.showErrorToast(
+            context,
+            'Error: ${e.toString().replaceFirst('Exception: ', '')}',
           );
         }
       }
@@ -2460,25 +2394,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         if (!mounted) return;
         
         Navigator.pop(context, true); // Go back so list refreshes
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Request deleted successfully',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
+        AppFeedback.showSuccess(context, 'Request deleted successfully');
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Error deleting request: ${e.toString()}',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.red,
-          ),
+        AppFeedback.showErrorToast(
+          context,
+          'Error deleting request: ${e.toString()}',
         );
       }
     }
@@ -2919,14 +2840,11 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                           child: ElevatedButton.icon(
                             onPressed: () async {
                               // Navigate to payment screen
-                              final result = await Navigator.push(
+                              final result = await PaymentNavigationHelper.openPayFlow(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (context) => BookingPaymentScreen(
-                                    paymentRequestId: paymentRequestId!,
-                                    bookingRequestId: request['id'] as String,
-                                  ),
-                                ),
+                                paymentRequestId: paymentRequestId!,
+                                bookingRequestId: request['id'] as String,
+                                locationOverride: request['location'] as String?,
                               );
                               
                               // Refresh if payment was successful
@@ -2935,15 +2853,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                   // Refresh the screen
                                 });
                                 // Show success message
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Payment successful! Your booking is confirmed.',
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                    backgroundColor: Colors.green,
-                                    duration: const Duration(seconds: 3),
-                                  ),
+                                AppFeedback.showSuccess(
+                                  context,
+                                  'Payment successful! Your booking is confirmed.',
                                 );
                               }
                             },

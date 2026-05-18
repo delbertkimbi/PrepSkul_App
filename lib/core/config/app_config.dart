@@ -30,6 +30,13 @@ class AppConfig {
   /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
   /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAP.eSHI_SANDBOX_API_KEY
   static const bool isProduction = false; // ← PRODUCTION MODE ENABLED
+
+  // ============================================
+  // 🚀 v1 launch defaults (see docs/LAUNCH_SCOPE.md)
+  // ============================================
+  // - enableGroupClasses: false unless GROUP_CLASSES_ENABLED=true in .env / window.env
+  // - enableSkulMate: true in code; set false for launch if SkulMate is out of UAT scope
+  // - Group classes: online-only when enabled; deferred for v1 marketplace launch
   
   // ============================================
   // 🔐 Authentication Feature Flags
@@ -53,11 +60,11 @@ class AppConfig {
   /// This is intentionally code-controlled to avoid accidental env overrides.
   static const bool enablePhoneOtpVerification = false;
   
-  /// Enable/disable SkulMate feature
-  /// 
-  /// Set to `true` to enable SkulMate (game generation and library).
-  /// Set to `false` to disable SkulMate in production.
-  static const bool enableSkulMate = true; // ← Disabled in production until RLS issues are resolved
+  /// Enable/disable SkulMate feature (game generation and library).
+  ///
+  /// v1 launch: keep `true` only if SkulMate is in UAT scope; otherwise set `false`.
+  /// See docs/LAUNCH_SCOPE.md §4 (SkulMate in/out).
+  static const bool enableSkulMate = true;
 
   /// Enable/disable PrepSkul VA (session summary, analysis, notifications)
   ///
@@ -497,9 +504,55 @@ class AppConfig {
     return _safeEnvBool('CLASSROOM_WORKSPACE_REALTIME_ENABLED', true);
   }
 
-  /// Enable group classes flows (safe rollout flag).
+  /// Tutoring audio profile strategy for Agora.
+  ///
+  /// Supported values:
+  /// - `speech` (default): speech standard + chatroom scenario.
+  /// - `balanced`: speech standard + meeting scenario.
+  /// - `music`: music standard + game streaming scenario.
+  /// - `ab`: deterministic A/B per session (speech vs balanced).
+  static String get classroomAudioProfileMode {
+    final raw = _safeEnv('CLASSROOM_AUDIO_PROFILE_MODE', 'speech')
+        .trim()
+        .toLowerCase();
+    switch (raw) {
+      case 'speech':
+      case 'balanced':
+      case 'music':
+      case 'ab':
+        return raw;
+      default:
+        return 'speech';
+    }
+  }
+
+  /// Optional backup call URL shown in in-call recovery mode.
+  /// Example: `https://meet.google.com/xxx-yyyy-zzz`.
+  static String get classroomBackupCallUrl {
+    return _safeEnv('CLASSROOM_BACKUP_CALL_URL', '').trim();
+  }
+
+  /// If local camera never reaches capturing/encoding within a grace period, show a
+  /// one-time “Continue audio only” action (tutoring-friendly fallback).
+  static bool get enableClassroomAudioOnlyFallback {
+    return _safeEnvBool('CLASSROOM_AUDIO_ONLY_FALLBACK_ENABLED', true);
+  }
+
+  /// When false, live sessions stay voice-first: no camera toggle in-call, no publish
+  /// from join regardless of pre-join. Default true so preview + classroom match Preply parity;
+  /// set false temporarily if web/native camera regressions need a safe fallback.
+  static const bool enableSessionCameraPublishing = true;
+
+  /// When false, learners do not get Share screen affordances (dock / More); tutor presents only.
+  /// Receiving a tutor's screen share is unchanged. Flip to true if product allows learner share (e.g. homework).
+  static const bool enableLearnerScreenShare = true;
+
+  /// Enable group classes flows (online group sessions; post-v1 rollout).
+  ///
+  /// v1 launch default: **false**. Set env `GROUP_CLASSES_ENABLED=true` to enable.
+  /// UI entry points (tutor home, find tutors, deep links) must check this flag.
   static bool get enableGroupClasses {
-    return _safeEnvBool('GROUP_CLASSES_ENABLED', true);
+    return _safeEnvBool('GROUP_CLASSES_ENABLED', false);
   }
 
   /// Dev-only QA account quick switch panel on login screen.

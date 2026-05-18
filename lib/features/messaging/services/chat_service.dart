@@ -213,6 +213,50 @@ class ChatService {
     }
   }
 
+  /// Adds a vocabulary word to the learner deck (chat-driven SRS seed).
+  /// Backend endpoint is optional; callers can still continue on failure.
+  static Future<void> addWordToVocabularyDeck({
+    required String conversationId,
+    required String messageId,
+    required String word,
+    String? sourceContext,
+  }) async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) {
+      throw Exception('User not authenticated');
+    }
+
+    final apiUrl = '$_apiBaseUrl/messages/add-vocabulary';
+    final response = await http
+        .post(
+          Uri.parse(apiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${await _getAccessToken()}',
+          },
+          body: jsonEncode({
+            'conversationId': conversationId,
+            'messageId': messageId,
+            'word': word.trim(),
+            if (sourceContext != null && sourceContext.isNotEmpty)
+              'sourceContext': sourceContext,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    final body = response.body.trim();
+    if (response.statusCode >= 400) {
+      String? reason;
+      if (body.startsWith('{')) {
+        try {
+          final map = jsonDecode(body) as Map<String, dynamic>;
+          reason = map['error'] as String?;
+        } catch (_) {}
+      }
+      throw Exception(reason ?? 'Failed to add word (${response.statusCode})');
+    }
+  }
+
   /// Preview message filter results (without sending)
   static Future<Map<String, dynamic>> previewMessage(String content) async {
     try {

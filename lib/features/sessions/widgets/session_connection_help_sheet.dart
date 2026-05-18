@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -97,6 +96,7 @@ class _SessionConnectionHelpPanelState
   @override
   void initState() {
     super.initState();
+    _rtcState = widget.agoraService.lastRtcConnectionState;
     _connSub = widget.agoraService.connectionStateStream.listen((s) {
       if (mounted) setState(() => _rtcState = s);
     });
@@ -164,7 +164,7 @@ class _SessionConnectionHelpPanelState
                 Text(
                   'Status',
                   style: GoogleFonts.poppins(
-                    color: Colors.white70,
+                    color: Colors.white.withOpacity(0.9),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.4,
@@ -184,72 +184,52 @@ class _SessionConnectionHelpPanelState
                     'Other participant',
                     connectionHelpUplinkLabel(remoteQ),
                   ),
-                const SizedBox(height: 20),
-                Text(
-                  'Tips',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _tip(
-                  Icons.wifi,
-                  'Move closer to your Wi‑Fi router, or use wired internet if you can.',
-                ),
-                _tip(
-                  Icons.downloading,
-                  'Pause large downloads or streaming on your network during the lesson.',
-                ),
-                _tip(
-                  Icons.vpn_key_outlined,
-                  'A VPN can add delay—try turning it off briefly if video or audio freezes.',
-                ),
-                _tip(
-                  Icons.tab_unselected,
-                  'Close other apps or browser tabs that use the camera or microphone.',
-                ),
-                if (kDebugMode) ...[
-                  const SizedBox(height: 20),
-                  Theme(
-                    data: Theme.of(
-                      context,
-                    ).copyWith(dividerColor: Colors.white24),
-                    child: ExpansionTile(
-                      collapsedIconColor: Colors.white54,
-                      iconColor: Colors.white54,
-                      title: Text(
-                        'Diagnostics (team)',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
+                const SizedBox(height: 12),
+                Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.white24),
+                  child: ExpansionTile(
+                    initiallyExpanded: false,
+                    collapsedIconColor: Colors.white70,
+                    iconColor: Colors.white70,
+                    title: Text(
+                      'General network tips',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: SelectableText(
-                            [
-                              'channel: ${agora.currentChannelName}',
-                              'localUid: ${agora.currentUID}',
-                              'rtcState: ${_rtcState ?? 'null'}',
-                              'uplinkQuality: ${agora.lastObservedUplinkQuality}',
-                              'remoteQualities: ${agora.snapshotRemoteNetworkQuality}',
-                            ].join('\n'),
-                            style: GoogleFonts.robotoMono(
-                              fontSize: 11,
-                              color: Colors.white60,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
+                    subtitle: Text(
+                      'Open only if audio/video still feels wrong after checking status above.',
+                      style: GoogleFonts.poppins(
+                        color: const Color(0xFFD0DCEE),
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                    children: [
+                      _tip(
+                        Icons.wifi,
+                        'Move closer to your Wi‑Fi router, or use wired internet if you can.',
+                      ),
+                      _tip(
+                        Icons.downloading,
+                        'Pause large downloads or streaming on your network during the lesson.',
+                      ),
+                      _tip(
+                        Icons.vpn_key_outlined,
+                        'A VPN can add delay—try turning it off briefly if video or audio freezes.',
+                      ),
+                      _tip(
+                        Icons.tab_unselected,
+                        'Close other apps or browser tabs that use the camera or microphone.',
+                      ),
+                    ],
                   ),
-                ],
+                ),
+                // Keep team diagnostics out of learner/tutor facing help UI.
               ],
             ),
           ),
@@ -295,7 +275,10 @@ class _SessionConnectionHelpPanelState
             flex: 4,
             child: Text(
               title,
-              style: GoogleFonts.poppins(color: Colors.white54, fontSize: 14),
+              style: GoogleFonts.poppins(
+                color: const Color(0xFFD0DCEE),
+                fontSize: 14,
+              ),
             ),
           ),
           Expanded(
@@ -306,7 +289,7 @@ class _SessionConnectionHelpPanelState
               style: GoogleFonts.poppins(
                 color: Colors.white,
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),

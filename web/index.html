@@ -341,6 +341,17 @@
   </script>
 </head>
 <body>
+  <!-- pdfx (materials PDF viewer): required on web — do not remove. Re-run: dart run pdfx:install_web -->
+  <script src='https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs' type='module'></script>
+  <script type='module'>
+  var { pdfjsLib } = globalThis;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.mjs';
+
+  var pdfRenderOptions = {
+    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/cmaps/',
+    cMapPacked: true,
+  }
+  </script>
   <!-- Loading Screen - theme blue, progress bar for stable refresh -->
   <div id="flutter-loading">
     <div class="loader-container">

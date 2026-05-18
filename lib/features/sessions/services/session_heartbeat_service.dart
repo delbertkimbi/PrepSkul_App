@@ -24,8 +24,13 @@ class SessionHeartbeatService {
   /// received from Supabase.
   final StreamController<String> _peerLeftController =
       StreamController<String>.broadcast();
+  final StreamController<String> _peerBeatController =
+      StreamController<String>.broadcast();
+  DateTime? _lastPeerBeatAt;
 
   Stream<String> get peerLeftStream => _peerLeftController.stream;
+  Stream<String> get peerBeatStream => _peerBeatController.stream;
+  DateTime? get lastPeerBeatAt => _lastPeerBeatAt;
 
   bool get isRunning => _timer != null;
 
@@ -55,13 +60,17 @@ class SessionHeartbeatService {
         event: 'beat',
         callback: (payload, [ref]) {
           final fromUserId = payload['user_id'] as String?;
+          if (fromUserId != null && fromUserId != _userId) {
+            _lastPeerBeatAt = DateTime.now();
+            _peerBeatController.add(fromUserId);
+          }
           LogService.debug(
             '[HEARTBEAT] Beat from user=$fromUserId session=$sessionId',
           );
         },
       );
 
-    await _channel!.subscribe();
+    _channel!.subscribe();
 
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 10), (_) async {
@@ -113,6 +122,7 @@ class SessionHeartbeatService {
       }
     }
     _channel = null;
+    _lastPeerBeatAt = null;
     LogService.info('[HEARTBEAT] Stopped heartbeat for session=$_sessionId');
   }
 }
