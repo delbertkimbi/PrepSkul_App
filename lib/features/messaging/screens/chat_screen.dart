@@ -72,6 +72,91 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _isOtherUserTyping = false;
   Message? _replyingToMessage; // Message being replied to
 
+  String? _extractVocabularyCandidate(String content) {
+    final cleaned = content
+        .replaceAll(RegExp(r'[\r\n\t]'), ' ')
+        .replaceAll(RegExp(r"[^\w\s\-']"), ' ')
+        .trim();
+    if (cleaned.isEmpty) return null;
+    final words = cleaned
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length >= 4 && RegExp(r"^[A-Za-z][A-Za-z\-\'_]*$").hasMatch(w))
+        .toList(growable: false);
+    if (words.isEmpty || words.length > 8) return null;
+    words.sort((a, b) => b.length.compareTo(a.length));
+    return words.first.toLowerCase();
+  }
+
+  Future<void> _addWordFromMessage(Message message) async {
+    final candidate = _extractVocabularyCandidate(message.content);
+    if (candidate == null) return;
+    try {
+      await ChatService.addWordToVocabularyDeck(
+        conversationId: widget.conversation.id,
+        messageId: message.id,
+        word: candidate,
+        sourceContext: message.content,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '"$candidate" added to vocabulary deck',
+            style: GoogleFonts.poppins(fontSize: 12),
+          ),
+          backgroundColor: AppTheme.accentGreen,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not add word right now. Try again later.',
+            style: GoogleFonts.poppins(fontSize: 12),
+          ),
+          backgroundColor: Colors.orange[700],
+        ),
+      );
+    }
+  }
+
+  Future<void> _showMessageActions(Message message) async {
+    final candidate = _extractVocabularyCandidate(message.content);
+    final canAddWord = candidate != null;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: Text('Reply', style: GoogleFonts.poppins(fontSize: 14)),
+              onTap: () {
+                Navigator.pop(ctx);
+                safeSetState(() => _replyingToMessage = message);
+              },
+            ),
+            if (canAddWord)
+              ListTile(
+                leading: const Icon(Icons.school_outlined),
+                title: Text('Add "$candidate" to vocabulary', style: GoogleFonts.poppins(fontSize: 14)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _addWordFromMessage(message);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1312,6 +1397,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final isOptimistic = message.id.startsWith('temp_');
     final messageStatus = _getMessageStatus(message);
     final hasReply = message.replyToMessageId != null;
+    final inferredVocabulary = _extractVocabularyCandidate(message.content);
+    final showVocabularyHint =
+        message.isVocabularyCandidate || inferredVocabulary != null;
     
     return Align(
       alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -1322,10 +1410,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ),
         child: GestureDetector(
           onLongPress: () {
-            // Long press to reply
-            safeSetState(() {
-              _replyingToMessage = message;
-            });
+            _showMessageActions(message);
           },
           onTap: messageStatus == MessageStatus.failed && isCurrentUser
               ? () => _retryFailedMessage(message)
@@ -1427,6 +1512,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     fontWeight: FontWeight.w400,
                   ),
                 ),
+                if (showVocabularyHint) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isCurrentUser
+                          ? Colors.white.withOpacity(0.2)
+                          : AppTheme.primaryColor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Vocabulary candidate',
+                      style: GoogleFonts.poppins(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: isCurrentUser ? Colors.white : AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 3),
                 // Timestamp and status
                 Row(

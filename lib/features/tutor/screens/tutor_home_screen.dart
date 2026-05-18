@@ -28,6 +28,7 @@ import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
 import '../../../core/services/notification_permission_nudge_service.dart';
 import '../../../core/config/app_config.dart';
+import '../widgets/tutor_dashboard_layout.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -660,93 +661,163 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                     SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 20, tablet: 24, desktop: 28)),
                   ],
 
-                  // Quick Stats
-                  Text(
-                    'Quick Stats',
-                    style: GoogleFonts.poppins(
-                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
-                    ),
-                  ),
+                  const TutorZSection(title: 'Quick Stats'),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                   Row(
                     children: [
-                      _buildStatCard('Students', '$_studentCount', Icons.people),
-                      SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
-                      _buildStatCard('Sessions', '$_sessionCount', Icons.event),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Students',
+                          '$_studentCount',
+                          Icons.people,
+                        ),
+                      ),
+                      SizedBox(
+                        width: ResponsiveHelper.responsiveSpacing(
+                          context,
+                          mobile: 12,
+                          tablet: 16,
+                          desktop: 20,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Sessions',
+                          '$_sessionCount',
+                          Icons.event,
+                        ),
+                      ),
                     ],
                   ),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 20, tablet: 24, desktop: 28)),
 
-                  // Quick Actions
-                  Text(
-                    'Quick Actions',
-                    style: GoogleFonts.poppins(
-                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
+                  const TutorZSection(title: 'Quick Actions'),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                  if (ResponsiveHelper.isDesktop(context)) ...[
+                    TutorZRow(
+                      rowIndex: 0,
+                      primary: _buildActionCard(
+                        icon: Icons.inbox_outlined,
+                        title: 'My Requests',
+                        subtitle: 'View your booking requests',
+                        color: Colors.orange,
+                        onTap: () {
+                          Navigator.pushReplacementNamed(
+                            context,
+                            '/tutor-nav',
+                            arguments: {'initialTab': 1},
+                          );
+                        },
+                      ),
+                      secondary: _buildActionCard(
+                        icon: Icons.school_outlined,
+                        title: 'My Sessions',
+                        subtitle: 'View your tutoring sessions',
+                        color: AppTheme.primaryColor,
+                        onTap: () {
+                          Navigator.pushReplacementNamed(
+                            context,
+                            '/tutor-nav',
+                            arguments: {'initialTab': 2},
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
-                  _buildActionCard(
-                    icon: Icons.inbox_outlined,
-                    title: 'My Requests',
-                    subtitle: 'View your booking requests',
-                    color: Colors.orange,
-                    onTap: () {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        '/tutor-nav',
-                        arguments: {'initialTab': 1},
-                      );
-                    },
-                  ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
-                  _buildActionCard(
-                    icon: Icons.school_outlined,
-                    title: 'My Sessions',
-                    subtitle: 'View your tutoring sessions',
-                    color: AppTheme.primaryColor,
-                    onTap: () {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        '/tutor-nav',
-                        arguments: {'initialTab': 2},
-                      );
-                    },
-                  ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
-                  _buildActionCard(
-                    icon: Icons.payment,
-                    title: 'Payment History',
-                    subtitle: 'View and manage your payments',
-                    color: Colors.green,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const TutorEarningsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  if (AppConfig.enableGroupClasses) ...[
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                    TutorZRow(
+                      rowIndex: 1,
+                      primary: _buildActionCard(
+                        icon: Icons.payment,
+                        title: 'Payment History',
+                        subtitle: 'View and manage your payments',
+                        color: Colors.green,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const TutorEarningsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      secondary: AppConfig.enableGroupClasses
+                          ? _buildActionCard(
+                              icon: Icons.groups_outlined,
+                              title: 'Group Classes',
+                              subtitle: 'Create and publish group sessions',
+                              color: Colors.deepPurple,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const TutorGroupClassesScreen(),
+                                  ),
+                                );
+                              },
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ] else ...[
+                    _buildActionCard(
+                      icon: Icons.inbox_outlined,
+                      title: 'My Requests',
+                      subtitle: 'View your booking requests',
+                      color: Colors.orange,
+                      onTap: () {
+                        Navigator.pushReplacementNamed(
+                          context,
+                          '/tutor-nav',
+                          arguments: {'initialTab': 1},
+                        );
+                      },
+                    ),
                     SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
                     _buildActionCard(
-                      icon: Icons.groups_outlined,
-                      title: 'Group Classes',
-                      subtitle: 'Create and publish group sessions',
-                      color: Colors.deepPurple,
+                      icon: Icons.school_outlined,
+                      title: 'My Sessions',
+                      subtitle: 'View your tutoring sessions',
+                      color: AppTheme.primaryColor,
+                      onTap: () {
+                        Navigator.pushReplacementNamed(
+                          context,
+                          '/tutor-nav',
+                          arguments: {'initialTab': 2},
+                        );
+                      },
+                    ),
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                    _buildActionCard(
+                      icon: Icons.payment,
+                      title: 'Payment History',
+                      subtitle: 'View and manage your payments',
+                      color: Colors.green,
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const TutorGroupClassesScreen(),
+                            builder: (context) => const TutorEarningsScreen(),
                           ),
                         );
                       },
                     ),
+                    if (AppConfig.enableGroupClasses) ...[
+                      SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                      _buildActionCard(
+                        icon: Icons.groups_outlined,
+                        title: 'Group Classes',
+                        subtitle: 'Create and publish group sessions',
+                        color: Colors.deepPurple,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const TutorGroupClassesScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ],
                 ],
               ),
@@ -1337,8 +1408,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         ? ResponsiveHelper.responsiveSubheadingSize(context) + 2
         : ResponsiveHelper.responsiveSubheadingSize(context) + 4;
     
-    return Expanded(
-      child: Container(
+    return Container(
         padding: EdgeInsets.all(padding),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1377,7 +1447,6 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             ),
           ],
         ),
-      ),
     );
   }
 }

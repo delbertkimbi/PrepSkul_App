@@ -2102,6 +2102,65 @@ class NotificationHelperService {
     }
   }
 
+  /// Notify all admins when a parent/learner submits onsite/hybrid identity verification.
+  static Future<void> notifyAdminsAboutIdentityVerificationSubmitted({
+    required String verificationId,
+    required String accountId,
+    String? accountName,
+    String? documentType,
+    String? bookingRequestId,
+  }) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final adminResponse = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('is_admin', true);
+
+      if (adminResponse.isEmpty) {
+        LogService.warning(
+          'No admin users found to notify about identity verification',
+        );
+        return;
+      }
+
+      final name = (accountName ?? '').trim();
+      final who = name.isNotEmpty ? name : 'A user';
+      final doc = documentType?.replaceAll('_', ' ') ?? 'ID';
+      final message =
+          '$who submitted identity verification ($doc). Review documents in the admin console.';
+
+      for (final admin in adminResponse as List) {
+        final adminId = admin['id'] as String;
+        await _sendNotificationViaAPI(
+          userId: adminId,
+          type: 'identity_verification_submitted',
+          title: 'New identity verification',
+          message: message,
+          priority: 'high',
+          actionUrl: '/admin/identity-verifications',
+          actionText: 'Review KYC',
+          icon: '🪪',
+          metadata: {
+            'verification_id': verificationId,
+            'account_id': accountId,
+            if (bookingRequestId != null) 'booking_request_id': bookingRequestId,
+          },
+          sendEmail: true,
+          sendPush: true,
+        );
+      }
+
+      LogService.success(
+        'Notified ${adminResponse.length} admin(s) about KYC submission $verificationId',
+      );
+    } catch (e) {
+      LogService.warning(
+        'Error notifying admins about identity verification: $e',
+      );
+    }
+  }
+
   /// Notify all admins about a session safety event (incident, session didn't take place, etc.).
   /// Use for: new safety incident (warning/critical), session_took_place no/partially, no-show, late check-in.
   /// [sendPush] true for warning/critical so admins get push; info can be dashboard-only.

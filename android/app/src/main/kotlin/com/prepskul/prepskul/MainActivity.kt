@@ -2,12 +2,15 @@
 package com.prepskul.prepskul
 
 import android.Manifest
+import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Rational
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -18,9 +21,11 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val NOTIFICATIONS_CHANNEL = "com.prepskul.prepskul/notifications"
     private val PERMISSIONS_CHANNEL = "com.prepskul.prepskul/permissions"
+    private val CALL_PIP_CHANNEL = "com.prepskul.prepskul/call_pip"
 
     private val REQ_CODE_CAMERA_MIC = 31001
     private var pendingCameraMicResult: MethodChannel.Result? = null
+    private var callPipChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Enable edge-to-edge display for Android 15+ (API 35+)
@@ -106,6 +111,55 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        callPipChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CALL_PIP_CHANNEL)
+        callPipChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isSupported" -> result.success(isCallPipSupported())
+                "enterPip" -> {
+                    if (!isCallPipSupported()) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val params = PictureInPictureParams.Builder()
+                                .setAspectRatio(Rational(16, 9))
+                                .build()
+                            val entered = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                enterPictureInPictureMode(params)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                enterPictureInPictureMode(params)
+                                true
+                            }
+                            result.success(entered)
+                        } else {
+                            result.success(false)
+                        }
+                    } catch (e: Exception) {
+                        result.error("PIP_ENTER_FAILED", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun isCallPipSupported(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        callPipChannel?.invokeMethod(
+            "pipModeChanged",
+            mapOf("active" to isInPictureInPictureMode)
+        )
     }
 
     private fun permissionState(permission: String): String {

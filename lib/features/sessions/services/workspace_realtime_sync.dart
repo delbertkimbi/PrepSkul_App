@@ -1,9 +1,21 @@
+import 'dart:async';
+
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/sessions/domain/workspace_sync_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show RealtimeChannel;
 
+/// Transport health for UI (SnackBar + reconnect). Does not replace packet auth.
+enum WorkspaceSyncIssueKind {
+  subscribeFailed,
+  broadcastFailed,
+}
+
 /// Whether a workspace broadcast should mutate local state (learners trust tutor only).
+///
+/// Applies uniformly to **every** `workspace_packet` payload type (strokes, slides,
+/// `TEACHING_LANE`, `SET_MATERIALS_PDF`, agenda, etc.): only the session tutor may
+/// be the `from_user_id` for learner-applied updates; tutors ignore their own echo.
 bool isAuthorizedWorkspaceBroadcast({
   required String? fromUserId,
   required String currentUserId,
@@ -37,6 +49,11 @@ class WorkspaceRealtimeSync {
   final String tutorUserId;
 
   RealtimeChannel? _channel;
+  final StreamController<WorkspaceSyncIssueKind> _issueController =
+      StreamController<WorkspaceSyncIssueKind>.broadcast();
+
+  /// Subscribe to subscribe/broadcast failures so the session UI can SnackBar + [reconnectChannel].
+  Stream<WorkspaceSyncIssueKind> get syncIssues => _issueController.stream;
 
   bool get _isTutor => currentUserId == tutorUserId;
 
@@ -70,7 +87,15 @@ class WorkspaceRealtimeSync {
     } catch (e) {
       LogService.warning('[WORKSPACE] subscribe failed: $e');
       _channel = null;
+      if (!_issueController.isClosed) {
+        _issueController.add(WorkspaceSyncIssueKind.subscribeFailed);
+      }
     }
+  }
+
+  /// Unsubscribe and resubscribe (e.g. after transport errors).
+  Future<void> reconnectChannel() async {
+    await subscribe();
   }
 
   Future<void> unsubscribe() async {
@@ -98,6 +123,14 @@ class WorkspaceRealtimeSync {
       );
     } catch (e) {
       LogService.warning('[WORKSPACE] broadcast failed: $e');
+      if (!_issueController.isClosed) {
+        _issueController.add(WorkspaceSyncIssueKind.broadcastFailed);
+      }
     }
+  }
+
+  /// Call when tearing down the session screen (after [unsubscribe]).
+  Future<void> disposeIssueStream() async {
+    await _issueController.close();
   }
 }

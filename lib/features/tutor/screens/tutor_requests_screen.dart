@@ -14,6 +14,7 @@ import '../../../features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'tutor_request_detail_full_screen.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../widgets/tutor_dashboard_layout.dart';
 
 
 class TutorRequestsScreen extends StatefulWidget {
@@ -188,31 +189,8 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
             responseNotes: result.isEmpty ? null : result,
           );
 
-          // Step 2: Get payment request ID (created during approval)
-          String? paymentRequestId;
-          try {
-            paymentRequestId = await PaymentRequestService.getPaymentRequestIdByBookingRequestId(
-              request.id,
-            );
-            if (paymentRequestId != null) {
-              LogService.success('Found payment request ID: $paymentRequestId');
-            }
-          } catch (e) {
-            LogService.warning('Failed to get payment request ID: $e');
-          }
-
-          // Step 3: Create recurring session from approved request
-          try {
-            await RecurringSessionService.createRecurringSessionFromBooking(
-              approvedRequest,
-              paymentRequestId: paymentRequestId,
-            );
-            LogService.success('Recurring session created successfully');
-          } catch (sessionError) {
-            LogService.warning('Error creating recurring session: $sessionError');
-            // Don't fail the approval if session creation fails
-            // The request is already approved, session can be created manually later
-          }
+          // Payment request + recurring session are created inside
+          // BookingService.approveBookingRequest (idempotent).
 
           // Close loading dialog
           if (mounted) {
@@ -360,12 +338,15 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                     : RefreshIndicator(
                         onRefresh: _loadRequests,
                         color: AppTheme.primaryColor,
-                        child: ListView.builder(
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.all(16),
-                          itemCount: _requests.length,
-                          itemBuilder: (context, index) {
-                            return _buildRequestCard(_requests[index]);
-                          },
+                          child: TutorZCardGrid(
+                            itemCount: _requests.length,
+                            itemBuilder: (context, index) {
+                              return _buildRequestCard(_requests[index]);
+                            },
+                          ),
                         ),
                       ),
           ),

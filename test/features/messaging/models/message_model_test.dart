@@ -50,6 +50,24 @@ void main() {
         expect(message.senderName, isNull);
         expect(message.senderAvatarUrl, isNull);
         expect(message.isCurrentUser, false);
+        expect(message.metadata, isNull);
+        expect(message.isVocabularyCandidate, false);
+      });
+
+      test('should parse metadata and vocabulary flag', () {
+        final json = {
+          'id': 'msg-meta',
+          'conversation_id': 'conv-123',
+          'sender_id': 'user-123',
+          'content': 'aberration',
+          'created_at': '2024-01-01T12:00:00Z',
+          'metadata': {
+            'isVocabularyCandidate': true,
+          },
+        };
+        final message = Message.fromJson(json, currentUserId: 'user-000');
+        expect(message.metadata, isNotNull);
+        expect(message.isVocabularyCandidate, true);
       });
 
       test('should handle type conversions correctly', () {
@@ -121,6 +139,7 @@ void main() {
           isFiltered: true,
           filterReason: 'phone_number',
           moderationStatus: 'flagged',
+          metadata: {'isVocabularyCandidate': true},
         );
 
         final json = message.toJson();
@@ -130,6 +149,7 @@ void main() {
         expect(json['is_filtered'], true);
         expect(json['filter_reason'], 'phone_number');
         expect(json['moderation_status'], 'flagged');
+        expect((json['metadata'] as Map)['isVocabularyCandidate'], true);
       });
     });
 

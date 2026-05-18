@@ -558,6 +558,10 @@ class _BookingReviewState extends State<BookingReview> {
                           amount: _calculatePaymentPlanAmount(displayTotal, 'weekly'),
                           discount: _calculatePaymentPlanDiscount(displayTotal, 'weekly'),
                         ),
+                        if (_selectedPaymentPlan != null) ...[
+                          const SizedBox(height: 16),
+                          _buildSelectedPlanPaySummary(displayTotal),
+                        ],
                       ],
                     );
                   },
@@ -664,6 +668,10 @@ class _BookingReviewState extends State<BookingReview> {
                       amount: _calculatePaymentPlanAmount(monthlyTotal, 'weekly'),
                       discount: _calculatePaymentPlanDiscount(monthlyTotal, 'weekly'),
                     ),
+                    if (_selectedPaymentPlan != null) ...[
+                      const SizedBox(height: 16),
+                      _buildSelectedPlanPaySummary(monthlyTotal),
+                    ],
                   ],
                 ),
           const SizedBox(height: 24),
@@ -864,23 +872,72 @@ class _BookingReviewState extends State<BookingReview> {
   Widget _buildAgreementsBlock() {
     const termsUrl = 'https://prepskul.com/en/terms';
     const safeguardingUrl = 'https://prepskul.com/en/safeguarding';
+    final loc = widget.location.toLowerCase();
+    final isOnsiteOrHybrid = loc == 'onsite' || loc == 'hybrid';
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
+        color: AppTheme.primaryColor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryColor.withValues(alpha: 0.32),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryColor.withValues(alpha: 0.06),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Agreements',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Colors.black87,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOnsiteOrHybrid ? 'Policies' : 'Agreements',
+                      style: GoogleFonts.poppins(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryDark,
+                      ),
+                    ),
+                    if (isOnsiteOrHybrid) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Terms and safeguarding required for home visits.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: AppTheme.textMedium,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Divider(
+            height: 1,
+            color: AppTheme.primaryColor.withValues(alpha: 0.12),
           ),
           const SizedBox(height: 12),
           Row(
@@ -1200,6 +1257,67 @@ class _BookingReviewState extends State<BookingReview> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSelectedPlanPaySummary(double monthlyTotal) {
+    final plan = _selectedPaymentPlan!;
+    final amount = _calculatePaymentPlanAmount(monthlyTotal, plan);
+    final label = switch (plan) {
+      'weekly' => 'Weekly installment',
+      'biweekly' => 'Bi-weekly installment',
+      _ => 'Monthly installment',
+    };
+    final installments = switch (plan) {
+      'weekly' => '4 payments per month',
+      'biweekly' => '2 payments per month',
+      _ => '1 payment per month',
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.payments_outlined, color: AppTheme.primaryColor, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'After tutor approves',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+                Text(
+                  '$label: ${PricingService.formatPrice(amount)}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                Text(
+                  installments,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

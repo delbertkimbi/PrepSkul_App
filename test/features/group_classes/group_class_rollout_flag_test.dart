@@ -4,11 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Group class rollout flag wiring', () {
-    test('AppConfig exposes GROUP_CLASSES_ENABLED', () async {
+    test('AppConfig exposes GROUP_CLASSES_ENABLED with launch default false', () async {
       final appConfig = File('lib/core/config/app_config.dart');
       final content = await appConfig.readAsString();
       expect(content.contains('enableGroupClasses'), isTrue);
       expect(content.contains('GROUP_CLASSES_ENABLED'), isTrue);
+      expect(
+        content.contains("_safeEnvBool('GROUP_CLASSES_ENABLED', false)"),
+        isTrue,
+        reason: 'v1 launch: group classes off unless env explicitly enables',
+      );
     });
 
     test('UI entry points are guarded by enableGroupClasses', () async {

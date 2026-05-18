@@ -30,6 +30,8 @@ import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/feedback/app_feedback.dart';
+import 'package:prepskul/core/feedback/feedback_severity.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
@@ -92,7 +94,6 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   List<Map<String, dynamic>> _upcomingSessions = [];
   List<Map<String, dynamic>> _pastSessions = [];
   bool _isLoading = true;
-  bool _didAutoRefreshAfterDependencies = false;
   final Map<String, bool> _feedbackSubmitted = {}; // Cache feedback status
   final Map<String, bool> _hasTranscript = {}; // Cache transcript availability
   bool? _isCalendarConnected; // Cache calendar connection status (null = not checked yet)
@@ -137,19 +138,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
     _initializeConnectivity();
     _loadSessions();
-    _checkCalendarConnection();
-    _startCountdownTimer();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Reload sessions when screen becomes visible (e.g., after payment)
-    // This ensures newly created sessions appear immediately
-    if (_didAutoRefreshAfterDependencies) return;
-    _didAutoRefreshAfterDependencies = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _loadSessions();
+      _checkCalendarConnection();
+      _startCountdownTimer();
     });
   }
 
@@ -224,7 +215,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   
   /// Start countdown timer to update session countdowns every minute
   void _startCountdownTimer() {
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
         safeSetState(() {
           // Trigger rebuild to update countdowns
@@ -314,12 +305,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           // No cache available
           if (mounted) {
             safeSetState(() => _isLoading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('No internet connection. Showing cached data when available.'),
-                backgroundColor: Colors.orange[700],
-                duration: const Duration(seconds: 2),
-              ),
+            AppFeedback.showWarning(
+              context,
+              'No internet connection. Showing cached data when available.',
             );
           }
           return;
@@ -329,10 +317,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       List<Map<String, dynamic>> upcoming = [];
       List<Map<String, dynamic>> past = [];
 
-      // 1. Fetch Individual Sessions (Normal recurring sessions)
+      // 1. Fetch Individual Sessions (parallel — halves round-trips vs sequential).
       try {
-        final indUpcoming = await IndividualSessionService.getStudentUpcomingSessions(limit: 50);
-        final indPast = await IndividualSessionService.getStudentPastSessions(limit: 50);
+        final bundled = await Future.wait([
+          IndividualSessionService.getStudentUpcomingSessions(limit: 50),
+          IndividualSessionService.getStudentPastSessions(limit: 50),
+        ]);
+        final indUpcoming = bundled[0];
+        final indPast = bundled[1];
         upcoming.addAll(indUpcoming);
         past.addAll(indPast);
         
@@ -438,29 +430,30 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         return dateB.compareTo(dateA); // Descending for past
       });
 
-      // Check feedback status and transcript availability for completed sessions
+      // Check feedback status in parallel (was N sequential schema calls — dominant slow path).
+      final feedbackTasks = <Future<void>>[];
       for (final session in past) {
-        if (session['status'] == 'completed') {
-          final sessionId = session['id'] as String;
-          final sessionType = session['type'] as String? ?? 'individual';
-          
-          // Check feedback status (individual and trial; trial id = individual_sessions.id when created from trial)
-          if (sessionType == 'individual' || sessionType == 'trial') {
-            final canSubmit = await SessionFeedbackService.canSubmitFeedback(
-              sessionId,
-            );
-            _feedbackSubmitted[sessionId] = !canSubmit;
-          }
-          
-          // Check transcript availability
-          bool hasTranscript = false;
-          if (sessionType == 'individual') {
-            // hasTranscript = await SessionTranscriptService.hasIndividualSessionTranscript(sessionId);
-          } else if (sessionType == 'trial') {
-            // hasTranscript = await SessionTranscriptService.hasTranscript(sessionId, 'trial');
-          }
-          _hasTranscript[sessionId] = hasTranscript;
+        if (session['status'] != 'completed') continue;
+        final sessionId = session['id'] as String;
+        final sessionType = session['type'] as String? ?? 'individual';
+        var hasTranscript = false;
+        if (sessionType == 'individual') {
+          // reserved
+        } else if (sessionType == 'trial') {
+          // reserved
         }
+        _hasTranscript[sessionId] = hasTranscript;
+
+        if (sessionType == 'individual' || sessionType == 'trial') {
+          feedbackTasks.add(() async {
+            final canSubmit =
+                await SessionFeedbackService.canSubmitFeedback(sessionId);
+            _feedbackSubmitted[sessionId] = !canSubmit;
+          }());
+        }
+      }
+      if (feedbackTasks.isNotEmpty) {
+        await Future.wait(feedbackTasks);
       }
 
       safeSetState(() {
@@ -489,11 +482,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       // Only show error if we have absolutely nothing to show
       if (_upcomingSessions.isEmpty && _pastSessions.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Could not load sessions. Please try again later.'),
-            backgroundColor: Colors.red,
-          ),
+        AppFeedback.showErrorToast(
+          context,
+          'Could not load sessions. Please try again later.',
         );
       }
     }
@@ -763,63 +754,30 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
     // Conversion CTA per PRD: when trial learner/parent said Yes, show "Book now" action
     if (mounted && result is Map && result['wouldContinue'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(PhosphorIcons.checkCircle(), color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('Thanks! Ready to book? See your tutor\'s availability.'),
-              ),
-            ],
-          ),
-          backgroundColor: AppTheme.accentGreen,
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'Book now',
-            textColor: Colors.white,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => MyRequestsScreen(),
-                ),
-              );
-            },
-          ),
-        ),
+      AppFeedback.showToastWithAction(
+        context,
+        FeedbackSeverity.success,
+        'Thanks! Ready to book? See your tutor\'s availability.',
+        actionLabel: 'Book now',
+        duration: const Duration(seconds: 5),
+        onAction: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => MyRequestsScreen(),
+            ),
+          );
+        },
       );
     } else if (mounted && submitted && result != true) {
       // Trial feedback, wouldContinue = No/Not sure
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(PhosphorIcons.checkCircle(), color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Thanks! We\'ll use this to improve your experience.')),
-            ],
-          ),
-          backgroundColor: AppTheme.accentGreen,
-          duration: const Duration(seconds: 3),
-        ),
+      AppFeedback.showSuccess(
+        context,
+        'Thanks! We\'ll use this to improve your experience.',
       );
     } else if (mounted && result == true) {
       // Normal session or tutor feedback
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(PhosphorIcons.checkCircle(), color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Thank you for your feedback!')),
-            ],
-          ),
-          backgroundColor: AppTheme.accentGreen,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      AppFeedback.showSuccess(context, 'Thank you for your feedback!');
     }
   }
 
@@ -854,11 +812,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       Navigator.of(context).pop(); // Dismiss loading dialog
 
       if (game.items.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No questions could be generated for this session.'),
-            backgroundColor: Colors.orange,
-          ),
+        AppFeedback.showWarning(
+          context,
+          'No questions could be generated for this session.',
         );
         return;
       }
@@ -872,12 +828,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop(); // Dismiss loading dialog
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
+      AppFeedback.showErrorToast(
+        context,
+        e.toString().replaceAll('Exception: ', ''),
       );
     }
   }
@@ -909,11 +862,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       final currentUserId = SupabaseService.currentUser?.id;
       if (!LiveSessionTestConfig.canUserJoinSession(currentUserId)) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
-              backgroundColor: Colors.orange,
-            ),
+          AppFeedback.showWarning(
+            context,
+            LiveSessionTestConfig.localTestingRestrictionMessage,
           );
         }
         return;
@@ -952,12 +903,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     } catch (e) {
       LogService.error('Error joining Agora session: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to join video session: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Failed to join video session: $e');
       }
     }
   }
@@ -972,12 +918,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
     // Fallback to Google Meet for non-online sessions or if Agora fails
     if (meetLink == null || meetLink.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Meeting link not available'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      AppFeedback.showWarning(context, 'Meeting link not available');
       return;
     }
 
@@ -990,12 +931,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening meeting: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Error opening meeting: $e');
       }
     }
   }
@@ -1067,11 +1003,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           final authSuccess = await GoogleCalendarAuthService.signIn();
           if (!authSuccess) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Failed to connect Google Calendar. Please try again.'),
-                  backgroundColor: Colors.red,
-                ),
+              AppFeedback.showErrorToast(
+                context,
+                'Failed to connect Google Calendar. Please try again.',
               );
             }
             return;
@@ -1087,23 +1021,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           
           // Show success message
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    Icon(PhosphorIcons.checkCircle(), color: Colors.white),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Google Calendar connected! Adding session...',
-                        style: GoogleFonts.poppins(),
-                      ),
-                    ),
-                  ],
-                ),
-                backgroundColor: AppTheme.accentGreen,
-                duration: const Duration(seconds: 2),
-              ),
+            AppFeedback.showSuccess(
+              context,
+              'Google Calendar connected! Adding session...',
             );
           }
         } else {
@@ -1215,24 +1135,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
       // Show success
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    location == 'online' && calendarEvent.meetLink.isNotEmpty
-                        ? 'Session added to calendar with Meet link!'
-                        : 'Session added to calendar!',
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: AppTheme.accentGreen,
-            duration: const Duration(seconds: 3),
-          ),
+        AppFeedback.showSuccess(
+          context,
+          location == 'online' && calendarEvent.meetLink.isNotEmpty
+              ? 'Session added to calendar with Meet link!'
+              : 'Session added to calendar!',
         );
       }
 
@@ -1247,11 +1154,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error adding to calendar: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        AppFeedback.showErrorToast(
+          context,
+          'Error adding to calendar: ${e.toString()}',
         );
       }
       LogService.error('Error adding session to calendar: $e');
@@ -2458,29 +2363,19 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           : mode == 'complete_paid_sessions'
               ? 'Paid upcoming sessions remain active.'
               : 'All upcoming unstarted sessions were stopped.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Recurring booking ended by $roleLabel. '
-            '$affected upcoming session${affected == 1 ? '' : 's'} cancelled. '
-            '${paidPreserved > 0 ? '$paidPreserved paid session${paidPreserved == 1 ? '' : 's'} preserved. ' : ''}'
-            '$modeText',
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: AppTheme.accentGreen,
-        ),
+      AppFeedback.showSuccess(
+        context,
+        'Recurring booking ended by $roleLabel. '
+        '$affected upcoming session${affected == 1 ? '' : 's'} cancelled. '
+        '${paidPreserved > 0 ? '$paidPreserved paid session${paidPreserved == 1 ? '' : 's'} preserved. ' : ''}'
+        '$modeText',
       );
       await _loadSessions();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: Colors.red,
-        ),
+      AppFeedback.showErrorToast(
+        context,
+        e.toString().replaceFirst('Exception: ', ''),
       );
     } finally {
       reasonController.dispose();
@@ -3392,15 +3287,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       if (currentUserId == null) {
         if (mounted) {
           Navigator.pop(context); // Dismiss loading
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'You must be logged in to message.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppFeedback.showErrorToast(context, 'You must be logged in to message.');
         }
         return;
       }
@@ -3422,15 +3309,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       if (tutorId == null) {
         if (mounted) {
           Navigator.pop(context); // Dismiss loading
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Unable to find tutor information.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppFeedback.showErrorToast(context, 'Unable to find tutor information.');
         }
         return;
       }
@@ -3450,14 +3329,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
       if (conversationData == null || conversationData['id'] == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Unable to start conversation. Please try again.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: Colors.red,
-            ),
+          AppFeedback.showErrorToast(
+            context,
+            'Unable to start conversation. Please try again.',
           );
         }
         return;
@@ -3472,14 +3346,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
       if (conversationResponse == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Conversation not found. Please try again.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: Colors.red,
-            ),
+          AppFeedback.showErrorToast(
+            context,
+            'Conversation not found. Please try again.',
           );
         }
         return;
@@ -3534,14 +3403,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           Navigator.of(context, rootNavigator: true).pop();
         }
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Unable to start conversation. Please try again.',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.red,
-          ),
+        AppFeedback.showErrorToast(
+          context,
+          'Unable to start conversation. Please try again.',
         );
       }
     }

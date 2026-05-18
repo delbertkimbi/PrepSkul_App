@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:shimmer/shimmer.dart';
 
 class TutorHomeSkeleton extends StatelessWidget {
@@ -6,6 +7,7 @@ class TutorHomeSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = ResponsiveHelper.isDesktop(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Shimmer.fromColors(
@@ -82,18 +84,70 @@ class TutorHomeSkeleton extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            // Quick Actions List
-            ...List.generate(3, (index) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Container(
-                width: double.infinity,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            )),
+            if (isDesktop)
+              Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              )
+            else
+              ...List.generate(3, (index) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      width: double.infinity,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  )),
           ],
         ),
       ),

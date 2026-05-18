@@ -7,7 +7,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
-import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
+import 'package:prepskul/features/payment/utils/payment_navigation_helper.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
@@ -1143,12 +1143,11 @@ Widget _buildStatusBadge(BuildContext context, String status) {
 
   Future<void> _retryPaymentRequest(Map<String, dynamic> payment) async {
     final paymentRequestId = payment['id'] as String;
-    Navigator.push(
+    final bookingRequestId = payment['booking_request_id'] as String?;
+    PaymentNavigationHelper.openPayFlow(
       context,
-      MaterialPageRoute(
-        builder: (context) =>
-            BookingPaymentScreen(paymentRequestId: paymentRequestId),
-      ),
+      paymentRequestId: paymentRequestId,
+      bookingRequestId: bookingRequestId,
     ).then((_) => _loadPayments());
   }
 

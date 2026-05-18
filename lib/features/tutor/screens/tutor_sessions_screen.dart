@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import '../../../core/utils/responsive_helper.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/config/live_session_test_config.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
@@ -22,6 +23,8 @@ import '../../../core/services/google_calendar_auth_service.dart';
 import '../../../core/widgets/empty_state_widget.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/services/error_handler_service.dart';
+import '../widgets/tutor_dashboard_layout.dart';
+import '../../../core/feedback/app_feedback.dart';
 import '../../../features/sessions/services/meet_service.dart';
 import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import '../../../features/sessions/screens/agora_video_session_screen.dart';
@@ -35,6 +38,19 @@ import 'tutor_session_detail_full_screen.dart';
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 
+/// In-memory snapshot so tutor tab revisits stay instant while network refreshes.
+class _TutorSessionsMemoryCache {
+  const _TutorSessionsMemoryCache({
+    required this.sessions,
+    required this.allSessions,
+    required this.at,
+  });
+
+  final List<Map<String, dynamic>> sessions;
+  final List<Map<String, dynamic>> allSessions;
+  final DateTime at;
+}
+
 class TutorSessionsScreen extends StatefulWidget {
   const TutorSessionsScreen({Key? key}) : super(key: key);
 
@@ -44,6 +60,8 @@ class TutorSessionsScreen extends StatefulWidget {
 
 class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     with AutomaticKeepAliveClientMixin {
+  static final Map<String, _TutorSessionsMemoryCache> _memoryCacheByUserKey = {};
+
   List<Map<String, dynamic>> _sessions = [];
   List<Map<String, dynamic>> _allSessions = []; // Store all sessions for count calculation
   bool _isLoading = true;
@@ -76,9 +94,121 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     super.initState();
     _calendarFocusedDay = DateTime.now();
     _currentUserId = SupabaseService.currentUser?.id;
+    final uid = _currentUserId;
+    if (uid != null) {
+      final cached = _memoryCacheByUserKey[_tutorCacheKey(uid, _selectedFilter)];
+      if (cached != null) {
+        _sessions = List<Map<String, dynamic>>.from(cached.sessions);
+        _allSessions = List<Map<String, dynamic>>.from(cached.allSessions);
+        _isLoading = false;
+      }
+    }
     _loadSessions();
     _checkCalendarConnection();
     _startCountdownTimer();
+  }
+
+  String _tutorCacheKey(String userId, String filter) => '$userId|$filter';
+
+  /// One round-trip for many profile rows (avoids N sequential `.eq('id', …)` calls).
+  Future<Map<String, Map<String, dynamic>>> _fetchProfilesByIds(
+    Set<String> rawIds,
+  ) async {
+    final ids = rawIds.where((e) => e.isNotEmpty).toList();
+    if (ids.isEmpty) return {};
+    try {
+      final rows = await SupabaseService.client
+          .from('profiles')
+          .select('id, full_name, avatar_url, user_type, email')
+          .inFilter('id', ids);
+      final list = rows as List<dynamic>;
+      final out = <String, Map<String, dynamic>>{};
+      for (final r in list) {
+        final m = Map<String, dynamic>.from(r as Map);
+        final id = m['id'] as String?;
+        if (id != null) out[id] = m;
+      }
+      return out;
+    } catch (e) {
+      LogService.warning('Batch profile fetch failed: $e');
+      return {};
+    }
+  }
+
+  /// Display name + avatar for tutor trial cards (sync; uses pre-batched [profilesById]).
+  Map<String, Object?> _resolveTrialStudentFields(
+    TrialSession trial,
+    Map<String, Map<String, dynamic>> profilesById,
+  ) {
+    String studentName = 'Student';
+    String? studentAvatar;
+    String? requesterType;
+
+    void applyRequesterProfile(Map<String, dynamic>? prof) {
+      if (prof == null) return;
+      requesterType ??= prof['user_type'] as String?;
+      final fullName = prof['full_name'] as String?;
+      if (fullName != null &&
+          fullName.trim().isNotEmpty &&
+          fullName.toLowerCase() != 'user' &&
+          fullName.toLowerCase() != 'null' &&
+          fullName.toLowerCase() != 'student' &&
+          fullName.toLowerCase() != 'parent') {
+        studentName = fullName.trim();
+      } else {
+        final email = prof['email'] as String?;
+        if (email != null && email.trim().isNotEmpty) {
+          final emailName = email.split('@').first.trim();
+          if (emailName.isNotEmpty &&
+              emailName.toLowerCase() != 'user' &&
+              emailName.toLowerCase() != 'student' &&
+              emailName.toLowerCase() != 'parent') {
+            studentName =
+                emailName[0].toUpperCase() + emailName.substring(1);
+          }
+        }
+      }
+      studentAvatar ??= prof['avatar_url'] as String?;
+    }
+
+    final requesterId = trial.requesterId;
+    final learnerId = trial.learnerId;
+
+    if (requesterId.isNotEmpty) {
+      applyRequesterProfile(profilesById[requesterId]);
+    }
+
+    if (studentName == 'Student' && learnerId.isNotEmpty) {
+      final learnerProfile = profilesById[learnerId];
+      if (learnerProfile != null) {
+        requesterType ??= learnerProfile['user_type'] as String?;
+
+        final fullName = learnerProfile['full_name'] as String?;
+        if (fullName != null &&
+            fullName.trim().isNotEmpty &&
+            fullName.toLowerCase() != 'user' &&
+            fullName.toLowerCase() != 'null') {
+          studentName = fullName.trim();
+        } else {
+          final email = learnerProfile['email'] as String?;
+          if (email != null && email.trim().isNotEmpty) {
+            final emailName = email.split('@').first.trim();
+            if (emailName.isNotEmpty && emailName.toLowerCase() != 'user') {
+              studentName =
+                  emailName[0].toUpperCase() + emailName.substring(1);
+            }
+          }
+        }
+
+        studentAvatar ??= learnerProfile['avatar_url'] as String?;
+      }
+    }
+
+    return <String, Object?>{
+      'student_name': studentName,
+      'student_avatar_url': studentAvatar,
+      'requester_type': requesterType,
+    };
   }
   
   @override
@@ -112,6 +242,21 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     }
   }
 
+  void _saveTutorSessionsMemoryCache() {
+    final uid = SupabaseService.currentUser?.id ?? _currentUserId;
+    if (uid == null) return;
+    _memoryCacheByUserKey[_tutorCacheKey(uid, _selectedFilter)] =
+        _TutorSessionsMemoryCache(
+      sessions: List<Map<String, dynamic>>.from(
+        _sessions.map((m) => Map<String, dynamic>.from(m)),
+      ),
+      allSessions: List<Map<String, dynamic>>.from(
+        _allSessions.map((m) => Map<String, dynamic>.from(m)),
+      ),
+      at: DateTime.now(),
+    );
+  }
+
   Future<void> _loadSessions() async {
     // If we already have sessions visible, keep them and refresh quietly.
     safeSetState(() => _isLoading = _sessions.isEmpty);
@@ -119,25 +264,25 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       final now = DateTime.now();
       List<Map<String, dynamic>> allSessions = [];
       
-      // 1. Load individual sessions
+      // 1. Load individual sessions (parallel fetch when filter is `all`).
       try {
         List<Map<String, dynamic>> individualSessions = [];
-        if (_selectedFilter == 'upcoming' || _selectedFilter == 'all') {
+        if (_selectedFilter == 'all') {
+          final bundled = await Future.wait([
+            IndividualSessionService.getTutorUpcomingSessions(limit: 50),
+            IndividualSessionService.getTutorPastSessions(limit: 50),
+          ]);
+          individualSessions = [...bundled[0], ...bundled[1]];
+        } else if (_selectedFilter == 'upcoming') {
           individualSessions =
               await IndividualSessionService.getTutorUpcomingSessions(
                 limit: 50,
               );
-        }
-        if (_selectedFilter == 'past' || _selectedFilter == 'all') {
-          final pastSessions =
+        } else if (_selectedFilter == 'past') {
+          individualSessions =
               await IndividualSessionService.getTutorPastSessions(limit: 50);
-          if (_selectedFilter == 'all') {
-            individualSessions.addAll(pastSessions);
-          } else {
-            individualSessions = pastSessions;
-          }
         }
-        
+
         // Mark as individual sessions
         for (var session in individualSessions) {
           session['_sessionType'] = 'individual';
@@ -147,223 +292,163 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         LogService.debug('⚠️ Could not load individual sessions: $e');
       }
       
-      // 2. Load trial sessions
+      // 2. Load trial sessions (batch profile lookup — avoids N sequential queries).
       try {
         final trialSessions = await TrialSessionService.getTutorTrialSessions();
-        
-        // Convert trial sessions to map format and determine status
-        for (var trial in trialSessions) {
-          // Determine if session is expired (time passed, not paid, not approved)
-          // Expired = time passed AND (not paid OR not approved)
+        final trialsToInclude = <TrialSession>[];
+        final trialProfileIds = <String>{};
+
+        for (final trial in trialSessions) {
           final isTimePassed = SessionDateUtils.isSessionExpired(trial);
           final isPaid = trial.paymentStatus.toLowerCase() == 'paid';
-          final isApproved = trial.status == 'approved' || trial.status == 'scheduled';
-          final isExpired = isTimePassed && (!isPaid || !isApproved) && trial.status != 'cancelled';
-          
-          // Determine if session is cancelled (user deleted the request)
+          final isApproved =
+              trial.status == 'approved' || trial.status == 'scheduled';
+          final isExpired = isTimePassed &&
+              (!isPaid || !isApproved) &&
+              trial.status != 'cancelled';
           final isCancelled = trial.status == 'cancelled';
-          
-          // Determine if session is upcoming (approved and time hasn't passed)
           final isUpcoming = isApproved && !isTimePassed && !isCancelled;
-          
-          // Determine if session is past (time passed and paid, or completed)
-          final isPast = (isTimePassed && isPaid) || trial.status == 'completed' || isExpired || isCancelled;
-          
-          // Filter based on selected filter
-          // "All" should exclude expired, cancelled, and unattended past sessions
-          // "Upcoming" should only show approved sessions that haven't started
-          // "Past" should show completed, expired, cancelled, or paid past sessions
-          bool shouldInclude = false;
+          final isPast = (isTimePassed && isPaid) ||
+              trial.status == 'completed' ||
+              isExpired ||
+              isCancelled;
+
+          var shouldInclude = false;
           if (_selectedFilter == 'all') {
-            // Exclude expired, cancelled, and unattended past sessions from "All"
-            shouldInclude = !isExpired && !isCancelled && !(isTimePassed && !isPaid);
+            shouldInclude =
+                !isExpired && !isCancelled && !(isTimePassed && !isPaid);
           } else if (_selectedFilter == 'upcoming') {
             shouldInclude = isUpcoming;
           } else if (_selectedFilter == 'past') {
             shouldInclude = isPast;
           }
-          
+
           if (shouldInclude) {
-            // CRITICAL FIX: For tutor sessions, show the REQUESTER (who made the booking)
-            // This is what the tutor sees - parent name if parent booked, student name if student booked
-            String studentName = 'Student';
-            String? studentAvatar;
-            String? requesterType;
-            try {
-              // Priority: Use requester_id (who made the booking) for display
-              final requesterId = trial.requesterId;
-              final learnerId = trial.learnerId;
-              
-              // First, try to fetch requester profile (who made the booking)
-              if (requesterId.isNotEmpty) {
-                final requesterProfile = await SupabaseService.client
-                    .from('profiles')
-                    .select('full_name, avatar_url, user_type, email')
-                    .eq('id', requesterId)
-                    .limit(1)
-                    .maybeSingle();
-                    
-                if (requesterProfile != null) {
-                  requesterType = requesterProfile['user_type'] as String?;
-                  
-                  // Extract name with proper fallbacks
-                  final fullName = requesterProfile['full_name'] as String?;
-                  if (fullName != null && fullName.trim().isNotEmpty && 
-                      fullName.toLowerCase() != 'user' && 
-                      fullName.toLowerCase() != 'null' &&
-                      fullName.toLowerCase() != 'student' &&
-                      fullName.toLowerCase() != 'parent') {
-                    studentName = fullName.trim();
-                  } else {
-                    // Try email as fallback
-                    final email = requesterProfile['email'] as String?;
-                    if (email != null && email.trim().isNotEmpty) {
-                      final emailName = email.split('@').first.trim();
-                      if (emailName.isNotEmpty && 
-                          emailName.toLowerCase() != 'user' &&
-                          emailName.toLowerCase() != 'student' &&
-                          emailName.toLowerCase() != 'parent') {
-                        studentName = emailName[0].toUpperCase() + emailName.substring(1);
-                      }
-                    }
-                  }
-                  
-                  // Get avatar URL
-                  studentAvatar = requesterProfile['avatar_url'] as String?;
-                  
-                  LogService.debug('✅ Loaded requester profile: $studentName (user_type: $requesterType, ID: $requesterId)');
-                } else {
-                  LogService.warning('⚠️ Requester profile not found for ID: $requesterId, falling back to learner');
-                }
-              }
-              
-              // Fallback: If requester profile not found, use learner profile
-              if (studentName == 'Student' && learnerId.isNotEmpty) {
-                final learnerProfile = await SupabaseService.client
-                    .from('profiles')
-                    .select('full_name, avatar_url, user_type, email')
-                    .eq('id', learnerId)
-                    .limit(1)
-                    .maybeSingle();
-                    
-                if (learnerProfile != null) {
-                  requesterType = learnerProfile['user_type'] as String?;
-                  
-                  final fullName = learnerProfile['full_name'] as String?;
-                  if (fullName != null && fullName.trim().isNotEmpty && 
-                      fullName.toLowerCase() != 'user' && 
-                      fullName.toLowerCase() != 'null') {
-                    studentName = fullName.trim();
-                  } else {
-                    final email = learnerProfile['email'] as String?;
-                    if (email != null && email.trim().isNotEmpty) {
-                      final emailName = email.split('@').first.trim();
-                      if (emailName.isNotEmpty && emailName.toLowerCase() != 'user') {
-                        studentName = emailName[0].toUpperCase() + emailName.substring(1);
-                      }
-                    }
-                  }
-                  
-                  if (studentAvatar == null) {
-                    studentAvatar = learnerProfile['avatar_url'] as String?;
-                  }
-                  
-                  LogService.debug('✅ Loaded learner profile as fallback: $studentName (ID: $learnerId)');
-                }
-              }
-            } catch (e) {
-              LogService.error('Could not fetch requester/learner profile for trial session: $e');
+            trialsToInclude.add(trial);
+            if (trial.requesterId.isNotEmpty) {
+              trialProfileIds.add(trial.requesterId);
             }
-            
-            // Convert TrialSession to Map for consistency
-            final sessionMap = {
-              '_sessionType': 'trial',
-              'id': trial.id,
-              'tutor_id': trial.tutorId,
-              'learner_id': trial.learnerId,
-              'parent_id': trial.parentId,
-              'requester_id': trial.requesterId,
-              'scheduled_date': trial.scheduledDate.toIso8601String().split('T')[0],
-              'scheduled_time': trial.scheduledTime,
-              'duration_minutes': trial.durationMinutes,
-              'subject': trial.subject,
-              'location': trial.location,
-              'address': null, // TrialSession doesn't have address field
-              'status': isExpired ? 'expired' : (isCancelled ? 'cancelled' : trial.status),
-              'payment_status': trial.paymentStatus,
-              'trial_fee': trial.trialFee,
-              'meet_link': trial.meetLink,
-              'rejection_reason': trial.rejectionReason,
-              'created_at': trial.createdAt.toIso8601String(),
-              'updated_at': trial.updatedAt?.toIso8601String(),
-              'student_name': studentName, // Pre-fetched requester/learner name
-              'student_avatar_url': studentAvatar, // Pre-fetched requester/learner avatar
-              'requester_type': requesterType, // Store requester type for display
-            };
-            allSessions.add(sessionMap);
+            if (trial.learnerId.isNotEmpty) {
+              trialProfileIds.add(trial.learnerId);
+            }
           }
+        }
+
+        final trialProfilesBulk = await _fetchProfilesByIds(trialProfileIds);
+
+        for (final trial in trialsToInclude) {
+          final isTimePassed = SessionDateUtils.isSessionExpired(trial);
+          final isPaid = trial.paymentStatus.toLowerCase() == 'paid';
+          final isApproved =
+              trial.status == 'approved' || trial.status == 'scheduled';
+          final isExpired = isTimePassed &&
+              (!isPaid || !isApproved) &&
+              trial.status != 'cancelled';
+          final isCancelled = trial.status == 'cancelled';
+
+          final display = _resolveTrialStudentFields(trial, trialProfilesBulk);
+          final studentName = display['student_name']! as String;
+          final studentAvatar = display['student_avatar_url'] as String?;
+          final requesterType = display['requester_type'] as String?;
+
+          allSessions.add({
+            '_sessionType': 'trial',
+            'id': trial.id,
+            'tutor_id': trial.tutorId,
+            'learner_id': trial.learnerId,
+            'parent_id': trial.parentId,
+            'requester_id': trial.requesterId,
+            'scheduled_date':
+                trial.scheduledDate.toIso8601String().split('T')[0],
+            'scheduled_time': trial.scheduledTime,
+            'duration_minutes': trial.durationMinutes,
+            'subject': trial.subject,
+            'location': trial.location,
+            'address': null,
+            'status': isExpired
+                ? 'expired'
+                : (isCancelled ? 'cancelled' : trial.status),
+            'payment_status': trial.paymentStatus,
+            'trial_fee': trial.trialFee,
+            'meet_link': trial.meetLink,
+            'rejection_reason': trial.rejectionReason,
+            'created_at': trial.createdAt.toIso8601String(),
+            'updated_at': trial.updatedAt?.toIso8601String(),
+            'student_name': studentName,
+            'student_avatar_url': studentAvatar,
+            'requester_type': requesterType,
+          });
         }
       } catch (e) {
         LogService.debug('⚠️ Could not load trial sessions: $e');
       }
 
-      // 3. Deduplicate sessions by ID and improve student name fetching
-      // Also fetch student names for individual sessions that don't have them
+      // 2b. Resolve individual-session student display in one profile round-trip.
+      final individualProfileIds = <String>{};
+      for (final session in allSessions) {
+        if (session['_sessionType'] != 'individual') continue;
+        final recurringData =
+            session['recurring_sessions'] as Map<String, dynamic>?;
+        if (recurringData != null) {
+          final learnerName = recurringData['learner_name'] as String?;
+          if (learnerName != null &&
+              learnerName.trim().isNotEmpty &&
+              learnerName.toLowerCase() != 'user' &&
+              learnerName.toLowerCase() != 'student' &&
+              learnerName.toLowerCase() != 'parent') {
+            session['student_name'] = learnerName.trim();
+            session['student_avatar_url'] =
+                recurringData['learner_avatar_url'] as String?;
+          }
+        }
+        if (session['student_name'] == null ||
+            session['student_name'] == 'Student') {
+          final learnerId = session['learner_id'] as String?;
+          final parentId = session['parent_id'] as String?;
+          final studentId = learnerId ?? parentId;
+          if (studentId != null && studentId.isNotEmpty) {
+            individualProfileIds.add(studentId);
+          }
+        }
+      }
+      final individualProfilesBulk =
+          await _fetchProfilesByIds(individualProfileIds);
+      for (final session in allSessions) {
+        if (session['_sessionType'] != 'individual') continue;
+        if (session['student_name'] != null &&
+            session['student_name'] != 'Student') {
+          continue;
+        }
+        final learnerId = session['learner_id'] as String?;
+        final parentId = session['parent_id'] as String?;
+        final studentId = learnerId ?? parentId;
+        if (studentId == null || studentId.isEmpty) continue;
+        try {
+          final studentProfile = individualProfilesBulk[studentId];
+          if (studentProfile != null) {
+            final fullName = studentProfile['full_name'] as String?;
+            if (fullName != null &&
+                fullName.trim().isNotEmpty &&
+                fullName.toLowerCase() != 'user' &&
+                fullName.toLowerCase() != 'student' &&
+                fullName.toLowerCase() != 'parent') {
+              session['student_name'] = fullName.trim();
+              if (session['student_avatar_url'] == null) {
+                session['student_avatar_url'] =
+                    studentProfile['avatar_url'] as String?;
+              }
+            }
+          }
+        } catch (e) {
+          LogService.warning('Could not apply batched profile for session: $e');
+        }
+      }
+
+      // 3. Deduplicate sessions by ID (display fields already hydrated).
       final Map<String, Map<String, dynamic>> uniqueSessions = {};
       for (var session in allSessions) {
         final sessionId = session['id']?.toString();
         if (sessionId != null && sessionId.isNotEmpty) {
-          // For individual sessions, fetch student name if missing
-          if (session['_sessionType'] == 'individual') {
-            final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-            
-            // First, try to get student name from recurring_sessions.learner_name
-            if (recurringData != null) {
-              final learnerName = recurringData['learner_name'] as String?;
-              if (learnerName != null && learnerName.trim().isNotEmpty && 
-                  learnerName.toLowerCase() != 'user' &&
-                  learnerName.toLowerCase() != 'student' &&
-                  learnerName.toLowerCase() != 'parent') {
-                session['student_name'] = learnerName.trim();
-                session['student_avatar_url'] = recurringData['learner_avatar_url'] as String?;
-                LogService.debug('✅ Using learner_name from recurring_sessions: ${learnerName.trim()}');
-              }
-            }
-            
-            // Fallback: If not found in recurring_sessions, fetch from profiles using learner_id/parent_id
-            if (session['student_name'] == null || session['student_name'] == 'Student') {
-              try {
-                final learnerId = session['learner_id'] as String?;
-                final parentId = session['parent_id'] as String?;
-                final studentId = learnerId ?? parentId;
-                
-                if (studentId != null && studentId.isNotEmpty) {
-                  final studentProfile = await SupabaseService.client
-                      .from('profiles')
-                      .select('full_name, avatar_url')
-                      .eq('id', studentId)
-                      .maybeSingle();
-                  
-                  if (studentProfile != null) {
-                    final fullName = studentProfile['full_name'] as String?;
-                    if (fullName != null && fullName.trim().isNotEmpty && 
-                        fullName.toLowerCase() != 'user' &&
-                        fullName.toLowerCase() != 'student' &&
-                        fullName.toLowerCase() != 'parent') {
-                      session['student_name'] = fullName.trim();
-                      if (session['student_avatar_url'] == null) {
-                        session['student_avatar_url'] = studentProfile['avatar_url'] as String?;
-                      }
-                      LogService.debug('✅ Fetched student name from profile for individual session: ${fullName.trim()}');
-                    }
-                  }
-                }
-              } catch (e) {
-                LogService.warning('Could not fetch student name for individual session: $e');
-              }
-            }
-          }
-          
           // Deduplicate: prefer sessions with actual student names over "Student"
           if (!uniqueSessions.containsKey(sessionId)) {
             uniqueSessions[sessionId] = session;
@@ -609,6 +694,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
           _sessions = recurringFiltered;
           _isLoading = false;
         });
+        _saveTutorSessionsMemoryCache();
       } else {
       safeSetState(() {
         if (_highlightSessionId != null) {
@@ -624,6 +710,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         _sessions = filtered;
         _isLoading = false;
       });
+      _saveTutorSessionsMemoryCache();
       }
     } catch (e) {
       LogService.error('Error loading sessions: $e');
@@ -742,12 +829,18 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                         ? _buildTutorCalendarView()
                         : _groupByDay
                             ? _buildSessionsGroupedByDay()
-                            : ListView.builder(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                itemCount: _sessions.length,
-                                itemBuilder: (context, index) {
-                                  return _buildSessionCard(_sessions[index]);
-                                },
+                            : SingleChildScrollView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                child: TutorZCardGrid(
+                                  itemCount: _sessions.length,
+                                  itemBuilder: (context, index) {
+                                    return _buildSessionCard(_sessions[index]);
+                                  },
+                                ),
                               ),
                   ),
           ),
@@ -806,7 +899,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       for (final s in byDate[key]!) {
         children.add(Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: _buildSessionCard(s),
+          child: TutorConstrainedCard(
+            child: _buildSessionCard(s),
+          ),
         ));
       }
     }
@@ -861,74 +956,104 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       final key = _tutorSessionDateKey(s);
       if (key != null) datesWithSessions.add(DateTime.parse(key));
     }
+
+    final calendarCard = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: TableCalendar(
+        firstDay: startDate,
+        lastDay: endDate,
+        focusedDay: focused,
+        selectedDayPredicate: (day) => _tutorIsSameDay(focused, day),
+        onDaySelected: (selectedDay, focusedDay) {
+          safeSetState(() => _calendarFocusedDay = focusedDay);
+        },
+        eventLoader: (day) =>
+            datesWithSessions.any((d) => _tutorIsSameDay(d, day)) ? ['session'] : [],
+        calendarFormat: CalendarFormat.month,
+        headerStyle: HeaderStyle(
+          formatButtonVisible: false,
+          titleCentered: true,
+          titleTextStyle: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        calendarStyle: CalendarStyle(
+          selectedDecoration: const BoxDecoration(
+            color: AppTheme.primaryColor,
+            shape: BoxShape.circle,
+          ),
+          todayDecoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.3),
+            shape: BoxShape.circle,
+          ),
+          markerDecoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.6),
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+
+    final sessionListChildren = <Widget>[
+      const SizedBox(height: 16),
+      Text(
+        'Sessions on ${DateFormat('EEEE, MMM d').format(focused)}',
+        style: GoogleFonts.poppins(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.primaryColor,
+        ),
+      ),
+      const SizedBox(height: 8),
+      ..._tutorSessionsForDay(focused).map(
+        (s) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildSessionCard(s),
+        ),
+      ),
+      if (_tutorSessionsForDay(focused).isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            'No sessions on this day',
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ),
+    ];
+
+    final wide =
+        MediaQuery.sizeOf(context).width >= ResponsiveHelper.tabletBreakpoint;
+    if (wide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 400,
+            child: ListView(
+              padding: const EdgeInsets.only(left: 16, right: 8, bottom: 24),
+              children: [calendarCard],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.only(left: 8, right: 16, bottom: 24),
+              children: sessionListChildren,
+            ),
+          ),
+        ],
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24),
       children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey[200]!),
-          ),
-          child: TableCalendar(
-            firstDay: startDate,
-            lastDay: endDate,
-            focusedDay: focused,
-            selectedDayPredicate: (day) => _tutorIsSameDay(focused, day),
-            onDaySelected: (selectedDay, focusedDay) {
-              safeSetState(() => _calendarFocusedDay = focusedDay);
-            },
-            eventLoader: (day) =>
-                datesWithSessions.any((d) => _tutorIsSameDay(d, day)) ? ['session'] : [],
-            calendarFormat: CalendarFormat.month,
-            headerStyle: HeaderStyle(
-              formatButtonVisible: false,
-              titleCentered: true,
-              titleTextStyle: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            calendarStyle: CalendarStyle(
-              selectedDecoration: const BoxDecoration(
-                color: AppTheme.primaryColor,
-                shape: BoxShape.circle,
-              ),
-              todayDecoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.3),
-                shape: BoxShape.circle,
-              ),
-              markerDecoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.6),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Sessions on ${DateFormat('EEEE, MMM d').format(focused)}',
-          style: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.primaryColor,
-          ),
-        ),
-        const SizedBox(height: 8),
-        ..._tutorSessionsForDay(focused).map(
-          (s) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _buildSessionCard(s),
-          ),
-        ),
-        if (_tutorSessionsForDay(focused).isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              'No sessions on this day',
-              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
-            ),
-          ),
+        calendarCard,
+        ...sessionListChildren,
       ],
     );
   }
@@ -1974,22 +2099,18 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         scheduledDateTime: scheduledDateTime,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] as String? ?? 'Check-in updated'),
-            backgroundColor: result['success'] == true ? AppTheme.accentGreen : Colors.red,
-          ),
-        );
+        final ok = result['success'] == true;
+        final msg = result['message'] as String? ?? 'Check-in updated';
+        if (ok) {
+          AppFeedback.showSuccess(context, msg);
+        } else {
+          AppFeedback.showErrorToast(context, msg);
+        }
         safeSetState(() {});
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to check in: $e', style: GoogleFonts.poppins()),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Failed to check in: $e');
       }
     }
   }
@@ -2003,22 +2124,18 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         userType: 'tutor',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] as String? ?? 'Check-out updated'),
-            backgroundColor: result['success'] == true ? AppTheme.accentGreen : Colors.red,
-          ),
-        );
+        final ok = result['success'] == true;
+        final msg = result['message'] as String? ?? 'Check-out updated';
+        if (ok) {
+          AppFeedback.showSuccess(context, msg);
+        } else {
+          AppFeedback.showErrorToast(context, msg);
+        }
         safeSetState(() {});
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to check out: $e', style: GoogleFonts.poppins()),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Failed to check out: $e');
       }
     }
   }
@@ -2045,26 +2162,22 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] as String? ?? 'Selfie uploaded'),
-          backgroundColor: result['success'] == true ? AppTheme.accentGreen : Colors.red,
-        ),
-      );
+      final ok = result['success'] == true;
+      final msg = result['message'] as String? ?? 'Selfie uploaded';
+      if (ok) {
+        AppFeedback.showSuccess(context, msg);
+      } else {
+        AppFeedback.showErrorToast(context, msg);
+      }
 
-      if (result['success'] == true && result['photo_url'] is String) {
+      if (ok && result['photo_url'] is String) {
         safeSetState(() {
           _sessionSelfieUrls[sessionId] = result['photo_url'] as String;
         });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to upload selfie: $e', style: GoogleFonts.poppins()),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Failed to upload selfie: $e');
       }
     }
   }
@@ -2171,12 +2284,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         final connected = await GoogleCalendarAuthService.signIn();
         if (!connected) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to connect Google Calendar'),
-                backgroundColor: Colors.red,
-              ),
-            );
+            AppFeedback.showErrorToast(context, 'Failed to connect Google Calendar');
           }
           return;
         }
@@ -2303,24 +2411,11 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       }
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    location == 'online' && calendarEvent.meetLink.isNotEmpty
-                        ? 'Session added to calendar with Meet link!'
-                        : 'Session added to calendar!',
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
+        AppFeedback.showSuccess(
+          context,
+          location == 'online' && calendarEvent.meetLink.isNotEmpty
+              ? 'Session added to calendar with Meet link!'
+              : 'Session added to calendar!',
         );
       }
       
@@ -2329,12 +2424,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     } catch (e) {
       LogService.error('Error adding session to calendar: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error adding to calendar: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Error adding to calendar: ${e.toString()}');
       }
     }
   }
@@ -2391,11 +2481,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     try {
       if (!LiveSessionTestConfig.canUserJoinSession(_currentUserId)) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
-              backgroundColor: Colors.orange,
-            ),
+          AppFeedback.showWarning(
+            context,
+            LiveSessionTestConfig.localTestingRestrictionMessage,
           );
         }
         return;
@@ -2431,11 +2519,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         if (sessionCheck == null) {
           LogService.error('❌ [Join Agora] Session $sessionId not found in individual_sessions or trial_sessions!');
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Session not found. Please refresh and try again.'),
-                backgroundColor: Colors.red,
-              ),
+            AppFeedback.showErrorToast(
+              context,
+              'Session not found. Please refresh and try again.',
             );
           }
           return;
@@ -2473,12 +2559,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     } catch (e) {
       LogService.error('Error joining Agora session: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to join video session: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Failed to join video session: $e');
       }
     }
   }
@@ -2496,12 +2577,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     } catch (e) {
       LogService.error('Error opening meeting: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening meeting: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Error opening meeting: $e');
       }
     }
   }
@@ -2601,18 +2677,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text('Session started', style: GoogleFonts.poppins()),
-              ],
-            ),
-            backgroundColor: AppTheme.accentGreen,
-          ),
-        );
+        AppFeedback.showSuccess(context, 'Session started');
         
         // For online sessions, unified join flow: pre-join first, then video
         if (isOnline) {
@@ -2647,12 +2712,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         safeSetState(() {
           _sessionLoadingStates[sessionId] = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to start session: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Failed to start session: $e');
       }
     }
   }
@@ -2743,46 +2803,18 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
             } else {
               LogService.warning('Meet link generation returned null or empty');
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Row(
-                      children: [
-                        const Icon(Icons.warning, color: Colors.white, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Meet link could not be generated. Please connect Google Calendar in settings.',
-                            style: GoogleFonts.poppins(),
-                          ),
-                        ),
-                      ],
-                    ),
-                    backgroundColor: Colors.orange,
-                    duration: const Duration(seconds: 5),
-                  ),
+                AppFeedback.showWarning(
+                  context,
+                  'Meet link could not be generated. Please connect Google Calendar in settings.',
                 );
               }
             }
           } catch (e) {
             LogService.warning('Could not generate Meet link: $e');
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: [
-                      const Icon(Icons.error, color: Colors.white, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Failed to generate Meet link. Please connect Google Calendar.',
-                          style: GoogleFonts.poppins(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 5),
-                ),
+              AppFeedback.showErrorToast(
+                context,
+                'Failed to generate Meet link. Please connect Google Calendar.',
               );
             }
             // Continue - session can still proceed
@@ -2912,28 +2944,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
           studentEngagement: result['engagement'] as int?,
         );
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Text('Session ended', style: GoogleFonts.poppins()),
-                ],
-              ),
-              backgroundColor: AppTheme.accentGreen,
-            ),
-          );
+          AppFeedback.showSuccess(context, 'Session ended');
         }
         _loadSessions(); // Refresh
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to end session: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppFeedback.showErrorToast(context, 'Failed to end session: $e');
         }
       } finally {
         if (mounted) {
@@ -2955,23 +2971,13 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
 
       if (!launched) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not open Meet link'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppFeedback.showErrorToast(context, 'Could not open Meet link');
         }
       }
     } catch (e) {
       LogService.error('Error opening Meet link: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening Meet link: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Error opening Meet link: $e');
       }
     }
   }
@@ -3050,34 +3056,15 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         );
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Reschedule request sent. Waiting for student approval.',
-                      style: GoogleFonts.poppins(),
-                    ),
-                  ),
-                ],
-              ),
-              backgroundColor: AppTheme.accentGreen,
-              duration: const Duration(seconds: 4),
-            ),
+          AppFeedback.showSuccess(
+            context,
+            'Reschedule request sent. Waiting for student approval.',
           );
         }
         _loadSessions(); // Refresh
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to reschedule: $e', style: GoogleFonts.poppins()),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppFeedback.showErrorToast(context, 'Failed to reschedule: $e');
         }
       } finally {
         if (mounted) {
@@ -3115,28 +3102,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         }
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Text('Session cancelled', style: GoogleFonts.poppins()),
-                ],
-              ),
-              backgroundColor: AppTheme.accentGreen,
-            ),
-          );
+          AppFeedback.showSuccess(context, 'Session cancelled');
         }
         _loadSessions(); // Refresh
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to cancel session: $e', style: GoogleFonts.poppins()),
-              backgroundColor: Colors.red,
-            ),
-          );
+          AppFeedback.showErrorToast(context, 'Failed to cancel session: $e');
         }
       } finally {
         if (mounted) {
@@ -3538,11 +3509,9 @@ class _SessionDetailsSheet extends StatelessWidget {
       final currentUserId = SupabaseService.currentUser?.id;
       if (!LiveSessionTestConfig.canUserJoinSession(currentUserId)) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
-              backgroundColor: Colors.orange,
-            ),
+          AppFeedback.showWarning(
+            context,
+            LiveSessionTestConfig.localTestingRestrictionMessage,
           );
         }
         return;
@@ -3568,11 +3537,9 @@ class _SessionDetailsSheet extends StatelessWidget {
         if (sessionCheck == null) {
           LogService.error('❌ Session $sessionId not found');
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Session not found. Please refresh and try again.'),
-                backgroundColor: Colors.red,
-              ),
+            AppFeedback.showErrorToast(
+              context,
+              'Session not found. Please refresh and try again.',
             );
           }
           return;
@@ -3610,12 +3577,7 @@ class _SessionDetailsSheet extends StatelessWidget {
     } catch (e) {
       LogService.error('Error joining Agora session: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to join video session: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Failed to join video session: $e');
       }
     }
   }
@@ -3633,12 +3595,7 @@ class _SessionDetailsSheet extends StatelessWidget {
     } catch (e) {
       LogService.error('Error opening meeting: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening meeting: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.showErrorToast(context, 'Error opening meeting: $e');
       }
     }
   }

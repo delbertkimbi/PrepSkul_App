@@ -15,7 +15,7 @@ import 'package:prepskul/features/booking/services/trial_session_service.dart' h
 import 'package:prepskul/features/booking/screens/post_trial_conversion_screen.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
-import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
+import 'package:prepskul/features/payment/utils/payment_navigation_helper.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1662,14 +1662,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         return ElevatedButton.icon(
                           onPressed: () async {
                             LogService.info('💰 Pay Now button clicked for booking: ${request.id}');
-                            final result = await Navigator.push(
+                            final result = await PaymentNavigationHelper.openPayFlow(
                               context,
-                              MaterialPageRoute(
-                                builder: (context) => BookingPaymentScreen(
-                                  paymentRequestId: request.paymentRequestId!,
-                                  bookingRequestId: request.id,
-                                ),
-                              ),
+                              paymentRequestId: request.paymentRequestId!,
+                              bookingRequestId: request.id,
+                              locationOverride: request.location,
                             );
 
                             if (result == true && mounted) {

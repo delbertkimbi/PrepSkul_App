@@ -25,7 +25,7 @@ import 'package:prepskul/features/auth/screens/email_login_screen.dart';
 import 'package:prepskul/features/auth/screens/email_confirmation_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_choice_screen.dart';
-import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
+import 'package:prepskul/features/payment/screens/payment_route_loader.dart';
 import 'package:prepskul/features/payment/screens/payment_history_screen.dart';
 import 'package:prepskul/features/booking/screens/my_sessions_screen.dart';
 import 'package:prepskul/features/booking/screens/session_feedback_flow_screen.dart';
@@ -205,8 +205,9 @@ void main() async {
 
     // Non-blocking startup schema diagnostics for critical tables/columns.
     unawaited(StartupSchemaService.runChecks());
-    // Web hot-restart guard: ensure stale call capture/session is fully torn down.
-    unawaited(AgoraService().forceWebCleanupOnStartup());
+    // Web hot-restart guard: tear down stale getUserMedia / iris session before widgets mount.
+    // Must await on web — fire-and-forget races the first frame and leaves the camera LED on.
+    await AgoraService().forceWebCleanupOnStartup();
 
     // Initialize push notifications in background (non-blocking)
     // Web-specific: Only initialize if not on web, or if on web and Firebase is available
@@ -884,7 +885,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             ),
           );
         }
-        if (mounted) {
+        if (mounted && AppConfig.enableGroupClasses) {
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => const GroupClassesDiscoveryScreen(),
@@ -896,11 +897,13 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Unable to use class link: $e')),
           );
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const GroupClassesDiscoveryScreen(),
-            ),
-          );
+          if (AppConfig.enableGroupClasses) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const GroupClassesDiscoveryScreen(),
+              ),
+            );
+          }
         }
       }
       return;
@@ -1597,7 +1600,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           final paymentRequestId = settings.name!.split('/').last;
           final args = settings.arguments as Map<String, dynamic>?;
           return MaterialPageRoute(
-            builder: (context) => BookingPaymentScreen(
+            builder: (context) => PaymentRouteLoader(
               paymentRequestId: paymentRequestId,
               bookingRequestId: args?['bookingRequestId'] as String?,
             ),

@@ -1,5 +1,46 @@
+import 'package:intl/intl.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+
+/// Roster-derived scheduling fields for **Lesson info** in call (trial vs individual).
+class SessionBookingSummary {
+  const SessionBookingSummary({
+    this.subject,
+    this.scheduledDisplay,
+    this.durationMinutes,
+    this.status,
+    this.isTrial = false,
+  });
+
+  final String? subject;
+  final String? scheduledDisplay;
+  final int? durationMinutes;
+  final String? status;
+  final bool isTrial;
+}
+
+/// Tutor/learner profiles plus auth user ids for a session (individual or trial).
+///
+/// Used to map deterministic Agora UIDs (see [agoraNumericUidForSessionRole]) to names/avatars.
+class SessionParticipantBundle {
+  const SessionParticipantBundle({
+    this.tutorProfile,
+    this.learnerProfile,
+    this.tutorUserId,
+    this.learnerUserId,
+  });
+
+  final Map<String, dynamic>? tutorProfile;
+  final Map<String, dynamic>? learnerProfile;
+  final String? tutorUserId;
+  final String? learnerUserId;
+
+  /// Back-compat map shape for callers that only need profiles.
+  Map<String, Map<String, dynamic>?> get asProfileMap => {
+        'tutor': tutorProfile,
+        'learner': learnerProfile,
+      };
+}
 
 /// Service to fetch session participant profiles (tutor and learner)
 /// Handles both individual_sessions and trial_sessions
@@ -37,9 +78,8 @@ class SessionProfileService {
     }
   }
 
-  /// Get both tutor and learner profiles for a session
-  /// Returns: {'tutor': {...}, 'learner': {...}}
-  Future<Map<String, Map<String, dynamic>?>> getSessionParticipants(String sessionId) async {
+  /// Profiles and user ids for tutor + learner on this session row.
+  Future<SessionParticipantBundle> getSessionParticipants(String sessionId) async {
     try {
       // First, try individual_sessions
       var session = await SupabaseService.client
@@ -70,7 +110,12 @@ class SessionProfileService {
 
       if (tutorId == null && learnerId == null) {
         LogService.warning('Session not found: $sessionId');
-        return {'tutor': null, 'learner': null};
+        return const SessionParticipantBundle(
+          tutorProfile: null,
+          learnerProfile: null,
+          tutorUserId: null,
+          learnerUserId: null,
+        );
       }
 
       // Fetch profiles
@@ -85,13 +130,20 @@ class SessionProfileService {
         learnerProfile = await getUserProfile(learnerId);
       }
 
-      return {
-        'tutor': tutorProfile,
-        'learner': learnerProfile,
-      };
+      return SessionParticipantBundle(
+        tutorProfile: tutorProfile,
+        learnerProfile: learnerProfile,
+        tutorUserId: tutorId,
+        learnerUserId: learnerId,
+      );
     } catch (e) {
       LogService.error('Error fetching session participants: $e');
-      return {'tutor': null, 'learner': null};
+      return const SessionParticipantBundle(
+        tutorProfile: null,
+        learnerProfile: null,
+        tutorUserId: null,
+        learnerUserId: null,
+      );
     }
   }
 
@@ -153,5 +205,65 @@ class SessionProfileService {
   void clearUserCache(String userId) {
     _profileCache.remove(userId);
   }
+
+  /// Lightweight booking snapshot for individual or trial lesson rows (no joins).
+  Future<SessionBookingSummary?> getSessionBookingSummary(String sessionId) async {
+    try {
+      final individual = await SupabaseService.client
+          .from('individual_sessions')
+          .select('subject, scheduled_date, scheduled_time, duration_minutes, status')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (individual != null) {
+        final duration = individual['duration_minutes'] as int?;
+        return SessionBookingSummary(
+          subject: individual['subject'] as String?,
+          scheduledDisplay:
+              sessionScheduledDisplayFromParts(individual['scheduled_date'], individual['scheduled_time']),
+          durationMinutes: duration,
+          status: individual['status'] as String?,
+          isTrial: false,
+        );
+      }
+
+      final trial = await SupabaseService.client
+          .from('trial_sessions')
+          .select('subject, scheduled_date, scheduled_time, status')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (trial != null) {
+        return SessionBookingSummary(
+          subject: trial['subject'] as String?,
+          scheduledDisplay:
+              sessionScheduledDisplayFromParts(trial['scheduled_date'], trial['scheduled_time']),
+          durationMinutes: 30,
+          status: trial['status'] as String?,
+          isTrial: true,
+        );
+      }
+
+      return null;
+    } catch (e) {
+      LogService.warning('[SESSION] getSessionBookingSummary failed: $e');
+      return null;
+    }
+  }
+}
+
+/// Shared formatting for roster `scheduled_date` + `scheduled_time` columns.
+String? sessionScheduledDisplayFromParts(dynamic dateRaw, dynamic timeRaw) {
+  if (dateRaw == null || timeRaw == null) return null;
+  final datePart = dateRaw.toString().split('T').first.trim();
+  final timePart = timeRaw.toString().trim();
+  if (datePart.isEmpty || timePart.isEmpty) return null;
+  final merged = DateTime.tryParse(
+    '${datePart}T$timePart',
+  );
+  if (merged != null) {
+    return DateFormat('EEE, MMM d · h:mm a').format(merged.toLocal());
+  }
+  return '$datePart · $timePart';
 }
 

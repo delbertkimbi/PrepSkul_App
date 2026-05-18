@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -21,6 +19,9 @@ import '../../core/services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../localization/app_localizations.dart';
 import '../../features/skulmate/services/game_sound_service.dart';
+import '../utils/responsive_helper.dart';
+import '../../features/tutor/widgets/tutor_page_body.dart';
+import '../../features/tutor/widgets/tutor_navigation_shell.dart';
 
 class MainNavigation extends StatefulWidget {
   final String userRole;
@@ -86,29 +87,6 @@ class _MainNavigationState extends State<MainNavigation>
     // Use route arguments if available, otherwise use widget parameter
     final targetTab = tabFromArgs ?? widget.initialTab ?? 0;
 
-    // #region agent log
-    try {
-      final logData = {
-        'sessionId': 'debug-session',
-        'runId': 'run1',
-        'hypothesisId': 'C',
-        'location': 'main_navigation.dart:42',
-        'message': 'didChangeDependencies called',
-        'data': {
-          'currentIndex': _selectedIndex,
-          'targetTab': targetTab,
-          'tabFromArgs': tabFromArgs,
-          'widgetInitialTab': widget.initialTab,
-          'willChange': targetTab != _selectedIndex,
-        },
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      };
-      File(
-        '/Users/user/Desktop/PrepSkul/.cursor/debug.log',
-      ).writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
-    } catch (_) {}
-    // #endregion
-
     // Only update tab if we have an explicit target from route args or widget parameter
     // Don't update if both are null (which happens when modals open/close)
     final hasExplicitTarget = tabFromArgs != null || widget.initialTab != null;
@@ -125,13 +103,44 @@ class _MainNavigationState extends State<MainNavigation>
     }
   }
 
-  // Tutor screens (4 items)
-  final List<Widget> _tutorScreens = [
-    const TutorHomeScreen(), // Home Dashboard
-    const TutorRequestsScreen(), // Booking Requests
-    const TutorSessionsScreen(), // Sessions
-    const ProfileScreen(userType: 'tutor'), // Profile & Settings
-  ];
+  List<Widget> _wrappedTutorTabs() {
+    return [
+      const TutorPageBody(child: TutorHomeScreen()),
+      const TutorPageBody(child: TutorRequestsScreen()),
+      const TutorPageBody(child: TutorSessionsScreen()),
+      const TutorPageBody(child: ProfileScreen(userType: 'tutor')),
+    ];
+  }
+
+  List<NavigationRailDestination> _tutorRailDestinations(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
+    return [
+      NavigationRailDestination(
+        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)),
+        selectedIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
+        label: Text(t.navHome),
+      ),
+      NavigationRailDestination(
+        icon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.bold)),
+        selectedIcon: PhosphorIcon(
+          PhosphorIcons.envelope(PhosphorIconsStyle.fill),
+        ),
+        label: Text(t.navRequests),
+      ),
+      NavigationRailDestination(
+        icon: PhosphorIcon(PhosphorIcons.graduationCap(PhosphorIconsStyle.bold)),
+        selectedIcon: PhosphorIcon(
+          PhosphorIcons.graduationCap(PhosphorIconsStyle.fill),
+        ),
+        label: Text(t.navSessions),
+      ),
+      NavigationRailDestination(
+        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)),
+        selectedIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
+        label: Text(t.navProfile),
+      ),
+    ];
+  }
 
   // Student screens (4 items)
   List<Widget> _getStudentScreens(String userType) {
@@ -232,14 +241,58 @@ class _MainNavigationState extends State<MainNavigation>
 
   @override
   Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context)!;
     final isTutor = widget.userRole == 'tutor';
     final userType = widget.userRole == 'parent' ? 'parent' : 'student';
 
-    final screens = isTutor ? _tutorScreens : _getStudentScreens(userType);
+    final screens = isTutor ? _wrappedTutorTabs() : _getStudentScreens(userType);
     final items = isTutor ? _getTutorItems(context) : _getStudentItems(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final tutorUseRail = isTutor && width >= ResponsiveHelper.tabletBreakpoint;
 
-    // Never allow popping MainNavigation so we never reveal auth below (fix: back at root -> sign-in).
+    final tabBody = IndexedStack(index: _selectedIndex, children: screens);
+
+    Widget tutorScaffold() {
+      return TutorNavigationShell(
+        useRail: tutorUseRail,
+        selectedIndex: _selectedIndex,
+        onIndexChanged: (index) {
+          safeSetState(() {
+            _selectedIndex = index;
+          });
+          _stopGameMusicIfOnHomeTab();
+        },
+        tabBody: tabBody,
+        bottomBarItems: items,
+        railDestinations: _tutorRailDestinations(context),
+      );
+    }
+
+    final studentScaffold = Scaffold(
+      backgroundColor: AppTheme.softBackground,
+      body: tabBody,
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) {
+          safeSetState(() {
+            _selectedIndex = index;
+          });
+          _stopGameMusicIfOnHomeTab();
+        },
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: AppTheme.primaryColor,
+        unselectedItemColor: AppTheme.textMedium,
+        selectedLabelStyle: GoogleFonts.poppins(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: GoogleFonts.poppins(
+          fontSize: 11,
+          fontWeight: FontWeight.w400,
+        ),
+        iconSize: 22,
+        items: items,
+      ),
+    );
     // When a detail screen is on top, the system pops that route; this PopScope only applies when MainNavigation is the top route.
     return PopScope(
       canPop: false,
@@ -337,32 +390,7 @@ class _MainNavigationState extends State<MainNavigation>
           }
         }
       },
-      child: Scaffold(
-        backgroundColor: AppTheme.softBackground,
-        body: IndexedStack(index: _selectedIndex, children: screens),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: (index) {
-            safeSetState(() {
-              _selectedIndex = index;
-            });
-            _stopGameMusicIfOnHomeTab();
-          },
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: AppTheme.primaryColor,
-          unselectedItemColor: AppTheme.textMedium,
-          selectedLabelStyle: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-          unselectedLabelStyle: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w400,
-          ),
-          iconSize: 22,
-          items: items,
-        ),
-      ),
+      child: isTutor ? tutorScaffold() : studentScaffold,
     );
   }
 }

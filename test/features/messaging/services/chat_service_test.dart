@@ -49,6 +49,12 @@ void main() {
       });
     });
 
+    group('vocabulary deck', () {
+      test('should expose addWordToVocabularyDeck method', () async {
+        expect(ChatService.addWordToVocabularyDeck, isA<Function>());
+      });
+    });
+
     group('getConversations', () {
       test('should fetch conversations successfully', () async {
         // Test fetching conversations

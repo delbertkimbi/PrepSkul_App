@@ -6,6 +6,9 @@ import 'package:prepskul/features/sessions/models/agora_session_state.dart';
 /// Minimal top status for active calls: timer-first, no “Connected” noise.
 /// Transient reconnect/jitter is silent; [showSustainedDegradation] is only set
 /// by the screen after issues persist (see agora video session).
+///
+/// Optional [trailing] sits after the timer in one row so timer and controls
+/// never overlap (single header lane, Meet-style).
 class CallStatusBanner extends StatelessWidget {
   final AgoraSessionState sessionState;
   final bool showSustainedDegradation;
@@ -13,13 +16,26 @@ class CallStatusBanner extends StatelessWidget {
   final bool isAloneWaiting;
   final Duration? timeRemaining;
 
+  /// `tutor` or `learner` — used for role-specific leave copy.
+  final String? userRole;
+
+  /// Extra inset on the right (e.g. learner in-call chat rail) — keeps
+  /// timer/trailing clear of overlapping panes.
+  final double rightContentInset;
+
+  /// Laid out after [timeRemaining] chip: layout toggle, share layout, etc.
+  final Widget? trailing;
+
   const CallStatusBanner({
     Key? key,
     required this.sessionState,
     required this.showSustainedDegradation,
     required this.remoteUserLeft,
     required this.isAloneWaiting,
+    this.userRole,
     this.timeRemaining,
+    this.rightContentInset = 0,
+    this.trailing,
   }) : super(key: key);
 
   @override
@@ -32,7 +48,14 @@ class CallStatusBanner extends StatelessWidget {
     Color? statusColor;
 
     if (remoteUserLeft) {
-      statusText = 'Participant left';
+      final role = userRole?.toLowerCase();
+      if (role == 'tutor') {
+        statusText = 'Learner left';
+      } else if (role == 'learner' || role == 'student') {
+        statusText = 'Tutor left';
+      } else {
+        statusText = 'Participant left';
+      }
       statusColor = AppTheme.error;
     } else if (isAloneWaiting) {
       statusText = 'Waiting…';
@@ -44,7 +67,7 @@ class CallStatusBanner extends StatelessWidget {
 
     final showTimer = timeRemaining != null;
 
-    if (statusText == null && !showTimer) {
+    if (statusText == null && !showTimer && trailing == null) {
       return const SizedBox.shrink();
     }
 
@@ -54,9 +77,9 @@ class CallStatusBanner extends StatelessWidget {
       switchOutCurve: Curves.easeIn,
       child: Container(
         key: ValueKey<String>(
-          '${statusText ?? 't'}_${showTimer}_${timeRemaining?.inSeconds ?? 0}',
+          '${statusText ?? 't'}_${showTimer}_${timeRemaining?.inSeconds ?? 0}_$rightContentInset',
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: EdgeInsets.fromLTRB(16, 10, 16 + rightContentInset, 10),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -75,7 +98,8 @@ class CallStatusBanner extends StatelessWidget {
             children: [
               if (statusText != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     color: statusColor,
                     borderRadius: BorderRadius.circular(16),
@@ -91,6 +115,8 @@ class CallStatusBanner extends StatelessWidget {
                 ),
               const Spacer(),
               if (showTimer) _TimerChip(timeRemaining: timeRemaining!),
+              if (showTimer && trailing != null) const SizedBox(width: 8),
+              if (trailing != null) trailing!,
             ],
           ),
         ),

@@ -25,6 +25,14 @@ void main() {
       expect(content.contains('event_name TEXT NOT NULL'), isTrue);
       expect(content.contains('ENABLE ROW LEVEL SECURITY'), isTrue);
     });
+
+    test('qoe service queues or defers on transient failures', () async {
+      final qoeFile = File('lib/features/sessions/services/qoe_telemetry_service.dart');
+      final content = await qoeFile.readAsString();
+      expect(content.contains('_pending'), isTrue);
+      expect(content.contains('_retryableNetwork'), isTrue);
+      expect(content.contains('_drainPending'), isTrue);
+    });
   });
 }
 

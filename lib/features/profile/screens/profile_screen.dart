@@ -18,6 +18,8 @@ import 'profile_preview_screen.dart';
 import '../../tutor/screens/tutor_onboarding_screen.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/utils/responsive_helper.dart';
+import '../../tutor/widgets/tutor_dashboard_layout.dart';
 import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../support/screens/help_support_screen.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -616,27 +618,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Quick Info Cards (Neumorphic style)
                   Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _buildNeumorphicInfoCard(
-                            icon: PhosphorIcons.envelope(),
-                            label: 'Email',
-                            value: _userInfo?['email']?.toString() ?? 'Not set',
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _buildNeumorphicInfoCard(
-                            icon: PhosphorIcons.phone(),
-                            label: 'Phone',
-                            value: _formatPhoneNumber(
-                              _userInfo?['phone']?.toString() ?? 'Not set',
+                    child: widget.userType == 'tutor' &&
+                            ResponsiveHelper.isDesktop(context)
+                        ? TutorZRow(
+                            rowIndex: 0,
+                            primary: _buildNeumorphicInfoCard(
+                              icon: PhosphorIcons.envelope(),
+                              label: 'Email',
+                              value:
+                                  _userInfo?['email']?.toString() ?? 'Not set',
                             ),
+                            secondary: _buildNeumorphicInfoCard(
+                              icon: PhosphorIcons.phone(),
+                              label: 'Phone',
+                              value: _formatPhoneNumber(
+                                _userInfo?['phone']?.toString() ?? 'Not set',
+                              ),
+                            ),
+                          )
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: _buildNeumorphicInfoCard(
+                                  icon: PhosphorIcons.envelope(),
+                                  label: 'Email',
+                                  value: _userInfo?['email']?.toString() ??
+                                      'Not set',
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _buildNeumorphicInfoCard(
+                                  icon: PhosphorIcons.phone(),
+                                  label: 'Phone',
+                                  value: _formatPhoneNumber(
+                                    _userInfo?['phone']?.toString() ??
+                                        'Not set',
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
                   ),
 
                   const SizedBox(height: 6),
@@ -660,10 +682,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Settings Section (Neumorphic style)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: _buildNeumorphicSection(
-                      title: t.profileSettings,
-                      icon: PhosphorIcons.gear(),
-                      child: Column(
+                    child: TutorConstrainedCard(
+                      maxWidth: widget.userType == 'tutor' &&
+                              ResponsiveHelper.isDesktop(context)
+                          ? 720
+                          : double.infinity,
+                      child: _buildNeumorphicSection(
+                        title: t.profileSettings,
+                        icon: PhosphorIcons.gear(),
+                        child: Column(
                         children: [
                           _buildNeumorphicSettingsItem(
                             icon: PhosphorIcons.pencil(),
@@ -810,6 +837,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             },
                           ),
                         ],
+                        ),
                       ),
                     ),
                   ),
@@ -819,44 +847,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Logout Button (Neumorphic style)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceColor,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.white.withOpacity(0.7),
-                            blurRadius: 10,
-                            offset: const Offset(-4, -4),
-                            spreadRadius: 0,
-                          ),
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(4, 4),
-                            spreadRadius: 0,
-                          ),
-                        ],
-                      ),
-                      child: InkWell(
-                        onTap: _handleLogout,
-                        borderRadius: BorderRadius.circular(16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(PhosphorIcons.signOut(), color: Colors.red, size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              t.profileLogout,
-                              style: GoogleFonts.poppins(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.red,
-                              ),
+                    child: TutorConstrainedCard(
+                      maxWidth: widget.userType == 'tutor' &&
+                              ResponsiveHelper.isDesktop(context)
+                          ? 420
+                          : double.infinity,
+                      alignRight: widget.userType == 'tutor' &&
+                          ResponsiveHelper.isDesktop(context),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceColor,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withOpacity(0.7),
+                              blurRadius: 10,
+                              offset: const Offset(-4, -4),
+                              spreadRadius: 0,
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: const Offset(4, 4),
+                              spreadRadius: 0,
                             ),
                           ],
+                        ),
+                        child: InkWell(
+                          onTap: _handleLogout,
+                          borderRadius: BorderRadius.circular(16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                PhosphorIcons.signOut(),
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                t.profileLogout,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

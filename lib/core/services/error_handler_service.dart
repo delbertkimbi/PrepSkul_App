@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/feedback/app_feedback.dart';
+import 'package:prepskul/core/feedback/feedback_severity.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/widgets/prep_skul_alert_dialog.dart';
 import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 
@@ -241,55 +244,39 @@ class ErrorHandlerService {
       }
     }
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.red[300], size: 28),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Error',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          message,
-          style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
-        ),
+      builder: (dialogContext) => PrepSkulAlertDialog(
+        title: 'Error',
+        message: message,
+        leadingIcon: Icons.error_outline_rounded,
+        iconColor: AppTheme.error,
         actions: [
           if (trialSessionId != null)
             ElevatedButton(
               onPressed: () async {
-                Navigator.pop(context);
-                // Navigate to trial session details
+                Navigator.pop(dialogContext);
                 try {
-                  final trialSession = await TrialSessionService.getTrialSessionById(trialSessionId!);
-                  if (context.mounted) {
+                  final trialSession =
+                      await TrialSessionService.getTrialSessionById(
+                    trialSessionId!,
+                  );
+                  if (dialogContext.mounted) {
                     Navigator.push(
-                      context,
+                      dialogContext,
                       MaterialPageRoute(
-                        builder: (context) => RequestDetailScreen(trialSession: trialSession),
+                        builder: (context) => RequestDetailScreen(
+                          trialSession: trialSession,
+                        ),
                       ),
                     );
                   }
                 } catch (e) {
                   LogService.error('Error fetching trial session: $e');
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Could not load trial session details'),
-                        backgroundColor: Colors.red,
-                      ),
+                  if (dialogContext.mounted) {
+                    AppFeedback.showErrorToast(
+                      dialogContext,
+                      'Could not load trial session details',
                     );
                   }
                 }
@@ -308,7 +295,7 @@ class ErrorHandlerService {
           if (canRetry)
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(dialogContext);
                 onRetry();
               },
               child: Text(
@@ -320,7 +307,7 @@ class ErrorHandlerService {
               ),
             ),
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text(
               'OK',
               style: GoogleFonts.poppins(
@@ -347,41 +334,23 @@ class ErrorHandlerService {
     final canRetry = onRetry != null && isRetryable(error);
     LogService.error('Showing error snackbar', error);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                message,
-                style: GoogleFonts.poppins(),
-              ),
-            ),
-            if (canRetry)
-              TextButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                  onRetry();
-                },
-                child: Text(
-                  'RETRY',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        duration: Duration(seconds: canRetry ? 6 : 4),
-      ),
-    );
+    if (canRetry) {
+      AppFeedback.showToastWithAction(
+        context,
+        FeedbackSeverity.error,
+        message,
+        actionLabel: 'Retry',
+        onAction: onRetry!,
+        duration: const Duration(seconds: 6),
+      );
+    } else {
+      AppFeedback.showToast(
+        context,
+        FeedbackSeverity.error,
+        message,
+        duration: const Duration(seconds: 4),
+      );
+    }
   }
 
   /// Show a success message
@@ -390,26 +359,6 @@ class ErrorHandlerService {
     String message,
   ) {
     if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                message,
-                style: GoogleFonts.poppins(),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    AppFeedback.showSuccess(context, message);
   }
 }

@@ -27,6 +27,22 @@ void main() {
       expect(content.contains('button: true'), isTrue);
       expect(content.contains('double buttonSize = 58'), isTrue);
     });
+
+    test('classroom workspace tool stack mounts IndexedStack (Preply parity)', () async {
+      final screenFile = File(
+        'lib/features/sessions/screens/agora_video_session_screen.dart',
+      );
+      final stackFile = File(
+        'lib/features/sessions/widgets/classroom_workspace_indexed_stack.dart',
+      );
+      final screen = await screenFile.readAsString();
+      final stack = await stackFile.readAsString();
+
+      expect(screen.contains('ClassroomWorkspaceIndexedStack'), isTrue);
+      expect(stack.contains('IndexedStack'), isTrue);
+      expect(stack.contains('sizing: StackFit.expand'), isTrue);
+      expect(screen.contains('_kClassroomDualPaneMinWidth'), isTrue);
+    });
   });
 }
 
