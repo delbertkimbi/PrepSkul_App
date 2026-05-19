@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
@@ -82,18 +85,27 @@ class SupabaseService {
     await client.auth.signOut();
   }
 
-  /// Update user's last_seen timestamp for active status tracking
+  /// Update user's last_seen timestamp for active status tracking (mobile app).
   static Future<void> updateLastSeen() async {
     try {
       final userId = currentUser?.id;
       if (userId == null) return;
-      
-      await client
-          .from('profiles')
-          .update({'last_seen': DateTime.now().toIso8601String()})
-          .eq('id', userId);
+
+      String platform = 'android';
+      if (kIsWeb) {
+        platform = 'web';
+      } else {
+        try {
+          if (Platform.isIOS) platform = 'ios';
+        } catch (_) {}
+      }
+
+      await client.from('profiles').update({
+        'last_seen': DateTime.now().toIso8601String(),
+        'last_seen_source': 'mobile',
+        'last_seen_platform': platform,
+      }).eq('id', userId);
     } catch (e) {
-      // Silently fail - this is not critical
       LogService.debug('Failed to update last_seen: $e');
     }
   }

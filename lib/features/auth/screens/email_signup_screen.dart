@@ -7,7 +7,6 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
-import 'package:prepskul/services/analytics_service.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -561,12 +560,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       final fullName = _nameController.text.trim();
       final selectedRole = _selectedRole!;
 
-      AnalyticsService.trackEvent('signup_started', {
-        'signup_method': 'email',
-        'user_role': selectedRole,
-        'email_domain': email.contains('@') ? email.split('@').last : 'unknown',
-      });
-
       // Get redirect URL for email verification
       final redirectUrl = AuthService.getRedirectUrl();
       LogService.debug('📧 [SIGNUP] Signing up with email: $email');
@@ -633,11 +626,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         return;
       }
 
-      AnalyticsService.trackEvent('signup_verification_pending', {
-        'signup_method': 'email',
-        'user_role': selectedRole,
-      });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -677,11 +665,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       }
     } catch (e) {
       LogService.error('Email signup error: $e');
-      AnalyticsService.trackEvent('signup_failed', {
-        'signup_method': 'email',
-        'user_role': _selectedRole ?? 'unknown',
-        'reason': e.toString(),
-      });
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
         

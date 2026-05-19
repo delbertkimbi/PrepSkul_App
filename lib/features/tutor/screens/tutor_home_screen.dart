@@ -300,6 +300,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           final balances = await SessionPaymentService.getTutorWalletBalances(userId);
           activeBalance = (balances['active_balance'] as num).toDouble();
           pendingBalance = (balances['pending_balance'] as num).toDouble();
+          final offlineEarnings =
+              (balances['offline_earnings_xaf'] as num?)?.toDouble() ?? 0.0;
+          activeBalance += offlineEarnings;
         } catch (e) {
           LogService.warning('Error loading wallet balances: $e');
           // Don't fail user info loading if wallet fails
@@ -427,48 +430,25 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     return parts.isNotEmpty ? parts[0] : fullName;
   }
 
-  /// Load real student and session counts for Quick Stats (approved tutors only).
+  /// Load combined on + off platform student and session counts from tutor_profiles.
   Future<Map<String, int>> _loadTutorQuickStats(String userId) async {
     final supabase = SupabaseService.client;
-    int sessionCount = 0;
-    final Set<String> learnerIds = {};
 
     try {
-      // Individual sessions: count and collect learner_id
-      final ind = await supabase
-          .from('individual_sessions')
-          .select('id, learner_id')
-          .eq('tutor_id', userId)
-          .limit(2000);
-      final indList = (ind as List).cast<Map<String, dynamic>>();
-      sessionCount += indList.length;
-      for (final row in indList) {
-        final id = row['learner_id'] as String?;
-        if (id != null && id.isNotEmpty) learnerIds.add(id);
-      }
+      final profile = await supabase
+          .from('tutor_profiles')
+          .select('total_sessions_completed, total_students')
+          .eq('user_id', userId)
+          .maybeSingle();
 
-      // Trial sessions: count (only active/completed, exclude cancelled/rejected/expired) and collect learner_id
-      final trial = await supabase
-          .from('trial_sessions')
-          .select('id, learner_id')
-          .eq('tutor_id', userId)
-          .inFilter('status', [
-            'pending', 'approved', 'scheduled', 'in_progress',
-            'completed', 'no_show_tutor', 'no_show_learner', 'missed',
-          ])
-          .limit(2000);
-      final trialList = (trial as List).cast<Map<String, dynamic>>();
-      sessionCount += trialList.length;
-      for (final row in trialList) {
-        final id = row['learner_id'] as String?;
-        if (id != null && id.isNotEmpty) learnerIds.add(id);
-      }
+      return {
+        'students': (profile?['total_students'] as num?)?.toInt() ?? 0,
+        'sessions': (profile?['total_sessions_completed'] as num?)?.toInt() ?? 0,
+      };
     } catch (e) {
       LogService.warning('Tutor quick stats: $e');
       rethrow;
     }
-
-    return {'students': learnerIds.length, 'sessions': sessionCount};
   }
 
   @override

@@ -7,8 +7,6 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
-import 'package:prepskul/services/analytics_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -263,22 +261,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           fullName: user.userMetadata?['full_name']?.toString() ?? 'User',
           surveyCompleted: false,
         );
-
-        final prefs = await SharedPreferences.getInstance();
-        final authIntent = prefs.getString('auth_intent') ?? 'unknown';
-        if (authIntent == 'signup') {
-          AnalyticsService.identifyUser(user.id);
-          AnalyticsService.setUserProperties({
-            'user_role': _selectedRole!,
-            'signup_method': 'google',
-          });
-          AnalyticsService.trackEvent('signup_completed', {
-            'user_id': user.id,
-            'signup_method': 'google',
-            'user_role': _selectedRole!,
-          });
-        }
-        await prefs.remove('auth_intent');
 
         if (mounted) {
           // Navigate to profile setup (which will show the correct survey based on role)

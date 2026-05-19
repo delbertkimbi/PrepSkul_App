@@ -16,7 +16,6 @@ import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
-import 'package:prepskul/services/analytics_service.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -126,13 +125,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         );
 
         bool isNewUser = userProfile.isEmpty;
-        const signupMethod = 'phone';
-        if (isNewUser) {
-          AnalyticsService.trackEvent('signup_started', {
-            'signup_method': signupMethod,
-            'user_role': widget.userRole,
-          });
-        }
 
         if (isNewUser) {
           // Save user data to profiles table (signup flow)
@@ -160,18 +152,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           ).catchError((e) {
             LogService.warning('Error notifying admins about new user signup: $e');
             // Don't block signup if notification fails
-          });
-
-          AnalyticsService.identifyUser(response.user!.id);
-          AnalyticsService.setUserProperties({
-            'user_role': widget.userRole,
-            'signup_method': signupMethod,
-            'phone_number': widget.phoneNumber,
-          });
-          AnalyticsService.trackEvent('signup_completed', {
-            'user_id': response.user!.id,
-            'signup_method': signupMethod,
-            'user_role': widget.userRole,
           });
         }
 

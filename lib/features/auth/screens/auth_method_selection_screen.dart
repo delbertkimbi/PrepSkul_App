@@ -174,11 +174,6 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
                               if (_googleLaunchInFlight) return;
                               safeSetState(() => _googleLaunchInFlight = true);
                               try {
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setString(
-                                  'auth_intent',
-                                  _isLogin ? 'login' : 'signup',
-                                );
                                 await AuthService.signInWithGoogle();
                               } catch (e) {
                                 AuthService.isGoogleSignInInProgress = false;

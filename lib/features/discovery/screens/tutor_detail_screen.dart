@@ -411,7 +411,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     final totalHoursTaught = widget.tutor['total_hours_taught'] ?? 0;
     final completedSessions =
         widget.tutor['completed_sessions'] ??
-        widget.tutor['total_reviews'] ??
+        widget.tutor['total_sessions_completed'] ??
         0;
     final teachingStyle = widget.tutor['teaching_style'] ?? '';
     final city = widget.tutor['city'] ?? '';
