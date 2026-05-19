@@ -65,6 +65,7 @@ import 'package:prepskul/core/services/notification_permission_nudge_service.dar
 import 'package:prepskul/features/skulmate/services/skulmate_streak_reminder_service.dart';
 import 'package:prepskul/features/payment/services/payment_local_reminder_service.dart';
 import 'package:prepskul/core/services/startup_schema_service.dart';
+import 'package:prepskul/core/services/app_presence_service.dart';
 import 'package:prepskul/features/sessions/services/agora_service.dart';
 
 /// Set by password reset deep link handler before exchangeCodeForSession.
@@ -229,7 +230,6 @@ void main() async {
     LogService.error('Error initializing app: $e');
     // Even if initialization fails, run the app so user sees error screen
   }
-
   // Run app AFTER all critical initialization is complete
   runApp(const PrepSkulApp());
 
@@ -535,7 +535,7 @@ class PrepSkulApp extends StatefulWidget {
   State<PrepSkulApp> createState() => _PrepSkulAppState();
 }
 
-class _PrepSkulAppState extends State<PrepSkulApp> {
+class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
   final _appLinks = AppLinks();
   StreamSubscription<Uri>? _linkSubscription;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
@@ -543,15 +543,43 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
   @override
   void initState() {
     super.initState();
-    // Initialize NavigationService with navigator key
+    WidgetsBinding.instance.addObserver(this);
     NavigationService().initialize(_navigatorKey);
     _initDeepLinks();
-    // Track app opens for notification prompt eligibility.
     NotificationPermissionNudgeService.recordAppOpen();
+    _setupMobilePresence();
+  }
+
+  void _setupMobilePresence() {
+    if (SupabaseService.isAuthenticated) {
+      AppPresenceService.instance.start();
+    }
+    SupabaseService.authStateChanges.listen((data) {
+      if (data.session != null) {
+        AppPresenceService.instance.start();
+      } else {
+        AppPresenceService.instance.stop();
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      AppPresenceService.instance.ping();
+      if (SupabaseService.isAuthenticated) {
+        AppPresenceService.instance.start();
+      }
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      AppPresenceService.instance.stop();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    AppPresenceService.instance.stop();
     _linkSubscription?.cancel();
     super.dispose();
   }

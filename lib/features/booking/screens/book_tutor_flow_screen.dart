@@ -17,6 +17,7 @@ import 'package:prepskul/features/booking/widgets/location_selector.dart';
 import 'package:prepskul/features/booking/widgets/flexible_session_location_selector.dart';
 import 'package:prepskul/features/booking/widgets/booking_review.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
 
 /// Multi-step wizard for booking a tutor for recurring sessions
 ///
@@ -1098,6 +1099,19 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         locationDetails: _selectedLocation == 'hybrid' ? _locationDetails : null,
         agreedToTermsAt: _agreedToTerms ? nowUtc : null,
         agreedToSafeguardingAt: _agreedToSafeguarding ? nowUtc : null,
+      );
+
+      final currentUser = await AuthService.getCurrentUser();
+      await MobileAnalyticsIngestService.trackEvent(
+        eventType: 'session_booking_created',
+        userId: currentUser['userId']?.toString(),
+        userRole: currentUser['userRole']?.toString(),
+        metadata: {
+          'tutor_id': tutorId.toString(),
+          'frequency': _selectedFrequency,
+          'location': _selectedLocation,
+          'payment_plan': _selectedPaymentPlan,
+        },
       );
 
       // Mark abandoned booking as completed

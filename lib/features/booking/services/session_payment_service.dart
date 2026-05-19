@@ -522,10 +522,24 @@ class SessionPaymentService {
         }
       }
 
+      double offlineEarningsXaf = 0;
+      try {
+        final tutorProfile = await _supabase
+            .from('tutor_profiles')
+            .select('offline_tutor_earnings_xaf')
+            .eq('user_id', tutorId)
+            .maybeSingle();
+        offlineEarningsXaf =
+            (tutorProfile?['offline_tutor_earnings_xaf'] as num?)?.toDouble() ?? 0.0;
+      } catch (e) {
+        LogService.warning('Could not load offline earnings for wallet: $e');
+      }
+
       return {
         'pending_balance': pendingBalance,
         'active_balance': activeBalance,
-        'total_balance': pendingBalance + activeBalance,
+        'offline_earnings_xaf': offlineEarningsXaf,
+        'total_balance': pendingBalance + activeBalance + offlineEarningsXaf,
       };
     } catch (e) {
       LogService.error('Error fetching wallet balances: $e');

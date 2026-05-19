@@ -17,6 +17,9 @@ import 'package:prepskul/features/sessions/domain/stream_priority_policy.dart';
 import 'package:prepskul/features/sessions/domain/network_quality_combine.dart';
 import 'package:prepskul/features/sessions/services/qoe_telemetry_service.dart';
 import 'package:prepskul/features/sessions/services/session_mode_statistics_service.dart';
+import 'package:prepskul/core/utils/platform_utils_stub.dart'
+    if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart'
+    as platform_utils;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Agora RTC Service
@@ -77,6 +80,15 @@ class AgoraService {
   final Map<int, DateTime> _freezeStartedAt = <int, DateTime>{};
   final Map<int, VideoStreamType> _lastAppliedRemoteStreamType =
       <int, VideoStreamType>{};
+
+  /// Remote peers seen this session (for mute-all-remote-video under severe downlink).
+  final Set<int> _sessionRemoteUids = {};
+  bool _remoteVideoSuppressedForNetwork = false;
+  final Map<int, int> _remoteRecvLossStreak = {};
+  final Map<int, int> _remoteRecvGoodStreak = {};
+  final Map<int, VideoStreamType> _lastAppliedRemoteVideoStream = {};
+  final Map<int, DateTime> _lastRemoteVideoStatsLogAt = {};
+  DateTime? _lastRtcStatsLogAt;
 
   // Video recovery state - reduced aggressiveness to prevent flickering
   final Map<int, int> _videoRecoveryAttempts = {}; // remoteUid -> attempt count
@@ -455,6 +467,93 @@ class AgoraService {
     mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
   );
 
+  /// Low stream for dual-stream / simulcast (~180p-class); receivers can switch via SDK.
+  static const SimulcastStreamConfig _simulcastLowStream = SimulcastStreamConfig(
+    dimensions: VideoDimensions(width: 320, height: 180),
+    framerate: 15,
+    kBitrate: 200,
+  );
+
+  static AdvanceOptions _encoderAdvanceOptions() {
+    if (kIsWeb) {
+      return const AdvanceOptions(
+        encodingPreference: EncodingPreference.preferAuto,
+        compressionPreference: CompressionPreference.preferCompressionAuto,
+      );
+    }
+    return const AdvanceOptions(
+      encodingPreference: EncodingPreference.preferHardware,
+      compressionPreference: CompressionPreference.preferCompressionAuto,
+    );
+  }
+
+  /// Native mobile: moderate encode load; SDK bitrate mode 0 = standard adaptive.
+  static VideoEncoderConfiguration _encoderTierMobileNative() {
+    return VideoEncoderConfiguration(
+      dimensions: VideoDimensions(width: 640, height: 480),
+      frameRate: 24,
+      bitrate: 0,
+      minBitrate: 200,
+      orientationMode: OrientationMode.orientationModeAdaptive,
+      degradationPreference: DegradationPreference.maintainBalanced,
+      mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
+      advanceOptions: _encoderAdvanceOptions(),
+    );
+  }
+
+  /// High tier: 720p desktop/web; mobile web capped to reduce decode/thermal load.
+  static VideoEncoderConfiguration _encoderTierHigh() {
+    if (kIsWeb && platform_utils.PlatformUtils.isMobileWeb) {
+      return VideoEncoderConfiguration(
+        dimensions: VideoDimensions(width: 640, height: 480),
+        frameRate: 24,
+        bitrate: 0,
+        minBitrate: 200,
+        orientationMode: OrientationMode.orientationModeAdaptive,
+        degradationPreference: DegradationPreference.maintainBalanced,
+        mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
+        advanceOptions: _encoderAdvanceOptions(),
+      );
+    }
+    return VideoEncoderConfiguration(
+      dimensions: VideoDimensions(width: 1280, height: 720),
+      frameRate: 30,
+      bitrate: 0,
+      minBitrate: 300,
+      orientationMode: OrientationMode.orientationModeAdaptive,
+      degradationPreference: DegradationPreference.maintainBalanced,
+      mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
+      advanceOptions: _encoderAdvanceOptions(),
+    );
+  }
+
+  static VideoEncoderConfiguration _encoderTierMedium() {
+    return VideoEncoderConfiguration(
+      dimensions: VideoDimensions(width: 640, height: 480),
+      frameRate: 15,
+      bitrate: 0,
+      minBitrate: 120,
+      orientationMode: OrientationMode.orientationModeAdaptive,
+      degradationPreference: DegradationPreference.maintainFramerate,
+      mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
+      advanceOptions: _encoderAdvanceOptions(),
+    );
+  }
+
+  /// Severe uplink – favor continuity; SDK ABR can drop bitrate further.
+  static VideoEncoderConfiguration _encoderTierLow() {
+    return VideoEncoderConfiguration(
+      dimensions: VideoDimensions(width: 480, height: 360),
+      frameRate: 15,
+      bitrate: 0,
+      minBitrate: 80,
+      orientationMode: OrientationMode.orientationModeAdaptive,
+      degradationPreference: DegradationPreference.maintainFramerate,
+      mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
+      advanceOptions: _encoderAdvanceOptions(),
+    );
+  }
+
   // Getters
   Stream<AgoraSessionState> get stateStream => _stateController.stream;
   Stream<int> get userJoinedStream => _userJoinedController.stream;
@@ -552,17 +651,8 @@ class AgoraService {
           !kIsWeb &&
           (defaultTargetPlatform == TargetPlatform.iOS ||
               defaultTargetPlatform == TargetPlatform.android);
-      final initialConfig = isMobile
-          ? _quality480p
-          : const VideoEncoderConfiguration(
-              dimensions: VideoDimensions(width: 1280, height: 720),
-              frameRate: 30,
-              bitrate: 2000,
-              minBitrate: 1000,
-              orientationMode: OrientationMode.orientationModeAdaptive,
-              degradationPreference: DegradationPreference.maintainQuality,
-              mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
-            );
+      final initialConfig =
+          isMobile ? _encoderTierMobileNative() : _encoderTierHigh();
       try {
         await _engine!
             .setVideoEncoderConfiguration(initialConfig)
@@ -1227,7 +1317,7 @@ class AgoraService {
 
         LogService.info('✅ Channel low-latency settings applied');
       } catch (e) {
-        LogService.warning('Could not apply channel low-latency settings: $e');
+        LogService.warning('[NET] Post-join network tuning failed: $e');
       }
 
       // Don't set connected state here - wait for onJoinChannelSuccess callback
@@ -2471,6 +2561,140 @@ class AgoraService {
       LogService.success('Agora engine disposed');
     } catch (e) {
       LogService.error('Error disposing Agora engine: $e');
+    }
+  }
+
+  /// Playout/jitter tuned for tutoring: enough headroom for WebRTC PLC + retransmission
+  /// without multi-second buffering. Values are best-effort per platform.
+  Future<void> _applyAgoraNetworkResilienceParams() async {
+    if (_engine == null) return;
+    Future<void> tryParam(String json) async {
+      try {
+        await _engine!.setParameters(json);
+      } catch (e) {
+        LogService.debug('[NET] setParameters optional skip: $e');
+      }
+    }
+
+    await tryParam('{"rtc.video.playout_delay_max": 200}');
+    await tryParam('{"rtc.audio.playout_delay_max": 120}');
+    await tryParam('{"che.video.jitterBuffer": 120}');
+    await tryParam('{"che.audio.jitterBuffer": 80}');
+    await tryParam(
+      '{"che.video.lowBitRateStreamParameter":{"width":320,"height":180,"frameRate":15,"bitRate":200}}',
+    );
+    // Shorter GOP helps clear corruption after loss (ignored on some codecs/platforms).
+    await tryParam('{"che.video.h264KeyframeInterval": 2}');
+    await tryParam('{"che.video.enableFec": true}');
+    LogService.info('[NET] Applied resilience playout/jitter/FEC (best-effort)');
+  }
+
+  Future<void> _enableDualStreamWithSimulcast() async {
+    if (_engine == null) return;
+    try {
+      await _engine!.enableDualStreamMode(
+        enabled: true,
+        streamConfig: _simulcastLowStream,
+      );
+      LogService.success('[NET] Dual stream enabled with simulcast low (320x180 @15fps)');
+    } catch (e) {
+      LogService.warning('[NET] enableDualStreamMode(simulcast) failed: $e');
+    }
+  }
+
+  void _logRemoteVideoStatsThrottled(int uid, RemoteVideoStats s) {
+    final now = DateTime.now();
+    final last = _lastRemoteVideoStatsLogAt[uid];
+    if (last != null && now.difference(last) < const Duration(seconds: 3)) {
+      return;
+    }
+    _lastRemoteVideoStatsLogAt[uid] = now;
+    LogService.info(
+      '[NET][REMOTE_VIDEO] uid=$uid stream=${s.rxStreamType} loss=${s.packetLossRate ?? '-'}% '
+      'frozen=${s.frozenRate ?? '-'}% renderFps=${s.rendererOutputFrameRate ?? '-'} '
+      'decFps=${s.decoderOutputFrameRate ?? '-'} avSyncMs=${s.avSyncTimeMs ?? '-'}',
+    );
+  }
+
+  void _handleRtcStatsThrottled(RtcStats s) {
+    final now = DateTime.now();
+    if (_lastRtcStatsLogAt != null &&
+        now.difference(_lastRtcStatsLogAt!) < const Duration(seconds: 4)) {
+      return;
+    }
+    _lastRtcStatsLogAt = now;
+    LogService.info(
+      '[NET][RTC_STATS] rttLastmile=${s.lastmileDelay ?? '-'}ms gatewayRtt=${s.gatewayRtt ?? '-'}ms '
+      'rxLoss=${s.rxPacketLossRate ?? '-'}% txLoss=${s.txPacketLossRate ?? '-'}% '
+      'txVideoKbps=${s.txVideoKBitRate ?? '-'} rxVideoKbps=${s.rxVideoKBitRate ?? '-'}',
+    );
+  }
+
+  /// Subscribe-side: switch high/low from downlink stats (no custom frame buffer).
+  Future<void> _adaptRemoteReceiveFromStats(RemoteVideoStats stats) async {
+    if (_remoteVideoSuppressedForNetwork) return;
+    final uid = stats.uid;
+    if (uid == null || !_isValidRemoteUid(uid)) return;
+
+    _logRemoteVideoStatsThrottled(uid, stats);
+
+    final loss = stats.packetLossRate ?? 0;
+    final frozen = stats.frozenRate ?? 0;
+
+    if (loss >= 12 || frozen >= 8) {
+      _remoteRecvGoodStreak[uid] = 0;
+      _remoteRecvLossStreak[uid] = (_remoteRecvLossStreak[uid] ?? 0) + 1;
+      if (_remoteRecvLossStreak[uid]! >= 2) {
+        await _setRemoteVideoStreamForUid(uid, VideoStreamType.videoStreamLow);
+      }
+    } else if (loss <= 5 && frozen <= 3) {
+      _remoteRecvLossStreak[uid] = 0;
+      _remoteRecvGoodStreak[uid] = (_remoteRecvGoodStreak[uid] ?? 0) + 1;
+      if (_remoteRecvGoodStreak[uid]! >= 4) {
+        await _setRemoteVideoStreamForUid(uid, VideoStreamType.videoStreamHigh);
+      }
+    }
+  }
+
+  void _registerSessionRemoteUid(int remoteUid) {
+    if (!_isValidRemoteUid(remoteUid)) return;
+    _sessionRemoteUids.add(remoteUid);
+  }
+
+  void _unregisterSessionRemoteUid(int remoteUid) {
+    _sessionRemoteUids.remove(remoteUid);
+  }
+
+  Future<void> _setRemoteVideoSuppressedForNetwork(bool suppress) async {
+    if (_engine == null || !_isInChannel) return;
+    if (_remoteVideoSuppressedForNetwork == suppress) return;
+    for (final uid in List<int>.from(_sessionRemoteUids)) {
+      if (!_isValidRemoteUid(uid)) continue;
+      try {
+        await _engine!.muteRemoteVideoStream(uid: uid, mute: suppress);
+        LogService.info(
+          '[NET] muteRemoteVideoStream uid=$uid mute=$suppress (severe network policy)',
+        );
+      } catch (e) {
+        LogService.warning('[NET] muteRemoteVideoStream failed uid=$uid: $e');
+      }
+    }
+    _remoteVideoSuppressedForNetwork = suppress;
+    if (!suppress) {
+      _lastAppliedRemoteVideoStream.clear();
+    }
+  }
+
+  Future<void> _setRemoteVideoStreamForUid(int uid, VideoStreamType type) async {
+    if (_engine == null || !_isInChannel) return;
+    if (_remoteVideoSuppressedForNetwork) return;
+    if (_lastAppliedRemoteVideoStream[uid] == type) return;
+    try {
+      await _engine!.setRemoteVideoStreamType(uid: uid, streamType: type);
+      _lastAppliedRemoteVideoStream[uid] = type;
+      LogService.info('[NET] Remote subscribe stream uid=$uid -> $type');
+    } catch (e) {
+      LogService.warning('[NET] setRemoteVideoStreamType failed uid=$uid: $e');
     }
   }
 

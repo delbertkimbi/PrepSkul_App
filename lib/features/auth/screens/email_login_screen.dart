@@ -9,6 +9,7 @@ import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
+import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
 import 'forgot_password_email_screen.dart';
 
 class EmailLoginScreen extends StatefulWidget {
@@ -429,6 +430,15 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         fullName: profile['full_name'] ?? '',
         surveyCompleted: profile['survey_completed'] ?? false,
         rememberMe: true,
+      );
+
+      await MobileAnalyticsIngestService.trackEvent(
+        eventType: 'login',
+        userId: response.user!.id,
+        userRole: profile['user_type']?.toString(),
+        metadata: {
+          'method': 'email_password',
+        },
       );
 
       // Check if survey is completed

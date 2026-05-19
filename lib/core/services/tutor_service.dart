@@ -863,13 +863,10 @@ class TutorService {
         final videoIntro = tutor['video_intro']?.toString();
         final effectiveVideoUrl = videoUrl ?? videoLink ?? videoIntro;
 
-        // Get student success metrics - use REAL session count from individual_sessions
+        // Public stats from tutor_profiles (on + off platform, maintained by DB triggers)
         final totalStudents = (tutor['total_students'] ?? 0) as int;
         final totalHoursTaught = (tutor['total_hours_taught'] ?? 0) as int;
-
-        // Note: completedSessions will be fetched separately after mapping
-        // For now, use 0 as placeholder - will be updated in a follow-up query
-        final completedSessions = 0;
+        final completedSessions = (tutor['total_sessions_completed'] ?? 0) as int;
 
         // Get avatar from tutor_profiles.profile_photo_url first, then fallback to profiles.avatar_url
         final profilePhotoUrl = tutor['profile_photo_url']?.toString();
@@ -945,44 +942,6 @@ class TutorService {
           'handles_multiple_learners': tutor['handles_multiple_learners'],
         };
       }).whereType<Map<String, dynamic>>().toList(); // Filter out nulls
-
-      // Batch fetch completed sessions count for all tutors (fixes N+1 query problem)
-      try {
-        final tutorIds = tutors.map((t) => t['id']?.toString()).whereType<String>().toList();
-        if (tutorIds.isNotEmpty) {
-          final sessionsResponse = await SupabaseService.client
-              .from('individual_sessions')
-              .select('tutor_id')
-              .inFilter('tutor_id', tutorIds)
-              .eq('status', 'completed');
-          
-          // Count sessions per tutor
-          final sessionCounts = <String, int>{};
-          for (var session in sessionsResponse as List) {
-            final tutorId = session['tutor_id']?.toString();
-            if (tutorId != null) {
-              sessionCounts[tutorId] = (sessionCounts[tutorId] ?? 0) + 1;
-            }
-          }
-          
-          // Assign counts to tutors
-          for (var tutorData in tutors) {
-            final tutorId = tutorData['id']?.toString();
-            tutorData['completed_sessions'] = tutorId != null ? (sessionCounts[tutorId] ?? 0) : 0;
-          }
-        } else {
-          // No tutor IDs, set all to 0
-          for (var tutorData in tutors) {
-            tutorData['completed_sessions'] = 0;
-          }
-        }
-      } catch (e) {
-        // Table might not exist yet - silently fallback to 0 for all
-        LogService.warning('Could not fetch completed sessions counts: $e');
-        for (var tutorData in tutors) {
-          tutorData['completed_sessions'] = 0;
-        }
-      }
 
       return tutors;
     } catch (e) {
@@ -1145,23 +1104,10 @@ class TutorService {
           ? avatarUrl
           : null;
 
-      // Get student success metrics - use REAL session count from individual_sessions
+      // Public stats from tutor_profiles (on + off platform, readable without session RLS)
       final totalStudents = (response['total_students'] ?? 0) as int;
       final totalHoursTaught = (response['total_hours_taught'] ?? 0) as int;
-
-      // Fetch real completed sessions count from individual_sessions table
-      int completedSessions = 0;
-      try {
-        final sessionsResponse = await SupabaseService.client
-            .from('individual_sessions')
-            .select('id')
-            .eq('tutor_id', tutorId)
-            .eq('status', 'completed');
-        completedSessions = (sessionsResponse as List).length;
-      } catch (e) {
-        // Table might not exist yet - silently fallback to 0
-        completedSessions = 0;
-      }
+      final completedSessions = (response['total_sessions_completed'] ?? 0) as int;
 
       // Get subjects/specializations
       var subjects = response['subjects'];
