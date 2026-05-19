@@ -1,12 +1,14 @@
-# KYC mascot illustrations (optional)
+# KYC bear illustrations
 
-Add these PNGs to enable image heroes on **submitted** and **pending** verification screens. The app works without them (vector fallback cat).
+Optional PNG heroes for the identity verification flow. Without them, the app uses the brand bear from `assets/characters/mascots/default.png`.
 
-| File | Use | Prompt |
-|------|-----|--------|
-| `kyc_submitted.png` | Step 4 + success state | Flat 2D cartoon PrepSkul friendly bear mascot holding a checkmark document envelope, relieved happy mood, deep blue `#1B2C4F` and soft sky blue accents, white background, minimal line art, no text, 4:3 |
-| `kyc_pending.png` | Pending review screen | Flat 2D cartoon c with hourglass and calm waiting expression, document stack nearby, deep blue palette, white background, no text, 4:3 |
+| File | Screen |
+|------|--------|
+| `kyc_intro.png` | Wizard intro |
+| `kyc_submitted.png` | After submit |
+| `kyc_pending.png` | Pending review |
+| `kyc_rejected.png` | Resubmit (intro when previously rejected) |
 
-Style: match PrepSkul brand bear mascot; friendly, not childish; no readable text in the image.
+**Prompts:** See [docs/MASCOT_IMAGE_PROMPTS.md](../../docs/MASCOT_IMAGE_PROMPTS.md) — attach your bear reference to each generation.
 
-**Format:** Save as real PNG (not JPEG renamed to `.png`). After adding files, run `flutter pub get` and **fully restart** the app — hot reload does not load new assets.
+**Format:** Real PNG. After adding files: `flutter pub get` + full restart.

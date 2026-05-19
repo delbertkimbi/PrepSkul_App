@@ -1,6 +1,7 @@
 /// skulMate Character Model
 /// 
-/// Represents the mascot characters for skulMate games, similar to Duo from Duolingo.
+/// Playable learner avatars for SkulMate games (human characters).
+/// The PrepSkul **brand bear** is separate — see `SkulMateMascotMediaWidget` and `docs/MASCOT_IMAGE_PROMPTS.md`.
 /// Characters are organized by age groups and gender.
 class SkulMateCharacter {
   final String id;
