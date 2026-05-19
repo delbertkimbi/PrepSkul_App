@@ -8,6 +8,7 @@ import 'package:prepskul/core/config/app_config.dart';
 import 'push_notification_service.dart';
 import 'email_rate_limit_service.dart';
 import 'notification_helper_service.dart';
+import 'package:prepskul/services/analytics_service.dart';
 // #region agent log
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -773,6 +774,19 @@ class AuthService {
         rememberMe: true,
       );
 
+      AnalyticsService.identifyUser(user.id);
+      AnalyticsService.setUserProperties({
+        'user_role': role,
+        'signup_method': 'email',
+        'email': email,
+      });
+      AnalyticsService.trackEvent('signup_completed', {
+        'user_id': user.id,
+        'signup_method': 'email',
+        'user_role': role,
+        'email': email,
+      });
+
       await prefs.setBool('survey_intro_seen', false);
       // Keep signup_full_name in SharedPreferences as backup until profile is confirmed
       // Only remove after we verify the profile was created successfully
@@ -817,6 +831,14 @@ class AuthService {
   static Future<bool> signInWithGoogle() async {
     try {
       isGoogleSignInInProgress = true;
+      final prefs = await SharedPreferences.getInstance();
+      final authIntent = prefs.getString('auth_intent') ?? 'unknown';
+      if (authIntent == 'signup') {
+        AnalyticsService.trackEvent('signup_started', {
+          'signup_method': 'google',
+          'user_role': 'pending_selection',
+        });
+      }
       // Get redirect URL for Google Auth
       // For web, we want to come back to the current page (or specific callback)
       // For mobile, we want the deep link

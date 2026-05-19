@@ -64,8 +64,12 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 import 'package:prepskul/features/skulmate/services/skulmate_streak_reminder_service.dart';
 import 'package:prepskul/features/payment/services/payment_local_reminder_service.dart';
+<<<<<<< Updated upstream
 import 'package:prepskul/core/services/startup_schema_service.dart';
 import 'package:prepskul/features/sessions/services/agora_service.dart';
+=======
+import 'package:prepskul/services/analytics_service.dart';
+>>>>>>> Stashed changes
 
 /// Set by password reset deep link handler before exchangeCodeForSession.
 /// Auth listener skips handleEmailConfirmation when true (recovery sign-in must go to reset-password screen).
@@ -228,6 +232,19 @@ void main() async {
   } catch (e) {
     LogService.error('Error initializing app: $e');
     // Even if initialization fails, run the app so user sees error screen
+  }
+  // Mixpanel initialization
+  try {
+    await AnalyticsService.init();
+    LogService.success('AnalyticsService initialized');
+    if (kIsWeb) {
+      AnalyticsService.trackEvent('mixpanel_web_boot_test', {
+        'source': 'main',
+        'env': AppConfig.environment,
+      });
+    }
+  } catch (e) {
+    LogService.error('Error initializing analytics: $e');
   }
 
   // Run app AFTER all critical initialization is complete

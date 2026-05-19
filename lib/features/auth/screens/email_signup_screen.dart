@@ -7,9 +7,11 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/services/analytics_service.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
 import 'email_confirmation_screen.dart';
 
 // Email validation regex
@@ -557,6 +559,13 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final fullName = _nameController.text.trim();
+      final selectedRole = _selectedRole!;
+
+      AnalyticsService.trackEvent('signup_started', {
+        'signup_method': 'email',
+        'user_role': selectedRole,
+        'email_domain': email.contains('@') ? email.split('@').last : 'unknown',
+      });
 
       // Get redirect URL for email verification
       final redirectUrl = AuthService.getRedirectUrl();
@@ -581,6 +590,16 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         LogService.error('❌ [SIGNUP] SignUp returned null user');
         throw Exception('Failed to create account');
       }
+
+      await MobileAnalyticsIngestService.trackEvent(
+        eventType: 'signup',
+        userId: response.user?.id,
+        userRole: selectedRole,
+        metadata: {
+          'method': 'email',
+          'email_confirmed': response.user?.emailConfirmedAt != null,
+        },
+      );
       
       LogService.debug('📧 [SIGNUP] User created: ${response.user!.id}');
       LogService.debug('📧 [SIGNUP] Email confirmed: ${response.user!.emailConfirmedAt != null}');
@@ -594,7 +613,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       }
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('signup_user_role', _selectedRole!);
+      await prefs.setString('signup_user_role', selectedRole);
       await prefs.setString('signup_full_name', fullName);
       await prefs.setString('signup_email', email);
       await prefs.setString('auth_method', 'email');
@@ -608,11 +627,16 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
             context,
             '/profile-setup',
             (route) => false,
-            arguments: {'userRole': _selectedRole},
+            arguments: {'userRole': selectedRole},
           );
         }
         return;
       }
+
+      AnalyticsService.trackEvent('signup_verification_pending', {
+        'signup_method': 'email',
+        'user_role': selectedRole,
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -646,13 +670,18 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
             builder: (context) => EmailConfirmationScreen(
               email: email,
               fullName: fullName,
-              userRole: _selectedRole!,
+              userRole: selectedRole,
             ),
           ),
         );
       }
     } catch (e) {
       LogService.error('Email signup error: $e');
+      AnalyticsService.trackEvent('signup_failed', {
+        'signup_method': 'email',
+        'user_role': _selectedRole ?? 'unknown',
+        'reason': e.toString(),
+      });
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
         

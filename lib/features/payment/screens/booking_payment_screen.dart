@@ -23,6 +23,7 @@ import 'package:prepskul/features/payment/services/payment_gate_service.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
+import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
 
 /// Booking Payment Screen
 ///
@@ -470,6 +471,18 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         fapshiTransId: transId,
       );
       LogService.success('Payment request status updated to paid');
+
+      final currentUser = await AuthService.getCurrentUser();
+      await MobileAnalyticsIngestService.trackEvent(
+        eventType: 'payment_completed',
+        userId: currentUser['userId']?.toString(),
+        userRole: currentUser['userRole']?.toString(),
+        metadata: {
+          'payment_request_id': widget.paymentRequestId,
+          'transaction_id': transId,
+          'amount': _total,
+        },
+      );
 
       // Trigger webhook handler to process payment and generate sessions
       try {

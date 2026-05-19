@@ -134,6 +134,15 @@ class AppConfig {
       return _safeEnv('API_BASE_URL_DEV', 'https://www.prepskul.com/api');
     }
   }
+
+  /// Mobile analytics ingest key used in `x-mobile-analytics-key` header.
+  /// Keep this value aligned with Vercel's MOBILE_ANALYTICS_INGEST_KEY.
+  static String get mobileAnalyticsIngestKey {
+    return _safeEnv(
+      'MOBILE_ANALYTICS_INGEST_KEY',
+      'psk_mobile_ingest_2026_04_20_f7a1c9e4b2d64a7f9e3c1b5d8a4f2c6',
+    );
+  }
   
   /// Get effective API base URL.
   ///
