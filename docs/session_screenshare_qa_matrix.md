@@ -57,7 +57,7 @@
 
 | Issue | Status | Notes |
 |-------|--------|-------|
-| Tutor desktop full-width cards (no Z layout) | Still broken | Home/Requests/Sessions single column on wide Chrome |
+| Tutor desktop full-width cards | Still broken | Home/Requests/Sessions single column on wide Chrome |
 
 ## Post-fix code status (2026-05-16) — manual Chrome verify still required
 

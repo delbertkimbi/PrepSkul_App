@@ -796,6 +796,25 @@ class NotificationNavigationService {
         }
         break;
 
+      case 'daily_inactivity_nudge':
+      case 'monday_engagement':
+      case 'monthly_engagement':
+      case 'calendar_engagement':
+      case 'behaviour_tutor_browse':
+      case 'daily_challenge_reminder':
+      case 'daily_challenge':
+      case 'daily_matched_tutors':
+        {
+          final role = userType == 'tutor'
+              ? 'tutor'
+              : (userType == 'parent' ? 'parent' : 'student');
+          final route = role == 'tutor'
+              ? '/tutor-nav'
+              : (role == 'parent' ? '/parent-nav' : '/student-nav');
+          await navService.navigateToRoute(route, replace: false);
+        }
+        break;
+
       case 'identity_verification_rejected':
         final roleRejected = userType == 'parent' ? 'parent' : 'student';
         final routeRejected =

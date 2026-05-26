@@ -316,9 +316,9 @@ Variants:
 
 | Recipient | Type | Title | Message (example) | Trigger | Channels |
 |-----------|------|--------|-------------------|---------|----------|
-| **User** (tutor or student) | (review reminder) | Session Completed / Leave Review | Your {trial/recurring} session with {otherPartyName} for {subject} has been completed. Please leave a review! | Scheduled 24h after session (via API) | In-app, Email (NotificationHelperService.notifySessionCompleted used elsewhere) |
+| **User** (tutor or student) | (review reminder) | Session Completed / Leave Review | Your {trial/recurring} session with {otherPartyName} for {subject} has been completed. Please leave a review! | Scheduled 24h after session (via API) | In-app, Email, Push |
 
-**Note:** `NotificationHelperService.notifySessionCompleted` exists and schedules a review reminder via API; session lifecycle currently uses its own in-app `session_completed` above.
+**Note:** Session lifecycle calls `NotificationHelperService.notifySessionCompletedWithContext` (push + email). Review reminder scheduled via `/api/notifications/schedule-review-reminder` when using `notifySessionCompleted`.
 
 ---
 
@@ -429,6 +429,22 @@ All of the above are implemented in `notification_helper_service.dart` (and some
 | **Single channel emphasis** | In-app is the only guaranteed channel. Users who don’t open the app won’t see anything unless push/email succeeded. |
 | **No retry for API send** | If `_sendNotificationViaAPI` fails (network/timeout), we don’t retry. Push/email for that event are lost. |
 | **Admin payout notification** | Payout request from tutor currently logs only; no in-app notification to admins unless extended. |
+
+---
+
+## Engagement notifications (2025 orchestrator)
+
+Server-side campaigns run on **cron-job.org** (see `PrepSkul_Web/docs/CRON_JOB_REGISTRY.md`). Rules:
+
+- **At most one** engagement push per user per calendar day (WAT) if they had **no meaningful activity** that day (`last_seen`, session, SkulMate, booking/payment/message).
+- Copy is **role-safe** and uses subjects/goals where available.
+- Channels: push + in-app only (no engagement email). Users can disable via **Learning tips & reminders** (`engagement_push_enabled`).
+
+Types include: `daily_inactivity_nudge`, `monday_engagement`, `monthly_engagement`, `calendar_engagement`, `behaviour_tutor_browse`, `daily_challenge_reminder`. Tap routing: `notification_navigation_service.dart`.
+
+Full design: `PrepSkul_Web/docs/NOTIFICATION_SYSTEM.md`.
+
+**Gaps addressed:** session lifecycle uses `NotificationHelperService` for completed/cancelled/no-show; `schedule-review-reminder` API exists; schedule-* routes use admin client.
 
 ---
 
