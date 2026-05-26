@@ -370,11 +370,18 @@ class SessionPaymentService {
         // Move from pending to active balance
         await _moveToActiveBalance(tutorId, tutorEarnings, paymentId);
 
-        // Send notifications
-        await _sendPaymentConfirmedNotifications(
-          sessionId: sessionId,
-          tutorId: tutorId,
-        );
+        // Send notifications (skip if webhook already notified)
+        final alreadySent = await _hasPaymentConfirmedNotification(sessionId);
+        if (!alreadySent) {
+          await _sendPaymentConfirmedNotifications(
+            sessionId: sessionId,
+            tutorId: tutorId,
+          );
+        } else {
+          LogService.info(
+            'Skipping duplicate payment_confirmed for session: $sessionId',
+          );
+        }
 
         LogService.success('Payment confirmed for session: $sessionId');
       } else if (status == 'FAILED' ||
@@ -733,6 +740,29 @@ class SessionPaymentService {
     } catch (e) {
       LogService.error('Error processing pending earnings: $e');
       return 0;
+    }
+  }
+
+  /// True if payment_confirmed was already created for this session (e.g. Fapshi webhook).
+  static Future<bool> _hasPaymentConfirmedNotification(String sessionId) async {
+    try {
+      final since = DateTime.now().subtract(const Duration(hours: 48)).toIso8601String();
+      final rows = await _supabase
+          .from('notifications')
+          .select('id, metadata')
+          .eq('type', 'payment_confirmed')
+          .gte('created_at', since)
+          .limit(20);
+      for (final row in rows as List) {
+        final meta = row['metadata'];
+        if (meta is Map && meta['session_id'] == sessionId) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      LogService.warning('Could not check payment_confirmed dedupe: $e');
+      return false;
     }
   }
 

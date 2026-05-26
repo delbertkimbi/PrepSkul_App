@@ -688,15 +688,10 @@ class SessionLifecycleService {
             : session['tutor_id'];
 
         if (notifiedUserId != null) {
-          await NotificationService.createNotification(
+          await NotificationHelperService.notifySessionNoShow(
             userId: notifiedUserId as String,
-            type: 'session_no_show',
-            title: '⚠️ No-Show Detected',
-            message: 'The other party did not attend the session.',
-            priority: 'high',
-            actionUrl: '/sessions/$sessionId',
-            actionText: 'View Session',
-            icon: '⚠️',
+            sessionId: sessionId,
+            noShowType: noShowType,
           );
         }
       }
@@ -1003,37 +998,13 @@ class SessionLifecycleService {
         }
       }
       
-      // Create notification with payment information
-      final userType = isParent ? 'parent' : 'student';
-      final messagePrefix = isParent ? "Your child's" : 'Your';
-      final message = paymentId != null && paymentStatus == 'unpaid'
-          ? '$messagePrefix session has been completed. Payment of ${sessionFee ?? 'N/A'} XAF is due. Please complete payment.'
-          : '$messagePrefix session has been completed. Please provide feedback when ready.';
-      
-      final actionUrl = paymentId != null && paymentStatus == 'unpaid'
-          ? '/payments/session/$paymentId'
-          : '/sessions/$sessionId/feedback';
-      
-      final actionText = paymentId != null && paymentStatus == 'unpaid'
-          ? 'Pay Now'
-          : 'Provide Feedback';
-      
-      await NotificationService.createNotification(
+      await NotificationHelperService.notifySessionCompletedWithContext(
         userId: studentId,
-        type: 'session_completed',
-        title: 'Session Completed',
-        message: message,
-        priority: paymentId != null && paymentStatus == 'unpaid' ? 'high' : 'normal',
-        actionUrl: actionUrl,
-        actionText: actionText,
-        icon: '✅',
-        metadata: {
-          'session_id': sessionId,
-          'user_type': userType,
-          if (paymentId != null) 'payment_id': paymentId,
-          if (sessionFee != null) 'session_fee': sessionFee,
-          if (paymentStatus != null) 'payment_status': paymentStatus,
-        },
+        sessionId: sessionId,
+        paymentId: paymentId,
+        isParent: isParent,
+        sessionFee: sessionFee,
+        paymentStatus: paymentStatus,
       );
     } catch (e) {
       LogService.warning('Error sending session completed notification: $e');
@@ -1108,19 +1079,11 @@ class SessionLifecycleService {
       LogService.warning('Could not update individual_sessions for trial: $e');
     }
 
-    final trialMessage = 'Your trial session has been completed. How did it go? Leave feedback to help us match you with the right tutor.';
-
     if (learnerId != null) {
-      await NotificationService.createNotification(
+      await NotificationHelperService.notifyTrialSessionCompleted(
         userId: learnerId,
-        type: 'session_completed',
-        title: 'Trial Session Completed',
-        message: trialMessage,
-        priority: 'normal',
-        actionUrl: '/sessions/$sessionId/feedback',
-        actionText: 'Provide Feedback',
-        icon: '✅',
-        metadata: {'session_id': sessionId, 'session_type': 'trial'},
+        sessionId: sessionId,
+        role: 'learner',
       );
       try {
         await _scheduleFeedbackReminder(
@@ -1158,16 +1121,10 @@ class SessionLifecycleService {
 
     // Notify tutor once that the trial session has been completed and feedback was requested.
     try {
-      await NotificationService.createNotification(
+      await NotificationHelperService.notifyTrialSessionCompleted(
         userId: tutorId,
-        type: 'session_completed',
-        title: 'Trial session completed',
-        message: 'Your trial session has been completed. Parent/student has been asked for feedback.',
-        priority: 'normal',
-        actionUrl: '/sessions/$sessionId',
-        actionText: 'View session',
-        icon: '✅',
-        metadata: {'session_id': sessionId, 'session_type': 'trial', 'role': 'tutor'},
+        sessionId: sessionId,
+        role: 'tutor',
       );
     } catch (e) {
       LogService.warning('Error sending tutor trial completion notification: $e');
@@ -1210,20 +1167,11 @@ class SessionLifecycleService {
     try {
       final cancelledByName = cancelledBy == 'tutor' ? 'Tutor' : 'Student';
 
-      await NotificationService.createNotification(
+      await NotificationHelperService.notifySessionCancelled(
         userId: otherPartyId,
-        type: 'session_cancelled',
-        title: '⚠️ Session Cancelled',
-        message: '$cancelledByName has cancelled the session. Reason: $reason',
-        priority: 'high',
-        actionUrl: '/sessions/$sessionId',
-        actionText: 'View Details',
-        icon: '⚠️',
-        metadata: {
-          'session_id': sessionId,
-          'cancelled_by': cancelledBy,
-          'reason': reason,
-        },
+        sessionId: sessionId,
+        cancelledBy: cancelledBy,
+        reason: reason,
       );
     } catch (e) {
       LogService.warning('Error sending session cancelled notification: $e');

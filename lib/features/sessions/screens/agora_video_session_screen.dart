@@ -3067,7 +3067,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
 
     _errorSubscription = _agoraService.errorStream.listen((error) {
       final userMessage = _toUserFriendlyError(error);
-      final lowered = userMessage.toLowerCase();
+      final lowered = userMessage.toLowerCas e();
       final isRecoverableConnectionIssue =
           lowered.contains('connection') ||
           lowered.contains('network') ||

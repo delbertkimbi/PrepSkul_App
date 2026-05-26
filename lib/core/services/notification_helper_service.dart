@@ -1502,6 +1502,139 @@ class NotificationHelperService {
     }
   }
 
+  /// Session completed with optional unpaid payment (push + email when due).
+  static Future<void> notifySessionCompletedWithContext({
+    required String userId,
+    required String sessionId,
+    String? paymentId,
+    bool isParent = false,
+    String? sessionFee,
+    String? paymentStatus,
+  }) async {
+    final messagePrefix = isParent ? "Your child's" : 'Your';
+    final hasUnpaid =
+        paymentId != null && paymentStatus == 'unpaid' && sessionFee != null;
+    final message = hasUnpaid
+        ? '$messagePrefix session has been completed. Payment of $sessionFee XAF is due. Please complete payment.'
+        : '$messagePrefix session has been completed. Please provide feedback when ready.';
+    final actionUrl = hasUnpaid
+        ? '/payments/session/$paymentId'
+        : '/sessions/$sessionId/feedback';
+    final actionText = hasUnpaid ? 'Pay Now' : 'Provide Feedback';
+
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'session_completed',
+      title: 'Session Completed',
+      message: message,
+      priority: hasUnpaid ? 'high' : 'normal',
+      actionUrl: actionUrl,
+      actionText: actionText,
+      metadata: {
+        'session_id': sessionId,
+        'user_type': isParent ? 'parent' : 'student',
+        if (paymentId != null) 'payment_id': paymentId,
+        if (sessionFee != null) 'session_fee': sessionFee,
+        if (paymentStatus != null) 'payment_status': paymentStatus,
+      },
+      sendEmail: true,
+      sendPush: true,
+      dedupeKey: 'session_completed:$sessionId:$userId',
+    );
+  }
+
+  /// Trial session completed (learner, parent, or tutor copy).
+  static Future<void> notifyTrialSessionCompleted({
+    required String userId,
+    required String sessionId,
+    required String role,
+  }) async {
+    String title;
+    String message;
+    if (role == 'tutor') {
+      title = 'Trial session completed';
+      message =
+          'Your trial session has been completed. Parent/student has been asked for feedback.';
+    } else if (role == 'parent') {
+      title = "Your Child's Trial Completed";
+      message =
+          "Your child's trial session has been completed. Please leave feedback to help us improve.";
+    } else {
+      title = 'Trial Session Completed';
+      message =
+          'Your trial session has been completed. How did it go? Leave feedback to help us match you with the right tutor.';
+    }
+
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'session_completed',
+      title: title,
+      message: message,
+      priority: 'normal',
+      actionUrl: role == 'tutor' ? '/sessions/$sessionId' : '/sessions/$sessionId/feedback',
+      actionText: role == 'tutor' ? 'View session' : 'Provide Feedback',
+      metadata: {
+        'session_id': sessionId,
+        'session_type': 'trial',
+        if (role == 'tutor') 'role': 'tutor',
+      },
+      sendEmail: role != 'tutor',
+      sendPush: true,
+      dedupeKey: 'session_completed:trial:$sessionId:$userId',
+    );
+  }
+
+  /// Session cancelled (other party notified).
+  static Future<void> notifySessionCancelled({
+    required String userId,
+    required String sessionId,
+    required String cancelledBy,
+    required String reason,
+  }) async {
+    final cancelledByName = cancelledBy == 'tutor' ? 'Tutor' : 'Student';
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'session_cancelled',
+      title: 'Session Cancelled',
+      message: '$cancelledByName has cancelled the session. Reason: $reason',
+      priority: 'high',
+      actionUrl: '/sessions/$sessionId',
+      actionText: 'View Details',
+      metadata: {
+        'session_id': sessionId,
+        'cancelled_by': cancelledBy,
+        'reason': reason,
+      },
+      sendEmail: true,
+      sendPush: true,
+      dedupeKey: 'session_cancelled:$sessionId:$userId',
+    );
+  }
+
+  /// No-show detected (party who attended is notified).
+  static Future<void> notifySessionNoShow({
+    required String userId,
+    required String sessionId,
+    String? noShowType,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'session_no_show',
+      title: 'No-Show Detected',
+      message: 'The other party did not attend the session.',
+      priority: 'high',
+      actionUrl: '/sessions/$sessionId',
+      actionText: 'View Session',
+      metadata: {
+        'session_id': sessionId,
+        if (noShowType != null) 'no_show_type': noShowType,
+      },
+      sendEmail: true,
+      sendPush: true,
+      dedupeKey: 'session_no_show:$sessionId:$userId',
+    );
+  }
+
   /// Notify when session is completed
   ///
   /// Sends notification and schedules review reminder (24 hours after)

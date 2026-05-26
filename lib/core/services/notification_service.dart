@@ -628,9 +628,28 @@ class NotificationService {
         };
       }
 
-      // Try to get preferences from user_profiles or a preferences table
-      // For now, we'll use user_profiles and add a preferences JSON column
-      // If that doesn't exist, we'll return default preferences
+      try {
+        final prefsRow = await _supabase
+            .from('notification_preferences')
+            .select('email_enabled, in_app_enabled, push_enabled, engagement_push_enabled')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (prefsRow != null) {
+          return {
+            'email_enabled': prefsRow['email_enabled'] as bool? ?? true,
+            'in_app_enabled': prefsRow['in_app_enabled'] as bool? ?? true,
+            'push_enabled': prefsRow['push_enabled'] as bool? ?? true,
+            'engagement_push_enabled':
+                prefsRow['engagement_push_enabled'] as bool? ?? true,
+          };
+        }
+      } catch (e) {
+        if (!_isSchemaCacheMissingTableOrColumn(e)) {
+          LogService.debug('notification_preferences read failed: $e');
+        }
+      }
+
       try {
         final response = await _supabase
             .from('user_profiles')
@@ -660,6 +679,7 @@ class NotificationService {
         'email_enabled': true,
         'in_app_enabled': true,
         'push_enabled': true,
+        'engagement_push_enabled': true,
       };
     } catch (e) {
       LogService.error('Error getting notification preferences: $e');
@@ -668,6 +688,7 @@ class NotificationService {
         'email_enabled': true,
         'in_app_enabled': true,
         'push_enabled': true,
+        'engagement_push_enabled': true,
       };
     }
   }
@@ -677,6 +698,7 @@ class NotificationService {
     required bool emailEnabled,
     required bool inAppEnabled,
     required bool pushEnabled,
+    bool? engagementPushEnabled,
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -693,10 +715,26 @@ class NotificationService {
         'email_enabled': emailEnabled,
         'in_app_enabled': inAppEnabled,
         'push_enabled': pushEnabled,
+        if (engagementPushEnabled != null)
+          'engagement_push_enabled': engagementPushEnabled,
       };
 
       try {
-        // Try to update in user_profiles
+        await _supabase.from('notification_preferences').upsert({
+          'user_id': userId,
+          'email_enabled': emailEnabled,
+          'in_app_enabled': inAppEnabled,
+          'push_enabled': pushEnabled,
+          'engagement_push_enabled': engagementPushEnabled ?? pushEnabled,
+          'updated_at': DateTime.now().toIso8601String(),
+        }, onConflict: 'user_id');
+      } catch (e) {
+        if (!_isSchemaCacheMissingTableOrColumn(e)) {
+          LogService.debug('notification_preferences upsert failed: $e');
+        }
+      }
+
+      try {
         await _supabase
             .from('user_profiles')
             .update({

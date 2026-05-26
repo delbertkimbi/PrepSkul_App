@@ -21,6 +21,7 @@ class _NotificationPreferencesScreenState
   bool _emailEnabled = true;
   bool _inAppEnabled = true;
   bool _pushEnabled = true;
+  bool _engagementPushEnabled = true;
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -42,6 +43,8 @@ class _NotificationPreferencesScreenState
           _emailEnabled = preferences['email_enabled'] as bool? ?? true;
           _inAppEnabled = preferences['in_app_enabled'] as bool? ?? true;
           _pushEnabled = preferences['push_enabled'] as bool? ?? true;
+          _engagementPushEnabled =
+              preferences['engagement_push_enabled'] as bool? ?? true;
           _isLoading = false;
         });
       } else {
@@ -71,6 +74,7 @@ class _NotificationPreferencesScreenState
         emailEnabled: _emailEnabled,
         inAppEnabled: _inAppEnabled,
         pushEnabled: _pushEnabled,
+        engagementPushEnabled: _engagementPushEnabled,
       );
 
       if (mounted) {
@@ -172,6 +176,20 @@ class _NotificationPreferencesScreenState
                     },
                     icon: Icons.phone_android_outlined,
                   ),
+                  const SizedBox(height: 12),
+                  _buildPreferenceSwitch(
+                    title: 'Learning tips & reminders',
+                    subtitle:
+                        'Occasional nudges when you have not used the app (no booking or session emails)',
+                    value: _engagementPushEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        _engagementPushEnabled = value;
+                      });
+                      _savePreferences();
+                    },
+                    icon: Icons.campaign_outlined,
+                  ),
                   const SizedBox(height: 32),
 
                   // Info Box
@@ -194,7 +212,7 @@ class _NotificationPreferencesScreenState
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'You can customize notification types (booking, payment, session) in the future.',
+                            'Booking, payment, and session alerts use email and push when enabled above. Learning tips are push-only.',
                             style: GoogleFonts.poppins(
                               fontSize: 13,
                               color: AppTheme.textDark,
