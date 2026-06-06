@@ -6,6 +6,7 @@ import '../../../core/services/log_service.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/widgets/branded_snackbar.dart';
+import '../../../core/widgets/prepskul_back_app_bar.dart';
 import '../../../features/booking/services/session_payment_service.dart';
 import '../../../features/payment/services/tutor_payout_service.dart';
 import 'package:intl/intl.dart';
@@ -24,6 +25,8 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
   bool _isLoading = true;
   double _activeBalance = 0.0;
   double _pendingBalance = 0.0;
+  double _availableForWithdrawal = 0.0;
+  double _pendingPayoutHold = 0.0;
   List<Map<String, dynamic>> _earningsHistory = [];
   List<Map<String, dynamic>> _payoutHistory = [];
   bool _dismissedMinPayoutWarning = false;
@@ -76,6 +79,11 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
       final balances = await SessionPaymentService.getTutorWalletBalances(userId);
       _activeBalance = (balances['active_balance'] as num).toDouble();
       _pendingBalance = (balances['pending_balance'] as num).toDouble();
+      _availableForWithdrawal =
+          (balances['available_for_withdrawal'] as num?)?.toDouble() ??
+          _activeBalance;
+      _pendingPayoutHold =
+          (balances['pending_payout_hold'] as num?)?.toDouble() ?? 0.0;
 
       // Load earnings history
       await _loadEarningsHistory(userId);
@@ -116,7 +124,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
   }
 
   Future<void> _requestPayout() async {
-    if (_activeBalance < 5000) {
+    if (_availableForWithdrawal < 5000) {
       if (mounted) {
         BrandedSnackBar.show(
           context,
@@ -131,7 +139,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => _PayoutRequestDialog(
-        maxAmount: _activeBalance,
+        maxAmount: _availableForWithdrawal,
       ),
     );
 
@@ -171,17 +179,8 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Earnings & Payouts',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: PrepSkulBackAppBar(
+        title: 'Earnings & Payouts',
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppTheme.primaryColor,
@@ -229,7 +228,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
             const SizedBox(height: 24),
             
             // Request Payout Button
-            if (_activeBalance >= 5000)
+            if (_availableForWithdrawal >= 5000)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -290,10 +289,13 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'You currently have ${_activeBalance.toStringAsFixed(0)} XAF available.',
+                      'Withdrawals use your Active balance only (not Pending). '
+                      'You currently have ${_availableForWithdrawal.toStringAsFixed(0)} XAF available to withdraw · '
+                      '${_pendingBalance.toStringAsFixed(0)} XAF pending QA release.',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         color: Colors.orange[900],
+                        height: 1.35,
                       ),
                     ),
                   ],
@@ -362,6 +364,14 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
                         color: Colors.white.withOpacity(0.9),
                       ),
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Active = earned & cleared · Pending = QA hold · Withdrawals reserve on admin approval',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color: Colors.white.withOpacity(0.85),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -389,6 +399,32 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
               ),
             ],
           ),
+          if (_pendingPayoutHold > 0 || _availableForWithdrawal != _activeBalance) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildBalanceCard(
+                    label: 'Available to withdraw',
+                    amount: _availableForWithdrawal,
+                    icon: Icons.savings_outlined,
+                    color: Colors.lightBlue[200]!,
+                  ),
+                ),
+                if (_pendingPayoutHold > 0) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildBalanceCard(
+                      label: 'Pending withdrawal',
+                      amount: _pendingPayoutHold,
+                      icon: Icons.hourglass_top_rounded,
+                      color: Colors.amber[200]!,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
         ],
       ),
     );

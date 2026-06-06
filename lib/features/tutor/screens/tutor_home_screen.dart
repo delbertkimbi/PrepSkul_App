@@ -53,6 +53,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   double _pendingBalance = 0.0;
   int _studentCount = 0;
   int _sessionCount = 0;
+  int _scheduledSessionCount = 0;
   bool _isOffline = false;
   final ConnectivityService _connectivity = ConnectivityService();
   bool _isLoadingUserInfoRequestInFlight = false;
@@ -300,9 +301,6 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           final balances = await SessionPaymentService.getTutorWalletBalances(userId);
           activeBalance = (balances['active_balance'] as num).toDouble();
           pendingBalance = (balances['pending_balance'] as num).toDouble();
-          final offlineEarnings =
-              (balances['offline_earnings_xaf'] as num?)?.toDouble() ?? 0.0;
-          activeBalance += offlineEarnings;
         } catch (e) {
           LogService.warning('Error loading wallet balances: $e');
           // Don't fail user info loading if wallet fails
@@ -312,11 +310,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       // Load Quick Stats (students and sessions) for approved tutors
       int studentCount = 0;
       int sessionCount = 0;
+      int scheduledCount = 0;
       if (newApprovalStatus == 'approved') {
         try {
           final stats = await _loadTutorQuickStats(userId);
           studentCount = stats['students'] as int;
           sessionCount = stats['sessions'] as int;
+          scheduledCount = stats['scheduled'] as int;
         } catch (e) {
           LogService.warning('Error loading tutor quick stats: $e');
         }
@@ -339,6 +339,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _pendingBalance = pendingBalance;
         _studentCount = studentCount;
         _sessionCount = sessionCount;
+        _scheduledSessionCount = scheduledCount;
         _isLoading = false;
       });
       _lastUserInfoLoadAt = DateTime.now();
@@ -437,13 +438,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     try {
       final profile = await supabase
           .from('tutor_profiles')
-          .select('total_sessions_completed, total_students')
+          .select('total_sessions_completed, total_students, scheduled_sessions_count')
           .eq('user_id', userId)
           .maybeSingle();
 
       return {
         'students': (profile?['total_students'] as num?)?.toInt() ?? 0,
         'sessions': (profile?['total_sessions_completed'] as num?)?.toInt() ?? 0,
+        'scheduled': (profile?['scheduled_sessions_count'] as num?)?.toInt() ?? 0,
       };
     } catch (e) {
       LogService.warning('Tutor quick stats: $e');
@@ -662,9 +664,24 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       ),
                       Expanded(
                         child: _buildStatCard(
-                          'Sessions',
+                          'Scheduled',
+                          '$_scheduledSessionCount',
+                          Icons.event_available,
+                        ),
+                      ),
+                      SizedBox(
+                        width: ResponsiveHelper.responsiveSpacing(
+                          context,
+                          mobile: 12,
+                          tablet: 16,
+                          desktop: 20,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Completed',
                           '$_sessionCount',
-                          Icons.event,
+                          Icons.check_circle_outline,
                         ),
                       ),
                     ],
@@ -717,7 +734,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                             MaterialPageRoute(
                               builder: (context) => const TutorEarningsScreen(),
                             ),
-                          );
+                          ).then((_) => _loadUserInfo());
                         },
                       ),
                       secondary: AppConfig.enableGroupClasses
@@ -778,7 +795,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                           MaterialPageRoute(
                             builder: (context) => const TutorEarningsScreen(),
                           ),
-                        );
+                        ).then((_) => _loadUserInfo());
                       },
                     ),
                     if (AppConfig.enableGroupClasses) ...[
@@ -1228,7 +1245,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   MaterialPageRoute(
                     builder: (context) => const TutorEarningsScreen(),
                   ),
-                );
+                ).then((_) => _loadUserInfo());
               },
               icon: Icon(Icons.arrow_forward, size: ResponsiveHelper.responsiveIconSize(context, mobile: 16, tablet: 18, desktop: 20)),
               label: Text(

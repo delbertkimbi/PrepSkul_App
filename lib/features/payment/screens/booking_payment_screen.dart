@@ -6,15 +6,20 @@ import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/whatsapp_support_service.dart';
-import 'package:prepskul/features/payment/services/payment_request_service.dart';
+import 'package:prepskul/features/payment/services/payment_request_amounts.dart';
 import 'package:prepskul/features/payment/services/fapshi_webhook_service.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
-import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
+import 'package:prepskul/features/payment/widgets/payment_detail_row.dart';
+import 'package:prepskul/features/payment/widgets/payment_phone_input.dart';
+import 'package:prepskul/features/payment/widgets/payment_session_summary_card.dart';
+import 'package:prepskul/features/payment/widgets/payment_total_amount_bar.dart';
 import 'package:prepskul/features/payment/widgets/animated_checkmark.dart';
 import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
+import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
@@ -562,10 +567,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                     );
 
                     // Generate sessions
+                    final plan = (_paymentRequest?['payment_plan'] as String?) ?? 'monthly';
+                    final weeks = PaymentRequestAmounts.weeksAheadForPaymentPlan(plan);
                     final sessionsGenerated =
                         await RecurringSessionService.generateIndividualSessions(
                           recurringSessionId: recurringSessionId,
-                          weeksAhead: 8,
+                          weeksAhead: weeks,
                         );
                     LogService.success(
                       '✅ Fallback: Generated $sessionsGenerated individual sessions',
@@ -881,19 +888,94 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     String? description,
     String paymentPlan,
   ) {
+    final metadata = _parseMetadata(_paymentRequest?['metadata']);
+    final location = (metadata?['location'] as String?)?.trim().toLowerCase() ?? '';
+    final frequency = metadata?['frequency'] as int? ??
+        (metadata?['frequency'] as num?)?.toInt();
+    final paymentIndex = metadata?['payment_number'] as int? ??
+        (metadata?['payment_number'] as num?)?.toInt();
+    final paymentTotal = metadata?['total_payments'] as int? ??
+        (metadata?['total_payments'] as num?)?.toInt();
+    final planLabel = _planLabel(paymentPlan);
+
+    final summaryRows = <Widget>[
+      PaymentDetailRow(label: 'Tutor', value: tutorName),
+      PaymentDetailRow(label: 'Plan', value: planLabel),
+      if (paymentIndex != null && paymentTotal != null)
+        PaymentDetailRow(
+          label: 'Installment',
+          value: 'Payment $paymentIndex of $paymentTotal',
+        ),
+      if (location.isNotEmpty)
+        PaymentDetailRow(
+          label: 'Format',
+          value: location == 'onsite'
+              ? 'On-site'
+              : location == 'hybrid'
+                  ? 'Hybrid'
+                  : 'Online',
+        ),
+      if (frequency != null && frequency > 0)
+        PaymentDetailRow(label: 'Frequency', value: '$frequency× per week'),
+    ];
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildPaymentHeader(),
+          PaymentSessionSummaryCard(
+            title: 'Session Payment Details',
+            children: summaryRows,
+            footer: description != null && description.isNotEmpty
+                ? Text(
+                    description,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: AppTheme.textMedium,
+                      height: 1.45,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 24),
+          PaymentTotalAmountBar(amount: _total, isLoading: _isLoading),
+          const SizedBox(height: 8),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text(
+                'View fee breakdown',
+                style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
+              ),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Subtotal', style: GoogleFonts.poppins(fontSize: 13)),
+                      Text(PricingService.formatPrice(_subtotal)),
+                    ],
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Payment charges (2%)', style: GoogleFonts.poppins(fontSize: 13)),
+                    Text(PricingService.formatPrice(_charges)),
+                  ],
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
-          _buildPaymentPlanSummary(tutorName, description, paymentPlan),
-          const SizedBox(height: 16),
-          _buildInlinePhoneInput(),
-          const SizedBox(height: 16),
-          _buildCompactPaymentBreakdown(),
-          const SizedBox(height: 16),
+          PaymentPhoneInput(
+            controller: _phoneController,
+            detectedProvider: _detectedProvider,
+          ),
+          const SizedBox(height: 24),
           if (_errorMessage != null) ...[
             _buildCompactErrorMessage(),
             const SizedBox(height: 16),
@@ -904,12 +986,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               onPressed: _canInitiatePayment ? _initiatePayment : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
+                disabledBackgroundColor: Colors.grey[300],
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                elevation: 2,
-                shadowColor: AppTheme.primaryColor.withOpacity(0.3),
               ),
               child: _isProcessing
                   ? const SizedBox(

@@ -22,6 +22,7 @@ import '../../features/skulmate/services/game_sound_service.dart';
 import '../utils/responsive_helper.dart';
 import '../../features/tutor/widgets/tutor_page_body.dart';
 import '../../features/tutor/widgets/tutor_navigation_shell.dart';
+import '../../features/tutor/widgets/tutor_shell_scope.dart';
 
 class MainNavigation extends StatefulWidget {
   final String userRole;
@@ -252,18 +253,24 @@ class _MainNavigationState extends State<MainNavigation>
     final tabBody = IndexedStack(index: _selectedIndex, children: screens);
 
     Widget tutorScaffold() {
-      return TutorNavigationShell(
-        useRail: tutorUseRail,
-        selectedIndex: _selectedIndex,
-        onIndexChanged: (index) {
-          safeSetState(() {
-            _selectedIndex = index;
-          });
+      return TutorShellScope(
+        goToHomeTab: () {
+          safeSetState(() => _selectedIndex = 0);
           _stopGameMusicIfOnHomeTab();
         },
-        tabBody: tabBody,
-        bottomBarItems: items,
-        railDestinations: _tutorRailDestinations(context),
+        child: TutorNavigationShell(
+          useRail: tutorUseRail,
+          selectedIndex: _selectedIndex,
+          onIndexChanged: (index) {
+            safeSetState(() {
+              _selectedIndex = index;
+            });
+            _stopGameMusicIfOnHomeTab();
+          },
+          tabBody: tabBody,
+          bottomBarItems: items,
+          railDestinations: _tutorRailDestinations(context),
+        ),
       );
     }
 

@@ -1,7 +1,4 @@
-
-This is how things should flow
-I click on pay
-if it's onsite or hybrid and i hVE NEVER COMPLETED VERIFICATION, I AM TAKEN TO A MINIMALIST SCREEN THAT SAYS FOR ONSITE SESSIONS, I NEED TO COMPLETE VERIFICATION FOR SECURITY PURPOSESS, LISTING WHAT I WILL NEED TO PROVIDELIKE ID FRONT ANDBACK, MY PICTURE, import 'package:intl/intl.dart';
+import 'package:intl/intl.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 

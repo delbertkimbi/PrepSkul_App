@@ -12,6 +12,20 @@ class PaymentRequestAmounts {
     return p;
   }
 
+  /// Weeks of sessions to generate per paid installment (matches billing: monthly = 4 weeks).
+  static int weeksAheadForPaymentPlan(String paymentPlan) {
+    switch (normalizePlan(paymentPlan)) {
+      case 'weekly':
+        return 1;
+      case 'biweekly':
+        return 2;
+      case 'monthly':
+        return 4;
+      default:
+        return 4;
+    }
+  }
+
   /// Number of installment rows created on tutor approval (1:1 recurring only).
   static int installmentCountForPlan(String paymentPlan) {
     switch (normalizePlan(paymentPlan)) {

@@ -17,6 +17,7 @@ import '../../../features/sessions/services/meet_service.dart';
 import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import '../../../features/sessions/screens/agora_video_session_screen.dart';
 import '../../../features/sessions/widgets/session_location_map.dart';
+import '../../../features/sessions/widgets/onsite_presence_card.dart';
 import '../../../features/sessions/services/location_checkin_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
 import '../../../features/booking/widgets/report_issue_bottom_sheet.dart';
@@ -311,6 +312,16 @@ class _TutorSessionDetailFullScreenState
       return _sessionData!['address'] as String? ??
           _sessionData!['onsite_address'] as String?;
     }
+  }
+
+  String? _getMapCoordinates() {
+    if (_sessionData == null) return null;
+    final lat = (_sessionData!['onsite_latitude'] as num?)?.toDouble();
+    final lon = (_sessionData!['onsite_longitude'] as num?)?.toDouble();
+    if (lat != null && lon != null) {
+      return '$lat,$lon';
+    }
+    return null;
   }
 
   String? _getMeetLink() {
@@ -679,34 +690,34 @@ class _TutorSessionDetailFullScreenState
               address,
             ),
             // Onsite check-in / check-out and safety (tutor session detail)
-            if (!isOnline && _shouldShowActions()) ...[
+            if (!isOnline &&
+                _shouldShowActions() &&
+                SupabaseService.client.auth.currentUser?.id != null) ...[
               const SizedBox(height: 16),
-              SessionLocationMap(
-                key: ValueKey(_attendanceRefreshKey),
+              OnsitePresenceCard(
+                key: ValueKey('presence_$_attendanceRefreshKey'),
+                sessionId: _getSessionId(),
+                userId: SupabaseService.client.auth.currentUser!.id,
                 address: address,
-                coordinates: null,
+                scheduledDateTime: _getScheduledDateTime(),
+                onCheckInSelfie: () => _handleUploadSelfie(_getSessionId()),
+                onCheckoutSelfie: () => _handleUploadCheckoutSelfie(_getSessionId()),
+                onStateChanged: () {
+                  setState(() => _attendanceRefreshKey++);
+                  _refreshSessionStatus();
+                },
+              ),
+              const SizedBox(height: 12),
+              SessionLocationMap(
+                key: ValueKey('map_$_attendanceRefreshKey'),
+                address: address,
+                coordinates: _getMapCoordinates(),
                 sessionId: _getSessionId(),
                 currentUserId: SupabaseService.client.auth.currentUser?.id,
                 userType: 'tutor',
-                showCheckIn: true,
+                showCheckIn: false,
                 scheduledDateTime: _getScheduledDateTime(),
                 locationType: 'onsite',
-                onAddPhotoPressed: () => _handleUploadSelfie(_getSessionId()),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _isLoading ? null : () => _handleUploadSelfie(_getSessionId()),
-                icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                label: Text(
-                  'Upload Selfie',
-                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primaryColor,
-                  side: BorderSide(color: AppTheme.primaryColor),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
               ),
             ],
           ],
@@ -915,32 +926,8 @@ class _TutorSessionDetailFullScreenState
               },
             ),
           ],
-          // Start Session (scheduled + onsite)
-          if (status == 'scheduled' && !isOnline)
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : () => _startSessionFromDetail(),
-                icon: const Icon(Icons.play_arrow, size: 20),
-                label: Text(
-                  'Start Session',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          // End Session (in_progress)
-          if (status == 'in_progress')
+          // End Session (online only — onsite uses check-out in presence card)
+          if (status == 'in_progress' && isOnline)
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: SizedBox(
@@ -1293,6 +1280,48 @@ class _TutorSessionDetailFullScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to upload selfie: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleUploadCheckoutSelfie(String sessionId) async {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final pickedFile = await showModalBottomSheet<dynamic>(
+        context: context,
+        builder: (context) => const ImagePickerBottomSheet(),
+        isScrollControlled: true,
+      );
+      if (pickedFile == null || !mounted) return;
+      setState(() => _isLoading = true);
+      final result = await LocationCheckInService.uploadCheckoutSelfie(
+        sessionId: sessionId,
+        userId: userId,
+        userType: 'tutor',
+        selfieFile: pickedFile,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] as String? ?? 'Checkout selfie uploaded'),
+          backgroundColor: result['success'] == true ? AppTheme.accentGreen : Colors.orange[800],
+        ),
+      );
+      if (result['success'] == true) {
+        setState(() => _attendanceRefreshKey++);
+      }
+    } catch (e) {
+      LogService.error('Error uploading checkout selfie: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload checkout selfie: $e'),
             backgroundColor: Colors.red,
           ),
         );

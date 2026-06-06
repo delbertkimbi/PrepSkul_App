@@ -2348,6 +2348,110 @@ class NotificationHelperService {
     }
   }
 
+  /// Ops email to prepskul@gmail.com (and OPS_ADMIN_EMAILS) with GPS for panic / critical safety.
+  static Future<bool> notifySecurityOpsPanicAlert({
+    required String sessionId,
+    required String userId,
+    required String userType,
+    required String userName,
+    String? userPhone,
+    String? sessionAddress,
+    double? latitude,
+    double? longitude,
+    double? locationAccuracy,
+    String? reason,
+  }) async {
+    try {
+      final token =
+          Supabase.instance.client.auth.currentSession?.accessToken;
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+
+      final response = await http
+          .post(
+            Uri.parse('$_apiBaseUrl/safety/panic-alert'),
+            headers: headers,
+            body: jsonEncode({
+              'sessionId': sessionId,
+              'userId': userId,
+              'userType': userType,
+              'userName': userName,
+              if (userPhone != null) 'userPhone': userPhone,
+              if (sessionAddress != null) 'sessionAddress': sessionAddress,
+              if (latitude != null) 'latitude': latitude,
+              if (longitude != null) 'longitude': longitude,
+              if (locationAccuracy != null)
+                'locationAccuracy': locationAccuracy,
+              if (reason != null) 'reason': reason,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        LogService.success(
+          'Security ops panic email dispatched for session $sessionId',
+        );
+        return true;
+      }
+      LogService.warning(
+        'Panic ops email API ${response.statusCode}: ${response.body}',
+      );
+      return false;
+    } catch (e) {
+      LogService.warning('Panic ops email failed: $e');
+      return false;
+    }
+  }
+
+  /// Notify admins that a tutor requested a payout (pending until Process via Fapshi).
+  static Future<void> notifyAdminsAboutTutorPayoutRequest({
+    required String payoutRequestId,
+    required String tutorId,
+    required String tutorName,
+    required double amount,
+    required String phoneNumber,
+  }) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final adminResponse = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('is_admin', true);
+
+      if (adminResponse.isEmpty) return;
+
+      final message =
+          '$tutorName requested a withdrawal of ${amount.toStringAsFixed(0)} XAF to $phoneNumber. '
+          'Approve in the payout queue before funds are sent.';
+
+      for (final admin in adminResponse as List) {
+        final adminId = admin['id'] as String;
+        await _sendNotificationViaAPI(
+          userId: adminId,
+          type: 'tutor_payout_request',
+          title: 'Tutor payout request',
+          message: message,
+          priority: 'high',
+          actionUrl: '/admin/payouts',
+          actionText: 'Review payout queue',
+          icon: '💰',
+          metadata: {
+            'payout_request_id': payoutRequestId,
+            'tutor_id': tutorId,
+            'amount': amount,
+            'phone_number': phoneNumber,
+          },
+          sendEmail: true,
+          sendPush: true,
+        );
+      }
+    } catch (e) {
+      LogService.warning('Error notifying admins about payout request: $e');
+    }
+  }
+
   /// Notify tutor when pending trial request is updated/modified
   static Future<void> notifyTrialRequestUpdated({
     required String tutorId,

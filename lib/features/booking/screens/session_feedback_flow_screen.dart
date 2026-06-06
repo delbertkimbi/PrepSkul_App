@@ -46,6 +46,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   int? _studentEngagement; // For tutors
   bool _isSubmitting = false;
   bool _canSubmit = false;
+  bool _feedbackAlreadySubmitted = false;
   bool _isTutor = false;
   bool _isParent = false;
   bool _isLoadingRole = true;
@@ -188,7 +189,6 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   @override
   void initState() {
     super.initState();
-    _checkCanSubmit();
     _checkUserRole();
   }
 
@@ -231,15 +231,18 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           _isTrial = !isNormal;
           _isLoadingRole = false;
         });
+        await _checkCanSubmit();
       } else {
         safeSetState(() {
           _isLoadingRole = false;
         });
+        await _checkCanSubmit();
       }
     } catch (e) {
       safeSetState(() {
         _isLoadingRole = false;
       });
+      await _checkCanSubmit();
     }
   }
 
@@ -247,8 +250,22 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
     final canSubmit = await SessionFeedbackService.canSubmitFeedback(
       widget.sessionId,
     );
+    var alreadySubmitted = false;
+    if (!canSubmit) {
+      final existing =
+          await SessionFeedbackService.getSessionFeedback(widget.sessionId);
+      if (existing != null) {
+        if (_isTutor && existing['tutor_feedback_submitted_at'] != null) {
+          alreadySubmitted = true;
+        } else if (!_isTutor &&
+            existing['student_feedback_submitted_at'] != null) {
+          alreadySubmitted = true;
+        }
+      }
+    }
     safeSetState(() {
       _canSubmit = canSubmit;
+      _feedbackAlreadySubmitted = alreadySubmitted;
     });
   }
 
@@ -433,6 +450,12 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_canSubmit) {
+      final title = _feedbackAlreadySubmitted
+          ? 'Feedback Submitted'
+          : 'Feedback Not Available';
+      final message = _feedbackAlreadySubmitted
+          ? 'Thank you. Your feedback for this session has already been recorded and cannot be changed.'
+          : 'Feedback can only be submitted after the session is marked completed.';
       return Scaffold(
         appBar: AppBar(
           title: Text('Session Feedback', style: GoogleFonts.poppins()),
@@ -444,13 +467,17 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  PhosphorIcons.info(),
+                  _feedbackAlreadySubmitted
+                      ? PhosphorIcons.checkCircle()
+                      : PhosphorIcons.info(),
                   size: 64,
-                  color: AppTheme.textLight,
+                  color: _feedbackAlreadySubmitted
+                      ? AppTheme.accentGreen
+                      : AppTheme.textLight,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Feedback Not Available',
+                  title,
                   style: GoogleFonts.poppins(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -459,13 +486,20 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Feedback can only be submitted for completed sessions.',
+                  message,
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: AppTheme.textMedium,
                   ),
                   textAlign: TextAlign.center,
                 ),
+                if (_feedbackAlreadySubmitted) ...[
+                  const SizedBox(height: 24),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('Done', style: GoogleFonts.poppins()),
+                  ),
+                ],
               ],
             ),
           ),

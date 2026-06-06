@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:prepskul/core/services/storage_service.dart';
+import 'package:prepskul/core/widgets/prepskul_back_app_bar.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/group_classes/models/group_class_listing.dart';
 import 'package:prepskul/features/group_classes/services/group_class_api_service.dart';
@@ -425,16 +426,9 @@ class _CreateGroupClassScreenState extends State<CreateGroupClassScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: const PrepSkulBackAppBar(
+        title: 'Create Group Class',
         backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        title: Text(
-          'Create Group Class',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.black87),
-        ),
-        iconTheme: const IconThemeData(color: Colors.black87),
       ),
       body: SafeArea(
         child: Column(

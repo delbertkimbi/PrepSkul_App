@@ -4,7 +4,9 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/transportation_cost_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/payment/services/payment_request_amounts.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
+import 'package:prepskul/features/sessions/services/onsite_geocoding_service.dart';
 
 
 /// RecurringSessionService
@@ -153,6 +155,20 @@ class RecurringSessionService {
       } catch (e) {
         LogService.warning('Failed to schedule session reminders: $e');
         // Don't fail session creation if reminder scheduling fails
+      }
+
+      final loc = (bookingRequest.location).toLowerCase();
+      final addr = bookingRequest.address?.trim();
+      if ((loc == 'onsite' || loc == 'hybrid') &&
+          addr != null &&
+          addr.isNotEmpty &&
+          response['id'] != null) {
+        OnsiteGeocodingService.persistRecurringOnsiteCoordinates(
+          recurringSessionId: response['id'] as String,
+          address: addr,
+        ).catchError((e) {
+          LogService.warning('Onsite geocode at booking failed: $e');
+        });
       }
 
       return response;
@@ -442,6 +458,45 @@ class RecurringSessionService {
     }
   }
 
+  /// Resolve weeks ahead from recurring session payment plan (monthly=4, biweekly=2, weekly=1).
+  static Future<int> resolveWeeksAhead(String recurringSessionId) async {
+    final row = await _supabase
+        .from('recurring_sessions')
+        .select('payment_plan')
+        .eq('id', recurringSessionId)
+        .maybeSingle();
+    return PaymentRequestAmounts.weeksAheadForPaymentPlan(
+      row?['payment_plan'] as String? ?? 'monthly',
+    );
+  }
+
+  /// Cancel scheduled sessions beyond the paid installment window.
+  static Future<int> cancelExcessFutureSessions({
+    required String recurringSessionId,
+    required int maxSessions,
+  }) async {
+    final sessions = await _supabase
+        .from('individual_sessions')
+        .select('id, scheduled_date, status')
+        .eq('recurring_session_id', recurringSessionId)
+        .eq('status', 'scheduled')
+        .order('scheduled_date', ascending: true);
+
+    final list = List<Map<String, dynamic>>.from(sessions as List);
+    if (list.length <= maxSessions) return 0;
+
+    final excess = list.sublist(maxSessions);
+    var cancelled = 0;
+    for (final s in excess) {
+      await _supabase
+          .from('individual_sessions')
+          .update({'status': 'cancelled'})
+          .eq('id', s['id']);
+      cancelled++;
+    }
+    return cancelled;
+  }
+
   /// Generate individual session instances from a recurring session
   ///
   /// Creates individual sessions for the next [weeksAhead] weeks
@@ -449,10 +504,12 @@ class RecurringSessionService {
   /// Returns the number of sessions created
   static Future<int> generateIndividualSessions({
     required String recurringSessionId,
-    int weeksAhead = 8,
+    int? weeksAhead,
   }) async {
+    final resolvedWeeks = weeksAhead ??
+        await resolveWeeksAhead(recurringSessionId);
     try {
-      LogService.info('🚀 Starting session generation for recurring_session_id: $recurringSessionId, weeksAhead: $weeksAhead');
+      LogService.info('🚀 Starting session generation for recurring_session_id: $recurringSessionId, weeksAhead: $resolvedWeeks');
       
       // Get recurring session details
       final recurringSession = await _supabase
@@ -503,19 +560,19 @@ class RecurringSessionService {
       // Default duration (can be made configurable)
       const durationMinutes = 60;
 
-      // Calculate end date (weeksAhead weeks from start)
-      final endDate = startDate.add(Duration(days: weeksAhead * 7));
+      // Calculate end date (resolvedWeeks weeks from start)
+      final endDate = startDate.add(Duration(days: resolvedWeeks * 7));
 
       // Generate sessions for each day in the schedule
       final sessionsToCreate = <Map<String, dynamic>>[];
       final currentDate = DateTime(startDate.year, startDate.month, startDate.day);
       final targetDate = DateTime(endDate.year, endDate.month, endDate.day);
 
-      LogService.info('📊 Generation parameters: weeksAhead=$weeksAhead, currentDate=$currentDate, targetDate=$targetDate');
+      LogService.info('📊 Generation parameters: weeksAhead=$resolvedWeeks, currentDate=$currentDate, targetDate=$targetDate');
       LogService.info('📊 Days to process: $days');
 
       // Iterate through each week
-      for (var week = 0; week < weeksAhead; week++) {
+      for (var week = 0; week < resolvedWeeks; week++) {
         // For each day in the schedule
         for (final day in days) {
           final dayIndex = _getDayIndex(day);
@@ -737,10 +794,32 @@ class RecurringSessionService {
           }
         }
         LogService.success('🎉 Successfully generated ${totalInserted} individual sessions for recurring session: $recurringSessionId');
+
+        if (location == 'onsite' &&
+            address != null &&
+            address.trim().isNotEmpty) {
+          try {
+            await OnsiteGeocodingService.persistRecurringOnsiteCoordinates(
+              recurringSessionId: recurringSessionId,
+              address: address,
+            );
+            final coords = await OnsiteGeocodingService.geocodeAddress(address);
+            if (coords != null) {
+              await _supabase.from('individual_sessions').update({
+                'onsite_latitude': coords['latitude'],
+                'onsite_longitude': coords['longitude'],
+                'updated_at': DateTime.now().toIso8601String(),
+              }).eq('recurring_session_id', recurringSessionId);
+            }
+          } catch (e) {
+            LogService.warning('Could not propagate onsite coordinates: $e');
+          }
+        }
+
         return totalInserted;
       } else {
         LogService.warning('⚠️ No new individual sessions to generate for recurring session: $recurringSessionId. This might indicate an issue with date calculation or schedule.');
-        LogService.warning('⚠️ Check: startDate=$startDate, days=$days, times=$times, weeksAhead=$weeksAhead');
+        LogService.warning('⚠️ Check: startDate=$startDate, days=$days, times=$times, weeksAhead=$resolvedWeeks');
         return 0;
       }
     } catch (e, stackTrace) {

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/features/sessions/models/location_share_result.dart';
+import 'package:prepskul/features/sessions/utils/onsite_presence_utils.dart';
 
 /// Location Sharing Service
 ///
@@ -22,72 +24,122 @@ class LocationSharingService {
   /// - [userType]: 'learner' or 'tutor'
   /// - [updateInterval]: How often to update location (default: 30 seconds)
   ///
-  /// Returns: true if started successfully
-  static Future<bool> startLocationSharing({
+  /// Returns result with user-facing message on failure.
+  static Future<LocationShareResult> startLocationSharing({
     required String sessionId,
     required String userId,
     required String userType,
     Duration updateInterval = const Duration(seconds: 30),
   }) async {
     try {
-      // Check if already tracking
       if (_activeTrackers.containsKey(sessionId)) {
-        LogService.warning('Location sharing already active for session: $sessionId');
-        return true;
+        return const LocationShareResult(
+          success: true,
+          message: 'Location sharing is already active for this session.',
+        );
       }
 
-      // Check location permissions
-      final permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        final requested = await Geolocator.requestPermission();
-        if (requested == LocationPermission.denied) {
-          throw Exception('Location permission denied');
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          return const LocationShareResult(
+            success: false,
+            message: 'Location permission is required to share your live location.',
+          );
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        throw Exception('Location permission permanently denied');
+        return const LocationShareResult(
+          success: false,
+          message: 'Location permission is blocked. Enable it in your device settings.',
+        );
       }
 
-      // Verify session is onsite and in progress
       final session = await _supabase
           .from('individual_sessions')
-          .select('location, status, parent_id, learner_id')
+          .select('location, status, parent_id, learner_id, tutor_id, scheduled_date, scheduled_time')
           .eq('id', sessionId)
           .maybeSingle();
 
       if (session == null) {
-        throw Exception('Session not found: $sessionId');
+        return const LocationShareResult(
+          success: false,
+          message: 'Session not found.',
+        );
       }
 
-      // Allow location sharing for onsite sessions only
       final sessionLocation = session['location'] as String?;
-      // If location is 'hybrid' (legacy data), default to allowing it (treat as onsite)
       if (sessionLocation != 'onsite' && sessionLocation != 'hybrid') {
-        throw Exception('Location sharing only available for onsite sessions');
+        return const LocationShareResult(
+          success: false,
+          message: 'Location sharing is only available for on-site sessions.',
+        );
       }
 
-      if (session['status'] != 'in_progress') {
-        throw Exception('Location sharing only available during active sessions');
+      final status = session['status'] as String?;
+      var canShare = status == 'in_progress';
+
+      DateTime? scheduledStart;
+      final dateStr = session['scheduled_date'] as String?;
+      final timeStr = session['scheduled_time'] as String?;
+      if (dateStr != null && timeStr != null) {
+        final parts = timeStr.split(':');
+        final hour = parts.isNotEmpty ? (int.tryParse(parts[0].trim()) ?? 0) : 0;
+        final minute = parts.length > 1
+            ? (int.tryParse(parts[1].trim().split(' ').first) ?? 0)
+            : 0;
+        final date = DateTime.tryParse(dateStr);
+        if (date != null) {
+          scheduledStart = DateTime(date.year, date.month, date.day, hour, minute);
+        }
+      }
+
+      if (!canShare && userType == 'tutor') {
+        final attendance = await _supabase
+            .from('session_attendance')
+            .select('check_in_verified')
+            .eq('session_id', sessionId)
+            .eq('user_id', userId)
+            .eq('user_type', 'tutor')
+            .maybeSingle();
+        canShare = attendance?['check_in_verified'] == true;
+      }
+
+      if (!canShare &&
+          userType == 'tutor' &&
+          OnsitePresenceUtils.isWithinPresenceWindow(scheduledStart)) {
+        canShare = true;
+      }
+
+      if (!canShare) {
+        final windowHint = OnsitePresenceUtils.checkInBlockedMessage(scheduledStart) ??
+            OnsitePresenceUtils.windowLabel(scheduledStart);
+        return LocationShareResult(
+          success: false,
+          message:
+              'Live location sharing opens during the check-in window (1 hour before until 2 hours after session start). $windowHint',
+        );
       }
 
       // Verify user is authorized (learner or tutor for this session)
       final learnerId = session['learner_id'] as String?;
-      final parentId = session['parent_id'] as String?;
       
       if (userType == 'learner' && userId != learnerId) {
-        throw Exception('Unauthorized: Only the learner can share their location');
+        return const LocationShareResult(
+          success: false,
+          message: 'Only the learner assigned to this session can share location.',
+        );
       }
       
       if (userType == 'tutor') {
-        // Tutor can also share location
-        final tutorCheck = await _supabase
-            .from('individual_sessions')
-            .select('tutor_id')
-            .eq('id', sessionId)
-            .maybeSingle();
-        if (tutorCheck == null || userId != tutorCheck['tutor_id']) {
-          throw Exception('Unauthorized: Only the tutor can share their location');
+        final tutorId = session['tutor_id'] as String?;
+        if (tutorId == null || userId != tutorId) {
+          return const LocationShareResult(
+            success: false,
+            message: 'Only the tutor assigned to this session can share location.',
+          );
         }
       }
 
@@ -160,10 +212,16 @@ class LocationSharingService {
       }
 
       LogService.success('Location sharing started for session: $sessionId');
-      return true;
+      return const LocationShareResult(
+        success: true,
+        message: 'Location sharing started.',
+      );
     } catch (e) {
       LogService.error('Error starting location sharing: $e');
-      return false;
+      return LocationShareResult(
+        success: false,
+        message: 'Could not start location sharing: $e',
+      );
     }
   }
 
@@ -383,30 +441,17 @@ class LocationSharingService {
   ///
   /// Starts location sharing for a session to enable emergency contact monitoring
   /// This is called by SessionSafetyService when user requests to share location
-  static Future<bool> shareWithEmergencyContact({
+  static Future<LocationShareResult> shareWithEmergencyContact({
     required String sessionId,
     required String userId,
     required String userType,
   }) async {
-    try {
-      // Start location sharing for the session
-      // This will begin real-time location tracking that emergency contacts can monitor
-      final success = await startLocationSharing(
-        sessionId: sessionId,
-        userId: userId,
-        userType: userType,
-        updateInterval: const Duration(seconds: 30),
-      );
-
-      if (success) {
-        LogService.success('Location sharing started for emergency contact monitoring: $sessionId');
-      }
-
-      return success;
-    } catch (e) {
-      LogService.error('Error sharing location with emergency contact: $e');
-      return false;
-    }
+    return startLocationSharing(
+      sessionId: sessionId,
+      userId: userId,
+      userType: userType,
+      updateInterval: const Duration(seconds: 30),
+    );
   }
 
   /// Calculate distance between two coordinates (in meters)

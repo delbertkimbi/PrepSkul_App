@@ -602,7 +602,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final currentUserAvatarUrl = SupabaseService.currentUser?.userMetadata?['avatar_url'] as String?;
 
     // Create optimistic message (show immediately)
-    final optimisticId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final clientMessageId =
+        'cm_${DateTime.now().microsecondsSinceEpoch}_${widget.conversation.id.substring(0, 8)}';
+    final optimisticId = 'temp_$clientMessageId';
     final optimisticMessage = Message(
       id: optimisticId,
       conversationId: widget.conversation.id,
@@ -643,7 +645,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     // Add optimistic message to UI immediately for instant feedback
     safeSetState(() {
       _messages = [..._messages, optimisticMessage];
-      _isSending = false; // Clear loading immediately - send feels instant
+      _isSending = true;
       _errorMessage = null;
     });
 
@@ -689,7 +691,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         conversationId: widget.conversation.id,
         content: content,
         replyToMessageId: _replyingToMessage?.id,
+        clientMessageId: clientMessageId,
       ).then((_) {
+        if (mounted) {
+          safeSetState(() => _isSending = false);
+        }
         // Success - immediately update optimistic message to show "sent" status
         // This prevents messages from staying in "sending" state if realtime is slow
         if (mounted && _optimisticMessageIds.contains(optimisticId)) {

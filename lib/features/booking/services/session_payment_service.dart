@@ -26,6 +26,19 @@ class SessionPaymentService {
   /// Creates session_payment and tutor_earnings records
   static Future<String> createSessionPayment(String sessionId) async {
     try {
+      // Skip if earnings were pre-allocated on payment_request
+      final preAllocated = await _supabase
+          .from('tutor_earnings')
+          .select('id')
+          .eq('session_id', sessionId)
+          .limit(1);
+      if ((preAllocated as List).isNotEmpty) {
+        LogService.info(
+          'Skipping duplicate tutor_earnings for session (pre-allocated): $sessionId',
+        );
+        return '';
+      }
+
       // Get session and recurring session details
       final session = await _supabase
           .from('individual_sessions')
@@ -529,24 +542,34 @@ class SessionPaymentService {
         }
       }
 
-      double offlineEarningsXaf = 0;
+      double pendingPayoutHold = 0;
       try {
-        final tutorProfile = await _supabase
-            .from('tutor_profiles')
-            .select('offline_tutor_earnings_xaf')
-            .eq('user_id', tutorId)
-            .maybeSingle();
-        offlineEarningsXaf =
-            (tutorProfile?['offline_tutor_earnings_xaf'] as num?)?.toDouble() ?? 0.0;
+        final pendingPayouts = await _supabase
+            .from('payout_requests')
+            .select('amount')
+            .eq('tutor_id', tutorId)
+            .inFilter('status', ['pending', 'processing']);
+        for (final row in pendingPayouts as List) {
+          pendingPayoutHold += (row['amount'] as num).toDouble();
+        }
       } catch (e) {
-        LogService.warning('Could not load offline earnings for wallet: $e');
+        LogService.warning('Could not load pending payout holds: $e');
       }
+
+      final availableForWithdrawal =
+          (activeBalance - pendingPayoutHold).clamp(0.0, double.infinity);
+
+      double offlineEarningsXaf = 0;
+      // Unified wallet: pending/active tutor_earnings include on- and off-platform rows.
+      // Keep offline column for analytics only; do not add to spendable total twice.
 
       return {
         'pending_balance': pendingBalance,
         'active_balance': activeBalance,
+        'pending_payout_hold': pendingPayoutHold,
+        'available_for_withdrawal': availableForWithdrawal,
         'offline_earnings_xaf': offlineEarningsXaf,
-        'total_balance': pendingBalance + activeBalance + offlineEarningsXaf,
+        'total_balance': pendingBalance + activeBalance,
       };
     } catch (e) {
       LogService.error('Error fetching wallet balances: $e');

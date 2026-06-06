@@ -3,6 +3,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -38,65 +39,76 @@ class TutorPayoutService {
         throw Exception('Minimum payout amount is 5,000 XAF');
       }
 
-      // Get tutor's active balance
+      // Available = active earnings minus pending/processing payout holds (092).
       final walletBalances = await SessionPaymentService.getTutorWalletBalances(userId);
-      final activeBalance = walletBalances['active_balance'] as double;
+      final available = (walletBalances['available_for_withdrawal'] as num?)?.toDouble() ??
+          (walletBalances['active_balance'] as num).toDouble();
 
-      if (amount > activeBalance) {
-        throw Exception('Insufficient balance. Available: ${activeBalance.toStringAsFixed(0)} XAF');
+      if (amount > available) {
+        throw Exception(
+          'Insufficient balance. Available to withdraw: ${available.toStringAsFixed(0)} XAF',
+        );
       }
 
-      // Create payout request
-      final payoutRequest = {
-        'tutor_id': userId,
-        'amount': amount,
-        'phone_number': phoneNumber,
-        'status': 'pending',
-        'notes': notes,
-        'requested_at': DateTime.now().toIso8601String(),
-        'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-      };
+      // Server-side: create payout + reserve earnings (RLS blocks client UPDATE on tutor_earnings).
+      final response = await _supabase.rpc(
+        'request_tutor_payout',
+        params: {
+          'p_amount': amount,
+          'p_phone_number': phoneNumber,
+          'p_notes': notes,
+        },
+      );
 
-      final response = await _supabase
-          .from('payout_requests')
-          .insert(payoutRequest)
-          .select()
-          .maybeSingle();
-      
       if (response == null) {
         throw Exception('Failed to create payout request');
       }
 
-      // Mark earnings as "requested for payout"
-      // This prevents double-withdrawal
-      await _supabase
-          .from('tutor_earnings')
-          .update({
-            'payout_request_id': response['id'],
-            'earnings_status': 'paid_out',
-            'paid_out_at': DateTime.now().toIso8601String(),
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('tutor_id', userId)
-          .eq('earnings_status', 'active')
-          .limit((amount / 1000).ceil()); // Approximate number of earnings records
+      final payoutRow = response is Map<String, dynamic>
+          ? response
+          : Map<String, dynamic>.from(response as Map);
 
-      LogService.success('Payout request created: ${response['id']}');
+      LogService.success('Payout request created: ${payoutRow['id']}');
 
       // Send notification to admin
       try {
         await _notifyAdminOfPayoutRequest(
-          payoutRequestId: response['id'] as String,
+          payoutRequestId: payoutRow['id'] as String,
           tutorId: userId,
           amount: amount,
+          phoneNumber: phoneNumber,
         );
       } catch (e) {
         LogService.warning('Failed to notify admin of payout request: $e');
       }
 
-      return response;
+      return payoutRow;
     } catch (e) {
+      final err = e.toString();
+      if (err.contains('minimum_payout')) {
+        throw Exception('Minimum payout amount is 5,000 XAF');
+      }
+      if (err.contains('insufficient_balance')) {
+        throw Exception(
+          'Insufficient balance for this withdrawal. Refresh your wallet and try a lower amount.',
+        );
+      }
+      if (err.contains('PGRST205') &&
+          (err.contains('payout_requests') || err.contains('request_tutor_payout'))) {
+        LogService.error(
+          'Payout RPC missing — run migrations 025 and 089_request_tutor_payout_rpc.sql',
+        );
+        throw Exception(
+          'Withdrawals are not available yet. The payout system is being set up. '
+          'Please try again later or contact support.',
+        );
+      }
+      if (err.contains('PGRST202') && err.contains('request_tutor_payout')) {
+        LogService.error('request_tutor_payout RPC missing — run migration 089');
+        throw Exception(
+          'Withdrawals are not available yet. Please try again later or contact support.',
+        );
+      }
       LogService.error('Error requesting payout: $e');
       rethrow;
     }
@@ -207,9 +219,9 @@ class TutorPayoutService {
     required String payoutRequestId,
     required String tutorId,
     required double amount,
+    required String phoneNumber,
   }) async {
     try {
-      // Get tutor profile
       final tutorProfile = await _supabase
           .from('profiles')
           .select('full_name, email')
@@ -218,9 +230,17 @@ class TutorPayoutService {
 
       final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
 
-      // Create notification for admin (you may need to get admin IDs)
-      // For now, log it
-      LogService.info('Payout request created: $payoutRequestId for tutor $tutorName (${amount.toStringAsFixed(0)} XAF)');
+      await NotificationHelperService.notifyAdminsAboutTutorPayoutRequest(
+        payoutRequestId: payoutRequestId,
+        tutorId: tutorId,
+        tutorName: tutorName,
+        amount: amount,
+        phoneNumber: phoneNumber,
+      );
+
+      LogService.info(
+        'Payout request created: $payoutRequestId for $tutorName (${amount.toStringAsFixed(0)} XAF)',
+      );
     } catch (e) {
       LogService.warning('Error notifying admin: $e');
     }

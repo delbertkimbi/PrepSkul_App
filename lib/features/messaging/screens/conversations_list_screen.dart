@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
+import 'package:prepskul/core/widgets/prepskul_back_app_bar.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -256,17 +257,8 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
     super.build(context);
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Messages',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: PrepSkulBackAppBar(
+        title: 'Messages',
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(44),
           child: Container(

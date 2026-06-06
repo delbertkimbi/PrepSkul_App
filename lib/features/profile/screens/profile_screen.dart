@@ -20,6 +20,7 @@ import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
 import '../../tutor/widgets/tutor_dashboard_layout.dart';
+import '../../tutor/widgets/tutor_shell_scope.dart';
 import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../support/screens/help_support_screen.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -455,9 +456,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Scaffold(
         backgroundColor: AppTheme.softBackground,
         appBar: AppBar(
-          automaticallyImplyLeading: false, // No back button in bottom nav
+          automaticallyImplyLeading: false,
           backgroundColor: AppTheme.primaryColor, // Deep blue
           elevation: 0,
+          leading: TutorShellScope.maybeOf(context) != null
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  tooltip: 'Back to Home',
+                  onPressed: () => TutorShellScope.navigateHome(context),
+                )
+              : null,
           title: Text(
             t.profileTitle,
             style: GoogleFonts.poppins(

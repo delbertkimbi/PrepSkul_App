@@ -93,6 +93,7 @@ class ChatService {
     required String conversationId,
     required String content,
     String? replyToMessageId,
+    String? clientMessageId,
   }) async {
     try {
       final userId = SupabaseService.currentUser?.id;
@@ -128,6 +129,7 @@ class ChatService {
           'conversationId': conversationId,
           'content': content.trim(),
           if (replyToMessageId != null) 'replyToMessageId': replyToMessageId,
+          if (clientMessageId != null) 'clientMessageId': clientMessageId,
         }),
       ).timeout(
         timeoutDuration,
@@ -200,10 +202,31 @@ class ChatService {
       if (errorString.contains('network') || 
           errorString.contains('connection') ||
           errorString.contains('timeout')) {
+        // Before queueing, check if message was persisted despite timeout
+        if (clientMessageId != null) {
+          try {
+            final recent = await _supabase
+                .from('messages')
+                .select()
+                .eq('conversation_id', conversationId)
+                .eq('client_message_id', clientMessageId)
+                .maybeSingle();
+            if (recent != null) {
+              final userId = SupabaseService.currentUser?.id;
+              return Message.fromJson(
+                Map<String, dynamic>.from(recent),
+                currentUserId: userId,
+              );
+            }
+          } catch (_) {
+            // fall through to queue
+          }
+        }
         try {
           await MessageQueueService.queueMessage(
             conversationId: conversationId,
             content: content,
+            clientMessageId: clientMessageId,
           );
         } catch (queueError) {
           LogService.error('Error queueing message: $queueError');

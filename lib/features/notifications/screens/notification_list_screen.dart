@@ -10,6 +10,7 @@ import 'package:prepskul/features/notifications/screens/notification_preferences
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
+import 'package:prepskul/core/widgets/prepskul_back_app_bar.dart';
 import 'dart:async';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -382,21 +383,8 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Notifications',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: PrepSkulBackAppBar(
+        title: 'Notifications',
         actions: [
           IconButton(
             icon: Icon(PhosphorIcons.gear(), color: AppTheme.textDark),

@@ -122,13 +122,17 @@ class SessionLifecycleService {
       if (!isSessionOnline && actualLocation == 'onsite') {
         // Start location sharing for tutor automatically when session starts
         try {
-          await LocationSharingService.startLocationSharing(
+          final shareResult = await LocationSharingService.startLocationSharing(
             sessionId: sessionId,
             userId: userId,
             userType: 'tutor',
             updateInterval: const Duration(seconds: 30),
           );
-          LogService.success('Location sharing started for tutor');
+          if (shareResult.success) {
+            LogService.success('Location sharing started for tutor');
+          } else {
+            LogService.warning('Location sharing not started: ${shareResult.message}');
+          }
         } catch (e) {
           LogService.warning('Failed to start location sharing: $e');
           // Don't fail session start if location sharing fails

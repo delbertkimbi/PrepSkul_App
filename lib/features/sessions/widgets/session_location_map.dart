@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/sessions/services/location_checkin_service.dart';
+import 'package:prepskul/features/sessions/services/onsite_geocoding_service.dart';
 import 'package:prepskul/features/sessions/services/session_safety_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/features/sessions/widgets/embedded_map_widget.dart';
@@ -53,17 +54,39 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
   bool _isCheckingOut = false;
   bool _isSharingWithEmergencyContact = false;
   bool _isPanicButtonTriggered = false;
+  String? _resolvedCoordinates;
 
   @override
   void initState() {
     super.initState();
-    // Schedule async operations to avoid blocking widget initialization
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.showCheckIn) {
         _loadCheckInStatus();
       }
-      _calculateDistance();
+      _resolveDestinationAndDistance();
     });
+  }
+
+  Future<void> _resolveDestinationAndDistance() async {
+    if (widget.coordinates != null) {
+      await _calculateDistance();
+      return;
+    }
+    try {
+      final coords = await OnsiteGeocodingService.geocodeAddress(widget.address);
+      if (coords != null && mounted) {
+        safeSetState(() {
+          _resolvedCoordinates =
+              '${coords['latitude']},${coords['longitude']}';
+        });
+        await _calculateDistanceWithCoords(
+          coords['latitude']!,
+          coords['longitude']!,
+        );
+      }
+    } catch (e) {
+      LogService.warning('Map geocode failed: $e');
+    }
   }
 
   Future<void> _loadCheckInStatus() async {
@@ -93,37 +116,32 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
   }
 
   Future<void> _calculateDistance() async {
-    if (widget.coordinates == null) return;
+    final coordStr = widget.coordinates ?? _resolvedCoordinates;
+    if (coordStr == null) return;
+    final parts = coordStr.split(',');
+    if (parts.length != 2) return;
+    final lat = double.tryParse(parts[0].trim());
+    final lon = double.tryParse(parts[1].trim());
+    if (lat == null || lon == null) return;
+    await _calculateDistanceWithCoords(lat, lon);
+  }
 
+  Future<void> _calculateDistanceWithCoords(double lat, double lon) async {
     try {
-      // Parse coordinates
-      final parts = widget.coordinates!.split(',');
-      if (parts.length != 2) return;
-
-      final lat = double.tryParse(parts[0].trim());
-      final lon = double.tryParse(parts[1].trim());
-      if (lat == null || lon == null) return;
-
-      // Get current location
-      try {
-        final position = await LocationCheckInService.getCurrentLocation();
-        if (mounted) {
-          safeSetState(() {
-            _currentPosition = position;
-            _distance = LocationCheckInService.calculateDistance(
-              position.latitude,
-              position.longitude,
-              lat,
-              lon,
-            );
-          });
-        }
-      } catch (e) {
-        // Location permission denied or unavailable
-        LogService.warning('Could not get current location: $e');
+      final position = await LocationCheckInService.getCurrentLocation();
+      if (mounted) {
+        safeSetState(() {
+          _currentPosition = position;
+          _distance = LocationCheckInService.calculateDistance(
+            position.latitude,
+            position.longitude,
+            lat,
+            lon,
+          );
+        });
       }
     } catch (e) {
-      LogService.warning('Error calculating distance: $e');
+      LogService.warning('Could not get current location: $e');
     }
   }
 
@@ -358,13 +376,18 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: EmbeddedMapWidget(
+              key: ValueKey(
+                'map-${widget.coordinates ?? _resolvedCoordinates}-'
+                '${_currentPosition?.latitude ?? 0},${_currentPosition?.longitude ?? 0}',
+              ),
               address: widget.address,
-              coordinates: widget.coordinates,
-              height: 200,
+              coordinates: widget.coordinates ?? _resolvedCoordinates,
+              height: 220,
               showMarker: true,
-              currentLocation: _currentPosition != null 
+              showRouteFromCurrentLocation: true,
+              currentLocation: _currentPosition != null
                   ? '${_currentPosition!.latitude},${_currentPosition!.longitude}'
-                  : null, // Enable routing if current location available
+                  : null,
             ),
           ),
 
@@ -644,28 +667,6 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
                   const SizedBox(width: 12),
                 ],
                 
-                // View on Map button
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _openInMaps,
-                    icon: Icon(Icons.map, size: 18),
-                    label: Text(
-                      'View Map',
-                      style: GoogleFonts.poppins(fontSize: 13),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
-                      side: BorderSide(color: AppTheme.primaryColor),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-                
-                const SizedBox(width: 12),
-                
                 // Get Directions button
                 Expanded(
                   child: OutlinedButton.icon(
@@ -689,32 +690,31 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
             ),
           ),
 
-          // Safety Features (for onsite sessions)
-          if (widget.showCheckIn && 
+          // Safety (onsite tutor sessions — visible even when check-in is on presence card)
+          if (widget.locationType == 'onsite' &&
               widget.currentUserId != null &&
-              widget.userType != null &&
-              widget.locationType == 'onsite') ...[
+              widget.userType == 'tutor') ...[
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.red.shade50,
+                color: AppTheme.neutral50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red.shade200),
+                border: Border.all(color: AppTheme.softBorder),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.security, color: Colors.red.shade700, size: 20),
+                      Icon(Icons.security, color: AppTheme.primaryColor, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         'Safety Features',
                         style: GoogleFonts.poppins(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Colors.red.shade900,
+                          color: AppTheme.textDark,
                         ),
                       ),
                     ],
@@ -808,7 +808,7 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
     });
 
     try {
-      final success = await SessionSafetyService.shareWithEmergencyContact(
+      final result = await SessionSafetyService.shareWithEmergencyContact(
         sessionId: widget.sessionId,
         userId: widget.currentUserId!,
         userType: widget.userType!,
@@ -822,13 +822,11 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              success
-                  ? 'Location shared with emergency contact'
-                  : 'Failed to share location. Please try again.',
+              result.message,
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: success ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 2),
+            backgroundColor: result.success ? Colors.green : AppTheme.primaryColor,
+            duration: Duration(seconds: result.success ? 3 : 5),
           ),
         );
       }
@@ -889,7 +887,7 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
     });
 
     try {
-      final success = await SessionSafetyService.triggerPanicButton(
+      final result = await SessionSafetyService.triggerPanicButton(
         sessionId: widget.sessionId,
         userId: widget.currentUserId!,
         userType: widget.userType!,
@@ -897,16 +895,17 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
       );
 
       if (mounted) {
+        if (!result.success) {
+          safeSetState(() => _isPanicButtonTriggered = false);
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              success
-                  ? 'Panic button triggered. Emergency contact has been notified.'
-                  : 'Failed to trigger panic button. Please contact emergency services directly.',
+              result.message,
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: success ? Colors.orange : Colors.red,
-            duration: const Duration(seconds: 4),
+            backgroundColor: result.success ? Colors.orange.shade800 : Colors.red,
+            duration: Duration(seconds: result.success ? 5 : 6),
           ),
         );
       }

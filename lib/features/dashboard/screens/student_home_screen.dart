@@ -28,6 +28,7 @@ import '../../../features/skulmate/services/skulmate_onboarding_service.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
 import '../../../features/booking/services/individual_session_service.dart';
+import '../../../features/booking/services/student_session_stats_service.dart';
 import '../../../features/booking/services/trial_session_service.dart';
 import '../../../features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
@@ -255,6 +256,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           activeTutors = tutorIds.length;
           statsSource = 'live_strict';
 
+          try {
+            final unifiedUpcoming =
+                await StudentSessionStatsService.countUpcomingSessions()
+                    .timeout(const Duration(seconds: 8));
+            if (unifiedUpcoming > 0) {
+              upcomingSessions = unifiedUpcoming;
+            }
+          } catch (_) {}
+
           // Fallback for strict paid filters: if all-time still resolves to zero,
           // run a relaxed history query so legitimate historical activity is shown.
           if (allTimeSessions == 0) {
@@ -280,6 +290,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             LogService.warning(
               'Student home stats would regress to zero; preserving previous known counts '
               '(sessions=$allTimeSessions tutors=$activeTutors).',
+            );
+          }
+
+          if (upcomingSessions == 0 && _upcomingSessionsCount > 0) {
+            upcomingSessions = _upcomingSessionsCount;
+            LogService.warning(
+              'Student home upcoming would regress to zero; preserving previous count ($upcomingSessions).',
             );
           }
         } else {

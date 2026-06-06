@@ -222,7 +222,18 @@ class SessionFeedbackService {
 
       try {
         if (existingFeedback != null) {
-          // Update existing feedback
+          if (isTutor &&
+              existingFeedback['tutor_feedback_submitted_at'] != null) {
+            throw Exception(
+              'You have already submitted feedback for this session.',
+            );
+          }
+          if (!isTutor &&
+              existingFeedback['student_feedback_submitted_at'] != null) {
+            throw Exception(
+              'You have already submitted feedback for this session.',
+            );
+          }
           await _supabase
               .from('session_feedback')
               .update(feedbackData)
@@ -665,12 +676,32 @@ class SessionFeedbackService {
         return false;
       }
 
-      // Session must be completed
       if (session['status'] != 'completed') {
         return false;
       }
 
-      // Feedback available immediately after session ends (no delay)
+      Map<String, dynamic>? existingFeedback;
+      try {
+        existingFeedback = await _supabase
+            .from('session_feedback')
+            .select('student_feedback_submitted_at, tutor_feedback_submitted_at')
+            .eq('session_id', sessionId)
+            .maybeSingle();
+      } catch (_) {
+        return true;
+      }
+
+      if (existingFeedback != null) {
+        if (isTutor &&
+            existingFeedback['tutor_feedback_submitted_at'] != null) {
+          return false;
+        }
+        if (!isTutor &&
+            existingFeedback['student_feedback_submitted_at'] != null) {
+          return false;
+        }
+      }
+
       return true;
     } catch (e) {
       LogService.error('Error checking if can submit feedback: $e');

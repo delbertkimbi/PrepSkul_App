@@ -1,6 +1,8 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
+import 'package:prepskul/features/payment/services/payment_request_amounts.dart';
+import 'package:prepskul/features/payment/services/tutor_earnings_allocation_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
@@ -369,9 +371,12 @@ class FapshiWebhookService {
                     // Immediately generate individual sessions since payment is being made
                     LogService.info('💰 Payment successful - generating individual sessions immediately...');
                     try {
+                      final weeks = PaymentRequestAmounts.weeksAheadForPaymentPlan(
+                        paymentPlan ?? 'monthly',
+                      );
                       final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
                         recurringSessionId: recurringSessionId,
-                        weeksAhead: 8,
+                        weeksAhead: weeks,
                       );
                       LogService.success('✅ Generated $sessionsGenerated individual sessions immediately after payment');
                     } catch (e, stackTrace) {
@@ -418,11 +423,51 @@ class FapshiWebhookService {
                 LogService.info('📅 Recurring session ID: $recurringSessionId');
                 try {
                   LogService.info('🚀 Calling generateIndividualSessions...');
+                  final weeks = PaymentRequestAmounts.weeksAheadForPaymentPlan(
+                    paymentPlan ?? 'monthly',
+                  );
                   final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
                     recurringSessionId: recurringSessionId,
-                    weeksAhead: 8,
+                    weeksAhead: weeks,
                   );
                   LogService.success('✅ Individual sessions generated after payment: $recurringSessionId, count: $sessionsGenerated');
+
+                  // Cancel any excess sessions beyond the paid installment window
+                  try {
+                    final rsFreq = await SupabaseService.client
+                        .from('recurring_sessions')
+                        .select('frequency')
+                        .eq('id', recurringSessionId)
+                        .maybeSingle();
+                    final frequency =
+                        (rsFreq?['frequency'] as num?)?.toInt() ?? 1;
+                    final maxSessions = frequency * weeks;
+                    final cancelled =
+                        await RecurringSessionService.cancelExcessFutureSessions(
+                      recurringSessionId: recurringSessionId,
+                      maxSessions: maxSessions,
+                    );
+                    if (cancelled > 0) {
+                      LogService.info(
+                        'Cancelled $cancelled excess sessions beyond paid window ($maxSessions)',
+                      );
+                    }
+                  } catch (e) {
+                    LogService.warning('Could not cancel excess sessions: $e');
+                  }
+
+                  // Pre-allocate tutor pending earnings for paid period
+                  try {
+                    final allocated =
+                        await TutorEarningsAllocationService.allocateForPaymentRequest(
+                      paymentRequestId,
+                    );
+                    LogService.success(
+                      'Tutor earnings allocated: $allocated sessions for $paymentRequestId',
+                    );
+                  } catch (e) {
+                    LogService.warning('Tutor earnings allocation failed: $e');
+                  }
                   
                   // Verify sessions were actually created
                   final verifySessions = await SupabaseService.client
@@ -455,6 +500,12 @@ class FapshiWebhookService {
                       final studentName = recurringSessionDetails['student_name'] as String? ?? recurringSessionDetails['learner_name'] as String? ?? 'Student';
                       final frequency = recurringSessionDetails['frequency'] as int? ?? 0;
                       final days = (recurringSessionDetails['days'] as List?)?.cast<String>() ?? [];
+
+                      // Use paid-period session count for notifications (not raw generation count)
+                      final paidWeeks = PaymentRequestAmounts.weeksAheadForPaymentPlan(
+                        paymentPlan ?? 'monthly',
+                      );
+                      final notifyCount = frequency > 0 ? frequency * paidWeeks : sessionsGenerated;
                       
                       // Notify student/parent
                       await NotificationHelperService.notifySessionsCreated(
@@ -463,7 +514,7 @@ class FapshiWebhookService {
                         recurringSessionId: recurringSessionId,
                         tutorName: tutorName,
                         studentName: studentName,
-                        sessionCount: sessionsGenerated,
+                        sessionCount: notifyCount,
                         frequency: frequency,
                         days: days,
                       );
@@ -475,7 +526,7 @@ class FapshiWebhookService {
                         recurringSessionId: recurringSessionId,
                         studentName: studentName,
                         tutorName: tutorName,
-                        sessionCount: sessionsGenerated,
+                        sessionCount: notifyCount,
                         frequency: frequency,
                         days: days,
                       );

@@ -29,6 +29,9 @@ import '../../../features/sessions/services/meet_service.dart';
 import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import '../../../features/sessions/screens/agora_video_session_screen.dart';
 import '../../../features/sessions/services/location_checkin_service.dart';
+import '../../../features/sessions/utils/onsite_presence_utils.dart';
+import '../widgets/onsite_presence_indicators.dart';
+import '../widgets/tutor_shell_scope.dart';
 import '../../../features/sessions/services/location_sharing_service.dart';
 import '../../../features/sessions/services/continuous_location_monitoring_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
@@ -730,18 +733,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: false, // No back button in bottom nav
-        title: Text(
-          'Sessions',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: TutorTabAppBar(
+        title: 'Sessions',
       ),
       body: Column(
         children: [
@@ -1405,7 +1398,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      _getStatusLabel(status),
+                      _getDisplayStatusLabel(status, sessionDate, sessionTime),
                       style: GoogleFonts.poppins(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -1649,7 +1642,13 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                             ),
                             const SizedBox(width: 6),
                             Expanded(
-                              child: _buildCountdownWidget(sessionDate!, sessionTime!),
+                              child: _buildSessionProgressIndicator(
+                                sessionDate: sessionDate!,
+                                sessionTime: sessionTime!,
+                                sessionId: session['id'] as String?,
+                                location: location,
+                                status: status,
+                              ),
                             ),
                           ],
                         ),
@@ -1877,6 +1876,32 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     }
   }
 
+  Future<Map<String, dynamic>> _loadOnsitePresenceSnapshot(String sessionId) async {
+    final userId = _currentUserId;
+    if (userId == null) return {};
+
+    final status = await LocationCheckInService.getCheckInStatus(
+      sessionId: sessionId,
+      userId: userId,
+    );
+
+    String? adminStatus;
+    try {
+      final row = await SupabaseService.client
+          .from('individual_sessions')
+          .select('attendance_admin_status')
+          .eq('id', sessionId)
+          .maybeSingle();
+      adminStatus = row?['attendance_admin_status'] as String?;
+    } catch (_) {}
+
+    return {
+      'has_checked_in': status?['has_checked_in'] == true,
+      'has_checked_out': status?['has_checked_out'] == true,
+      'admin_approved': adminStatus == 'approved',
+    };
+  }
+
   Widget _buildOnsiteTrackingSection({
     required String? sessionId,
     required String? address,
@@ -1891,7 +1916,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     final scheduledDateTime = (scheduledDate != null && scheduledTime != null)
         ? _parseSessionDateTime(scheduledDate, scheduledTime)
         : null;
-    final isWithinWindow = _isWithinPresenceWindow(scheduledDateTime);
+    final isWithinWindow = OnsitePresenceUtils.isWithinPresenceWindow(scheduledDateTime);
 
     return Container(
       margin: const EdgeInsets.only(top: 10),
@@ -1932,7 +1957,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            _presenceWindowLabel(scheduledDateTime),
+            OnsitePresenceUtils.windowLabel(scheduledDateTime),
             style: GoogleFonts.poppins(
               fontSize: 10,
               color: Colors.grey[600],
@@ -1949,129 +1974,41 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
             ),
           ],
           const SizedBox(height: 8),
-          FutureBuilder<Map<String, dynamic>?>(
-            future: _currentUserId == null
-                ? Future.value(null)
-                : LocationCheckInService.getCheckInStatus(
-                    sessionId: sessionId,
-                    userId: _currentUserId!,
-                  ),
+          FutureBuilder<Map<String, dynamic>>(
+            future: _loadOnsitePresenceSnapshot(sessionId),
             builder: (context, snapshot) {
-              final status = snapshot.data;
-              final hasCheckedIn = status?['has_checked_in'] == true;
-              final verified = status?['verified'] == true;
-              final statusColor = hasCheckedIn ? AppTheme.accentGreen : Colors.orange[700];
-              final statusText = hasCheckedIn
-                  ? (verified ? 'Checked in • Verified' : 'Checked in')
-                  : 'Check-in pending';
+              final data = snapshot.data ?? {};
+              final hasCheckedIn = data['has_checked_in'] == true;
+              final hasCheckedOut = data['has_checked_out'] == true;
+              final adminApproved = data['admin_approved'] == true;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        hasCheckedIn ? Icons.check_circle : Icons.pending,
-                        size: 16,
-                        color: statusColor,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        statusText,
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
-                        ),
-                      ),
-                    ],
+                  OnsitePresenceIndicators(
+                    checkInDone: hasCheckedIn,
+                    checkOutDone: hasCheckedOut,
+                    adminApproved: adminApproved,
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: (!isWithinWindow || !hasAddress || _currentUserId == null || hasCheckedIn)
-                              ? null
-                              : () async {
-                                  await _handleOnsiteCheckIn(
-                                    sessionId: sessionId,
-                                    address: address!,
-                                    scheduledDateTime: scheduledDateTime,
-                                  );
-                                },
-                          icon: const Icon(Icons.how_to_reg, size: 16),
-                          label: Text(
-                            hasCheckedIn ? 'Checked in' : 'Confirm Arrival',
-                            style: GoogleFonts.poppins(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.primaryColor,
-                            side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.4)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: (!isWithinWindow || _currentUserId == null || !hasCheckedIn)
-                              ? null
-                              : () async {
-                                  await _handlePresenceSelfieUpload(sessionId: sessionId);
-                                },
-                          icon: const Icon(Icons.camera_alt_outlined, size: 16),
-                          label: Text(
-                            'Upload Selfie',
-                            style: GoogleFonts.poppins(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.primaryColor,
-                            side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.4)),
-                          ),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    'Open session details to check in, upload selfies, and check out.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: (!isWithinWindow || _currentUserId == null || !hasCheckedIn)
-                              ? null
-                              : () async {
-                                  await _handleOnsiteCheckOut(sessionId: sessionId);
-                                },
-                          icon: const Icon(Icons.flag_outlined, size: 16),
-                          label: Text(
-                            'Confirm End',
-                            style: GoogleFonts.poppins(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.grey[700],
-                            side: BorderSide(color: Colors.grey[300]!),
-                          ),
-                        ),
+                  if (!isWithinWindow && !hasCheckedIn) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      OnsitePresenceUtils.checkInBlockedMessage(scheduledDateTime) ??
+                          'Check-in is only available in the window shown above.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color: AppTheme.textMedium,
+                        height: 1.35,
                       ),
-                    ],
-                  ),
-                  if (_sessionSelfieUrls.containsKey(sessionId)) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.verified, size: 14, color: AppTheme.accentGreen),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Selfie uploaded for attendance review.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppTheme.accentGreen,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ],
@@ -2118,6 +2055,26 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
   Future<void> _handleOnsiteCheckOut({required String sessionId}) async {
     if (_currentUserId == null) return;
     try {
+      final status = await LocationCheckInService.getCheckInStatus(
+        sessionId: sessionId,
+        userId: _currentUserId!,
+      );
+      if (status?['has_check_out_selfie'] != true) {
+        await _handleCheckoutSelfieUpload(sessionId: sessionId);
+        final after = await LocationCheckInService.getCheckInStatus(
+          sessionId: sessionId,
+          userId: _currentUserId!,
+        );
+        if (after?['has_check_out_selfie'] != true) {
+          if (mounted) {
+            AppFeedback.showWarning(
+              context,
+              'Upload a checkout selfie before checking out.',
+            );
+          }
+          return;
+        }
+      }
       final result = await LocationCheckInService.checkOutFromSession(
         sessionId: sessionId,
         userId: _currentUserId!,
@@ -2136,6 +2093,35 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     } catch (e) {
       if (mounted) {
         AppFeedback.showErrorToast(context, 'Failed to check out: $e');
+      }
+    }
+  }
+
+  Future<void> _handleCheckoutSelfieUpload({required String sessionId}) async {
+    try {
+      final pickedFile = await showModalBottomSheet<dynamic>(
+        context: context,
+        builder: (context) => const ImagePickerBottomSheet(),
+        isScrollControlled: true,
+      );
+      if (pickedFile == null || !mounted || _currentUserId == null) return;
+      final result = await LocationCheckInService.uploadCheckoutSelfie(
+        sessionId: sessionId,
+        userId: _currentUserId!,
+        userType: 'tutor',
+        selfieFile: pickedFile,
+      );
+      if (mounted) {
+        if (result['success'] == true) {
+          AppFeedback.showSuccess(context, result['message'] as String? ?? 'Checkout selfie saved');
+        } else {
+          AppFeedback.showErrorToast(context, result['message'] as String? ?? 'Upload failed');
+        }
+        safeSetState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        AppFeedback.showErrorToast(context, 'Failed to upload checkout selfie: $e');
       }
     }
   }
@@ -2163,10 +2149,18 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       if (!mounted) return;
 
       final ok = result['success'] == true;
-      final msg = result['message'] as String? ?? 'Selfie uploaded';
       if (ok) {
-        AppFeedback.showSuccess(context, msg);
+        AppFeedback.showSuccess(
+          context,
+          'Submitted for admin review. Your earnings for this session will move to active balance after approval.',
+        );
+        if (result['photo_url'] is String) {
+          safeSetState(() {
+            _sessionSelfieUrls[sessionId] = result['photo_url'] as String;
+          });
+        }
       } else {
+        final msg = result['message'] as String? ?? 'Selfie upload failed';
         AppFeedback.showErrorToast(context, msg);
       }
 
@@ -2182,8 +2176,88 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     }
   }
 
+  String _getDisplayStatusLabel(
+    String status,
+    DateTime? sessionDate,
+    String? sessionTime,
+  ) {
+    if (status == 'in_progress' && sessionDate != null && sessionTime != null) {
+      final start = _parseSessionDateTime(sessionDate, sessionTime);
+      if (start != null && DateTime.now().isBefore(start)) {
+        return 'Scheduled';
+      }
+    }
+    if (status == 'completed') return 'Ended';
+    return _getStatusLabel(status);
+  }
+
+  Widget _buildSessionProgressIndicator({
+    required DateTime sessionDate,
+    required String sessionTime,
+    String? sessionId,
+    required String location,
+    required String status,
+  }) {
+    final isOnsite = location == 'onsite' || location == 'hybrid';
+    if (isOnsite && sessionId != null && _currentUserId != null) {
+      return FutureBuilder<Map<String, dynamic>?>(
+        future: LocationCheckInService.getCheckInStatus(
+          sessionId: sessionId,
+          userId: _currentUserId!,
+        ),
+        builder: (context, snapshot) {
+          final checkInStatus = snapshot.data;
+          final hasCheckedIn = checkInStatus?['has_checked_in'] == true;
+          final checkInAt = checkInStatus?['checked_in_at'] as String?;
+          if (hasCheckedIn && checkInAt != null) {
+            final checkInTime = DateTime.parse(checkInAt);
+            final elapsed = DateTime.now().difference(checkInTime);
+            const window = Duration(hours: 1);
+            final progress =
+                (elapsed.inSeconds / window.inSeconds).clamp(0.0, 1.0);
+            final remaining = window - elapsed;
+            final remMin = remaining.inMinutes.clamp(0, 60);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Session in progress • ${remMin}m left in tracking window',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: AppTheme.primaryColor.withOpacity(0.12),
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                  ),
+                ),
+              ],
+            );
+          }
+          return _buildCountdownWidget(
+            sessionDate,
+            sessionTime,
+            showProgressBar: false,
+          );
+        },
+      );
+    }
+    return _buildCountdownWidget(sessionDate, sessionTime);
+  }
+
   /// Build visual countdown widget
-  Widget _buildCountdownWidget(DateTime sessionDate, String sessionTime) {
+  Widget _buildCountdownWidget(
+    DateTime sessionDate,
+    String sessionTime, {
+    bool showProgressBar = true,
+  }) {
     try {
       final timeParts = sessionTime.split(':');
       final hour = int.tryParse(timeParts[0]) ?? 0;
@@ -2234,10 +2308,6 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         }
       }
 
-      final totalWindowSeconds = const Duration(hours: 24).inSeconds;
-      final remainingSeconds = difference.inSeconds.clamp(0, totalWindowSeconds);
-      final progress = 1 - (remainingSeconds / totalWindowSeconds);
-      
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2259,16 +2329,18 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
               ),
             ),
           ],
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress.isNaN ? 0 : progress,
-              minHeight: 4,
-              backgroundColor: AppTheme.primaryColor.withOpacity(0.12),
-              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+          if (showProgressBar) ...[
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: 0,
+                minHeight: 4,
+                backgroundColor: AppTheme.primaryColor.withOpacity(0.12),
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+              ),
             ),
-          ),
+          ],
         ],
       );
     } catch (e) {
@@ -2858,12 +2930,15 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
           // Start location sharing and continuous monitoring for onsite trial
           if (isOnsite && address != null && address.trim().isNotEmpty) {
             try {
-              await LocationSharingService.startLocationSharing(
+              final shareResult = await LocationSharingService.startLocationSharing(
                 sessionId: trialSessionId,
                 userId: userId,
                 userType: 'tutor',
                 updateInterval: const Duration(seconds: 30),
               );
+              if (!shareResult.success) {
+                LogService.warning('Trial location sharing: ${shareResult.message}');
+              }
               await ContinuousLocationMonitoringService.startMonitoring(
                 sessionId: trialSessionId,
                 userId: userId,
@@ -2892,12 +2967,15 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
           // Start location sharing and continuous monitoring for onsite trial
           if (isOnsite && address != null && address.trim().isNotEmpty) {
             try {
-              await LocationSharingService.startLocationSharing(
+              final shareResult = await LocationSharingService.startLocationSharing(
                 sessionId: trialSessionId,
                 userId: userId,
                 userType: 'tutor',
                 updateInterval: const Duration(seconds: 30),
               );
+              if (!shareResult.success) {
+                LogService.warning('Trial location sharing: ${shareResult.message}');
+              }
               await ContinuousLocationMonitoringService.startMonitoring(
                 sessionId: trialSessionId,
                 userId: userId,

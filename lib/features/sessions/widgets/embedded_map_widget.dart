@@ -1,38 +1,38 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:prepskul/core/theme/app_theme.dart';
-import 'package:prepskul/core/services/log_service.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-// Conditional import for web map helpers
+import 'package:flutter_map/flutter_map.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/sessions/services/location_checkin_service.dart';
+import 'package:prepskul/features/sessions/services/onsite_geocoding_service.dart';
+
 import 'web_map_helper_stub.dart'
     if (dart.library.html) 'web_map_helper.dart'
     as web_map;
-// Mobile: Use flutter_map (Leaflet for Flutter)
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 
-/// Embedded Map Widget
-///
-/// Shows an embedded map view with the session location marked.
-/// On web: Uses iframe (Leaflet) to keep users in-app
-/// On mobile: Uses flutter_map (Leaflet for Flutter) - open-source, no API key needed
-/// Falls back to a placeholder if maps are not configured or unavailable.
+/// In-app map with venue marker and optional route from current GPS (OSRM).
 class EmbeddedMapWidget extends StatefulWidget {
   final String address;
-  final String? coordinates; // Optional: "lat,lon" format
+  final String? coordinates;
   final double height;
   final bool showMarker;
-  final String? currentLocation; // Optional current location for routing
+  final String? currentLocation;
+  final bool showRouteFromCurrentLocation;
 
   const EmbeddedMapWidget({
-    Key? key,
+    super.key,
     required this.address,
     this.coordinates,
     this.height = 200,
     this.showMarker = true,
     this.currentLocation,
-  }) : super(key: key);
+    this.showRouteFromCurrentLocation = false,
+  });
 
   @override
   State<EmbeddedMapWidget> createState() => _EmbeddedMapWidgetState();
@@ -41,9 +41,10 @@ class EmbeddedMapWidget extends StatefulWidget {
 class _EmbeddedMapWidgetState extends State<EmbeddedMapWidget> {
   bool _isLoading = true;
   bool _hasError = false;
-  String? _errorMessage;
   double? _latitude;
   double? _longitude;
+  LatLng? _userPoint;
+  List<LatLng> _routePoints = [];
 
   @override
   void initState() {
@@ -51,240 +52,260 @@ class _EmbeddedMapWidgetState extends State<EmbeddedMapWidget> {
     _initializeMap();
   }
 
+  @override
+  void didUpdateWidget(EmbeddedMapWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentLocation != widget.currentLocation ||
+        oldWidget.coordinates != widget.coordinates ||
+        oldWidget.address != widget.address ||
+        oldWidget.showRouteFromCurrentLocation != widget.showRouteFromCurrentLocation) {
+      _isLoading = true;
+      _initializeMap();
+    }
+  }
+
   Future<void> _initializeMap() async {
     try {
-      // Try to parse coordinates if provided
+      double? lat;
+      double? lon;
+
       if (widget.coordinates != null) {
         final parts = widget.coordinates!.split(',');
         if (parts.length == 2) {
-          final lat = double.tryParse(parts[0].trim());
-          final lon = double.tryParse(parts[1].trim());
-          if (lat != null && lon != null) {
-            setState(() {
-              _latitude = lat;
-              _longitude = lon;
-              _isLoading = false;
-            });
-            return;
-          }
+          lat = double.tryParse(parts[0].trim());
+          lon = double.tryParse(parts[1].trim());
         }
       }
 
-      // Try to geocode the address
-      try {
-        final locations = await locationFromAddress(widget.address);
-        if (locations.isNotEmpty) {
+      if (lat == null || lon == null) {
+        final coords = await OnsiteGeocodingService.geocodeAddress(widget.address);
+        if (coords != null) {
+          lat = coords['latitude'];
+          lon = coords['longitude'];
+        }
+      }
+
+      if (lat == null || lon == null) {
+        if (mounted) {
           setState(() {
-            _latitude = locations.first.latitude;
-            _longitude = locations.first.longitude;
             _isLoading = false;
+            _hasError = true;
           });
-          return;
         }
-      } catch (e) {
-        LogService.warning('Geocoding failed: $e');
+        return;
       }
 
-      // If we can't get coordinates, show placeholder
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'Unable to locate address on map';
-      });
+      LatLng? userPoint;
+      if (widget.showRouteFromCurrentLocation) {
+        userPoint = await _resolveUserPoint();
+        if (userPoint != null) {
+          _routePoints = await _fetchRoute(userPoint, LatLng(lat, lon));
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lon;
+          _userPoint = userPoint;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       LogService.error('Error initializing map: $e');
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'Map initialization failed';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
+    }
+  }
+
+  Future<LatLng?> _resolveUserPoint() async {
+    if (widget.currentLocation != null) {
+      final parts = widget.currentLocation!.split(',');
+      if (parts.length == 2) {
+        final lat = double.tryParse(parts[0].trim());
+        final lon = double.tryParse(parts[1].trim());
+        if (lat != null && lon != null) return LatLng(lat, lon);
+      }
+    }
+    try {
+      final pos = await LocationCheckInService.getCurrentLocation();
+      return LatLng(pos.latitude, pos.longitude);
+    } catch (e) {
+      LogService.warning('Map: could not read current location: $e');
+      return null;
+    }
+  }
+
+  Future<List<LatLng>> _fetchRoute(LatLng from, LatLng to) async {
+    try {
+      final url =
+          'https://router.project-osrm.org/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson';
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final routes = data['routes'] as List?;
+      if (routes == null || routes.isEmpty) return [];
+      final geometry = routes[0]['geometry'] as Map<String, dynamic>?;
+      final coords = geometry?['coordinates'] as List?;
+      if (coords == null) return [];
+      return coords
+          .map((c) {
+            final pair = c as List;
+            return LatLng((pair[1] as num).toDouble(), (pair[0] as num).toDouble());
+          })
+          .toList();
+    } catch (e) {
+      LogService.warning('OSRM route failed: $e');
+      return [];
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Container(
-        height: widget.height,
-        decoration: BoxDecoration(
-          color: Colors.grey[200],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Loading map...',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
+      return _box(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+            ),
+            const SizedBox(height: 12),
+            Text('Loading map…', style: GoogleFonts.poppins(color: Colors.grey[600])),
+          ],
         ),
       );
     }
 
     if (_hasError || _latitude == null || _longitude == null) {
-      return Container(
-        height: widget.height,
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.map_outlined,
-                size: 48,
-                color: Colors.grey[400],
+      return _box(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.map_outlined, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 8),
+            Text(
+              'Map preview loading…',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.grey[700]),
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'We are resolving "${widget.address}". Use Directions below if the map is still empty.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Map Preview Unavailable',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Tap "View Map" to open in maps app',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
 
-    // Web: Use iframe to keep users in-app
+    final dest = LatLng(_latitude!, _longitude!);
+
     if (kIsWeb) {
-      final viewType = 'map-iframe-${widget.address.hashCode}-${_latitude!.toStringAsFixed(4)}-${_longitude!.toStringAsFixed(4)}';
-      
+      final viewType =
+          'map-iframe-${widget.address.hashCode}-${_latitude!.toStringAsFixed(4)}';
       try {
-        // Use Leaflet (free, open-source, no API key needed, privacy-friendly)
-        if (widget.currentLocation != null) {
-          // Use Leaflet with routing if current location available
+        if (_userPoint != null) {
           web_map.registerLeafletRoutingIframe(
             viewType,
             widget.address,
-            coordinates: widget.coordinates ?? '$_latitude,$_longitude',
-            currentLocation: widget.currentLocation,
+            coordinates: '${_latitude},${_longitude}',
+            currentLocation: '${_userPoint!.latitude},${_userPoint!.longitude}',
           );
         } else {
-          // Use simple Leaflet map
           web_map.registerLeafletMapIframe(
             viewType,
             widget.address,
-            coordinates: widget.coordinates ?? '$_latitude,$_longitude',
+            coordinates: '${_latitude},${_longitude}',
           );
         }
-        
-        // Return HtmlElementView with the registered iframe
-        return Container(
-          height: widget.height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[300]!),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: HtmlElementView(viewType: viewType),
-          ),
+        return _box(
+          child: HtmlElementView(viewType: viewType),
         );
       } catch (e) {
-        LogService.warning('Error registering map iframe: $e');
-        // Fallback to placeholder if iframe registration fails
+        LogService.warning('Web map iframe failed: $e');
       }
     }
-    
-    // Mobile: Use flutter_map (Leaflet for Flutter) - open-source, no API key needed
+
+    final markers = <Marker>[
+      if (_userPoint != null)
+        Marker(
+          point: _userPoint!,
+          width: 36,
+          height: 36,
+          child: const Icon(Icons.my_location, color: Colors.blue, size: 28),
+        ),
+      if (widget.showMarker)
+        Marker(
+          point: dest,
+          width: 40,
+          height: 40,
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+            ),
+            child: const Icon(Icons.location_on, color: Colors.white, size: 22),
+          ),
+        ),
+    ];
+
+  final fitBounds = _routePoints.isNotEmpty
+        ? LatLngBounds.fromPoints([..._routePoints, if (_userPoint != null) _userPoint!, dest])
+        : (_userPoint != null
+            ? LatLngBounds.fromPoints([_userPoint!, dest])
+            : null);
+
+    return _box(
+      child: FlutterMap(
+        options: MapOptions(
+          initialCenter: dest,
+          initialZoom: 14,
+          minZoom: 5,
+          maxZoom: 18,
+          interactionOptions: const InteractionOptions(
+            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          ),
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.prepskul.app',
+          ),
+          if (_routePoints.isNotEmpty)
+            PolylineLayer(
+              polylines: [
+                Polyline(
+                  points: _routePoints,
+                  color: AppTheme.primaryColor,
+                  strokeWidth: 4,
+                ),
+              ],
+            ),
+          MarkerLayer(markers: markers),
+        ],
+      ),
+    );
+  }
+
+  Widget _box({required Widget child}) {
     return Container(
       height: widget.height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: AppTheme.softBorder),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: LatLng(_latitude!, _longitude!),
-            initialZoom: 15.0,
-            minZoom: 5.0,
-            maxZoom: 18.0,
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-            ),
-          ),
-          children: [
-            // OpenStreetMap tile layer
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.prepskul.app',
-              maxZoom: 19,
-              tileProvider: NetworkTileProvider(),
-            ),
-            // Marker layer
-            if (widget.showMarker)
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: LatLng(_latitude!, _longitude!),
-                    width: 40,
-                    height: 40,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        Icons.location_on,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-          ],
-        ),
+        child: child,
       ),
     );
   }

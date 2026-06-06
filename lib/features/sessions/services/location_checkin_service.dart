@@ -4,6 +4,8 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/storage_service.dart';
+import 'package:prepskul/features/sessions/services/onsite_geocoding_service.dart';
+import 'package:prepskul/features/sessions/utils/onsite_presence_utils.dart';
 
 /// Location Check-In Service
 ///
@@ -13,6 +15,9 @@ import 'package:prepskul/core/services/storage_service.dart';
 /// - Records check-in location in attendance
 class LocationCheckInService {
   static final _supabase = SupabaseService.client;
+
+  static const double defaultAllowedRadiusMeters =
+      OnsiteGeocodingService.checkInRadiusMeters;
 
   /// Check if location services are enabled
   static Future<bool> isLocationServiceEnabled() async {
@@ -175,41 +180,70 @@ class LocationCheckInService {
     required String userType,
     required String sessionAddress,
     bool verifyProximity = true,
-    double allowedRadiusMeters = 100.0,
+    double allowedRadiusMeters = defaultAllowedRadiusMeters,
     DateTime? scheduledDateTime,
   }) async {
     try {
-      // Get current location
-      final currentPosition = await getCurrentLocation();
-      final locationString = '${currentPosition.latitude},${currentPosition.longitude}';
-
-      bool isVerified = false;
-      double? distance;
-
-      // Verify proximity if requested
-      if (verifyProximity) {
-        final isAtLocation = await verifyLocationProximity(
-          sessionAddress: sessionAddress,
-          allowedRadiusMeters: allowedRadiusMeters,
-        );
-        isVerified = isAtLocation;
-
-        if (isAtLocation && sessionAddress.contains(',')) {
-          // Calculate actual distance
-          final parts = sessionAddress.split(',');
-          final lat = double.tryParse(parts[0].trim());
-          final lon = double.tryParse(parts[1].trim());
-          if (lat != null && lon != null) {
-            distance = calculateDistance(
-              currentPosition.latitude,
-              currentPosition.longitude,
-              lat,
-              lon,
-            );
-          }
+      if (scheduledDateTime != null) {
+        final windowMsg = OnsitePresenceUtils.checkInBlockedMessage(scheduledDateTime);
+        if (windowMsg != null) {
+          return {
+            'success': false,
+            'verified': false,
+            'message': windowMsg,
+            'blocked_reason': 'outside_presence_window',
+          };
         }
-      } else {
-        // If not verifying, mark as verified (manual check-in)
+      }
+
+      final currentPosition = await getCurrentLocation();
+      final locationString =
+          '${currentPosition.latitude},${currentPosition.longitude}';
+
+      double? distance;
+      String addressLabel = sessionAddress;
+      bool isVerified = !verifyProximity;
+
+      if (verifyProximity) {
+        final target = await OnsiteGeocodingService.resolveSessionCoordinates(
+          sessionId: sessionId,
+          fallbackAddress: sessionAddress,
+        );
+        if (target == null) {
+          return {
+            'success': false,
+            'verified': false,
+            'message':
+                'We could not plot this session address on the map yet. '
+                'Ask your coordinator to confirm the full street address for "$sessionAddress", '
+                'or try again closer to session day when you are at the venue.',
+            'blocked_reason': 'geocode_failed',
+          };
+        }
+
+        final targetLat = target['latitude'] as double;
+        final targetLon = target['longitude'] as double;
+        addressLabel =
+            (target['address_label'] as String?) ?? sessionAddress;
+
+        distance = calculateDistance(
+          currentPosition.latitude,
+          currentPosition.longitude,
+          targetLat,
+          targetLon,
+        );
+
+        if (distance > allowedRadiusMeters) {
+          final distRounded = distance.round();
+          return {
+            'success': false,
+            'verified': false,
+            'distance': distance,
+            'message':
+                'You are about $distRounded m from the session location ($addressLabel). '
+                'Move within ${allowedRadiusMeters.round()} m to check in.',
+          };
+        }
         isVerified = true;
       }
 
@@ -301,6 +335,10 @@ class LocationCheckInService {
             .eq('id', attendanceId);
       }
 
+      if (userType == 'tutor' && isVerified) {
+        await _markOnsiteSessionInProgress(sessionId);
+      }
+
       // Notify admins if tutor checked in late beyond grace (e.g. >15 min)
       if (punctualityStatus == 'late' && minutesEarlyOrLate != null && minutesEarlyOrLate >= 15) {
         NotificationHelperService.notifyAdminsAboutSessionSafetyAlert(
@@ -314,20 +352,17 @@ class LocationCheckInService {
         );
       }
 
-      // Build message with punctuality info
       String message;
-      if (isVerified) {
-        if (punctualityStatus == 'on_time') {
-          message = 'Check-in successful! You arrived on time.';
-        } else if (punctualityStatus == 'early') {
-          message = 'Check-in successful! You arrived ${minutesEarlyOrLate!.abs()} minutes early.';
-        } else if (punctualityStatus == 'late') {
-          message = 'Check-in successful! You arrived ${minutesEarlyOrLate} minutes late.';
-        } else {
-          message = 'Check-in successful! You are at the session location.';
-        }
+      if (punctualityStatus == 'on_time') {
+        message = 'Check-in successful. You arrived on time.';
+      } else if (punctualityStatus == 'early') {
+        message =
+            'Check-in successful. You arrived ${minutesEarlyOrLate!.abs()} minutes early.';
+      } else if (punctualityStatus == 'late') {
+        message =
+            'Check-in successful. You arrived $minutesEarlyOrLate minutes late.';
       } else {
-        message = 'Check-in recorded, but location could not be verified. Please ensure you are at the correct address.';
+        message = 'Check-in successful. You are at the session location.';
       }
 
       return {
@@ -343,12 +378,57 @@ class LocationCheckInService {
       };
     } catch (e) {
       LogService.error('Error checking in to session: $e');
+      final err = e.toString();
+      if (err.contains('Location permissions')) {
+        return {
+          'success': false,
+          'verified': false,
+          'message':
+              'Location access is required to check in. Please enable location permissions in your device settings.',
+        };
+      }
+      if (err.contains('Location services are disabled')) {
+        return {
+          'success': false,
+          'verified': false,
+          'message':
+              'Turn on location services (GPS) on your device, then try checking in again.',
+        };
+      }
       return {
         'success': false,
         'verified': false,
-        'error': e.toString(),
-        'message': 'Failed to check in. Please try again.',
+        'error': err,
+        'message': 'We could not complete check-in. Please try again in a moment.',
       };
+    }
+  }
+
+  static Future<void> _markOnsiteSessionInProgress(String sessionId) async {
+    final now = DateTime.now().toIso8601String();
+    try {
+      final session = await _supabase
+          .from('individual_sessions')
+          .select('status, session_started_at, location')
+          .eq('id', sessionId)
+          .maybeSingle();
+      if (session == null) return;
+
+      final loc = (session['location'] as String? ?? '').toLowerCase();
+      if (loc != 'onsite' && loc != 'hybrid') return;
+
+      final updateData = <String, dynamic>{
+        'status': 'in_progress',
+        'tutor_joined_at': now,
+        'attendance_admin_status': 'pending',
+        'updated_at': now,
+      };
+      if (session['session_started_at'] == null) {
+        updateData['session_started_at'] = now;
+      }
+      await _supabase.from('individual_sessions').update(updateData).eq('id', sessionId);
+    } catch (e) {
+      LogService.warning('Could not mark session in progress on check-in: $e');
     }
   }
 
@@ -362,7 +442,9 @@ class LocationCheckInService {
     try {
       final attendance = await _supabase
           .from('session_attendance')
-          .select('check_in_location, check_in_verified, joined_at')
+          .select(
+            'check_in_location, check_in_verified, check_in_time, joined_at, check_out_time, check_in_photo_url, check_out_photo_url',
+          )
           .eq('session_id', sessionId)
           .eq('user_id', userId)
           .maybeSingle();
@@ -371,11 +453,22 @@ class LocationCheckInService {
         return null;
       }
 
+      final verified = attendance['check_in_verified'] as bool? ?? false;
+      final checkInTime = attendance['check_in_time'] as String?;
+      final hasCheckedIn = verified && checkInTime != null;
+      final checkOutTime = attendance['check_out_time'] as String?;
+
       return {
-        'has_checked_in': attendance['check_in_location'] != null,
-        'verified': attendance['check_in_verified'] as bool? ?? false,
+        'has_checked_in': hasCheckedIn,
+        'has_checked_out': checkOutTime != null,
+        'verified': verified,
         'location': attendance['check_in_location'] as String?,
-        'checked_in_at': attendance['joined_at'] as String?,
+        'checked_in_at': checkInTime ?? attendance['joined_at'] as String?,
+        'checked_out_at': checkOutTime,
+        'has_check_in_selfie':
+            (attendance['check_in_photo_url'] as String?)?.trim().isNotEmpty == true,
+        'has_check_out_selfie':
+            (attendance['check_out_photo_url'] as String?)?.trim().isNotEmpty == true,
       };
     } catch (e) {
       LogService.error('Error getting check-in status: $e');
@@ -390,12 +483,14 @@ class LocationCheckInService {
     required String sessionId,
     required String userId,
     required String userType,
+    bool requireCheckoutSelfie = true,
   }) async {
     try {
-      // Find attendance record
       final attendanceRecords = await _supabase
           .from('session_attendance')
-          .select('id, joined_at, check_in_time')
+          .select(
+            'id, joined_at, check_in_time, check_in_verified, check_out_photo_url',
+          )
           .eq('session_id', sessionId)
           .eq('user_id', userId)
           .eq('user_type', userType);
@@ -403,43 +498,149 @@ class LocationCheckInService {
       if (attendanceRecords.isEmpty) {
         return {
           'success': false,
-          'message': 'No check-in record found. Please check in first.',
+          'message': 'Please check in at the session location before checking out.',
         };
       }
 
       final attendance = attendanceRecords[0];
+      if (attendance['check_in_verified'] != true) {
+        return {
+          'success': false,
+          'message': 'A verified check-in is required before you can check out.',
+        };
+      }
+
+      final checkoutPhoto = attendance['check_out_photo_url'] as String?;
+      if (requireCheckoutSelfie &&
+          (checkoutPhoto == null || checkoutPhoto.trim().isEmpty)) {
+        return {
+          'success': false,
+          'message':
+              'Please upload a checkout selfie before ending your on-site session.',
+        };
+      }
+
       final checkOutTime = DateTime.now();
-      final checkInTimeStr = attendance['check_in_time'] as String? ?? attendance['joined_at'] as String?;
-      
+      final checkInTimeStr = attendance['check_in_time'] as String? ??
+          attendance['joined_at'] as String?;
+
       int? durationMinutes;
       if (checkInTimeStr != null) {
         final checkInTime = DateTime.parse(checkInTimeStr);
         durationMinutes = checkOutTime.difference(checkInTime).inMinutes;
       }
 
-      // Update attendance record with check-out
-      await _supabase
-          .from('session_attendance')
-          .update({
-            'left_at': checkOutTime.toIso8601String(),
-            'check_out_time': checkOutTime.toIso8601String(),
-            'duration_minutes': durationMinutes,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', attendance['id']);
+      await _supabase.from('session_attendance').update({
+        'left_at': checkOutTime.toIso8601String(),
+        'check_out_time': checkOutTime.toIso8601String(),
+        'duration_minutes': durationMinutes,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', attendance['id']);
+
+      await _completeOnsiteSessionAfterCheckout(sessionId);
+
+      NotificationHelperService.notifyAdminsAboutSessionSafetyAlert(
+        sessionId: sessionId,
+        title: 'On-site session ready for review',
+        message:
+            'Tutor checked out. Please review attendance and selfies in the admin queue.',
+        severity: 'info',
+        type: 'onsite_checkout_pending_review',
+        sendPush: true,
+      ).catchError((e) {
+        LogService.warning('Admin notify after checkout failed: $e');
+      });
 
       return {
         'success': true,
         'check_out_time': checkOutTime.toIso8601String(),
         'duration_minutes': durationMinutes,
-        'message': 'Check-out successful!',
+        'message': 'Check-out recorded. Session ended and sent for admin review.',
       };
     } catch (e) {
       LogService.error('Error checking out from session: $e');
       return {
         'success': false,
         'error': e.toString(),
-        'message': 'Failed to check out. Please try again.',
+        'message': 'We could not complete check-out. Please try again.',
+      };
+    }
+  }
+
+  static Future<void> _completeOnsiteSessionAfterCheckout(String sessionId) async {
+    final now = DateTime.now().toIso8601String();
+    try {
+      final session = await _supabase
+          .from('individual_sessions')
+          .select('status, session_started_at, duration_minutes, location')
+          .eq('id', sessionId)
+          .maybeSingle();
+      if (session == null) return;
+
+      int? actualDurationMinutes;
+      if (session['session_started_at'] != null) {
+        final start = DateTime.parse(session['session_started_at'] as String);
+        actualDurationMinutes = DateTime.now().difference(start).inMinutes;
+      } else {
+        actualDurationMinutes = session['duration_minutes'] as int?;
+      }
+
+      await _supabase.from('individual_sessions').update({
+        'status': 'completed',
+        'session_ended_at': now,
+        'actual_duration_minutes': actualDurationMinutes,
+        'attendance_admin_status': 'pending',
+        'updated_at': now,
+      }).eq('id', sessionId);
+    } catch (e) {
+      LogService.warning('Could not complete session after checkout: $e');
+    }
+  }
+
+  /// Upload checkout selfie (required before check-out).
+  static Future<Map<String, dynamic>> uploadCheckoutSelfie({
+    required String sessionId,
+    required String userId,
+    required String userType,
+    required dynamic selfieFile,
+  }) async {
+    try {
+      final photoUrl = await StorageService.uploadDocument(
+        userId: userId,
+        documentFile: selfieFile,
+        documentType: 'session_checkout_selfie_$sessionId',
+      );
+
+      final attendance = await _supabase
+          .from('session_attendance')
+          .select('id')
+          .eq('session_id', sessionId)
+          .eq('user_id', userId)
+          .eq('user_type', userType)
+          .maybeSingle();
+
+      if (attendance == null) {
+        return {
+          'success': false,
+          'message': 'Check in first before uploading a checkout selfie.',
+        };
+      }
+
+      await _supabase.from('session_attendance').update({
+        'check_out_photo_url': photoUrl,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', attendance['id']);
+
+      return {
+        'success': true,
+        'photo_url': photoUrl,
+        'message': 'Checkout selfie uploaded. You can now check out.',
+      };
+    } catch (e) {
+      LogService.error('Error uploading checkout selfie: $e');
+      return {
+        'success': false,
+        'message': 'Failed to upload checkout selfie. Please try again.',
       };
     }
   }
@@ -461,6 +662,7 @@ class LocationCheckInService {
             check_in_location,
             check_in_verified,
             check_in_photo_url,
+            check_out_photo_url,
             punctuality_status,
             arrival_time_minutes,
             duration_minutes,
@@ -512,6 +714,16 @@ class LocationCheckInService {
             'check_in_photo_url': photoUrl,
             'updated_at': DateTime.now().toIso8601String(),
           }).eq('id', attendance['id']);
+        }
+
+        // Mark session for admin attendance review (onsite/hybrid)
+        try {
+          await _supabase.from('individual_sessions').update({
+            'attendance_admin_status': 'pending',
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', sessionId);
+        } catch (e) {
+          LogService.warning('Could not set attendance_admin_status: $e');
         }
       } catch (e) {
         LogService.warning('Selfie uploaded but not saved to attendance: $e');

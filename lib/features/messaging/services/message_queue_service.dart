@@ -25,6 +25,7 @@ class QueuedMessage {
   final String id;
   final String conversationId;
   final String content;
+  final String? clientMessageId;
   final DateTime createdAt;
   final int retryCount;
   final MessageQueueStatus status;
@@ -35,6 +36,7 @@ class QueuedMessage {
     required this.id,
     required this.conversationId,
     required this.content,
+    this.clientMessageId,
     required this.createdAt,
     this.retryCount = 0,
     this.status = MessageQueueStatus.pending,
@@ -47,6 +49,7 @@ class QueuedMessage {
       'id': id,
       'conversationId': conversationId,
       'content': content,
+      'clientMessageId': clientMessageId,
       'createdAt': createdAt.toIso8601String(),
       'retryCount': retryCount,
       'status': status.name,
@@ -60,6 +63,7 @@ class QueuedMessage {
       id: json['id'] as String,
       conversationId: json['conversationId'] as String,
       content: json['content'] as String,
+      clientMessageId: json['clientMessageId'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       retryCount: json['retryCount'] as int? ?? 0,
       status: MessageQueueStatus.values.firstWhere(
@@ -106,13 +110,21 @@ class MessageQueueService {
   static Future<void> queueMessage({
     required String conversationId,
     required String content,
+    String? clientMessageId,
   }) async {
     try {
       final queue = await _getQueue();
+      // Dedupe by clientMessageId
+      if (clientMessageId != null &&
+          queue.any((m) => m.clientMessageId == clientMessageId)) {
+        LogService.info('Message already queued (clientMessageId): $clientMessageId');
+        return;
+      }
       final queuedMessage = QueuedMessage(
         id: 'queue_${DateTime.now().millisecondsSinceEpoch}',
         conversationId: conversationId,
         content: content,
+        clientMessageId: clientMessageId,
         createdAt: DateTime.now(),
         status: MessageQueueStatus.pending,
       );
@@ -185,6 +197,7 @@ class MessageQueueService {
       await ChatService.sendMessage(
         conversationId: queuedMessage.conversationId,
         content: queuedMessage.content,
+        clientMessageId: queuedMessage.clientMessageId,
       );
 
       // Success - remove from queue

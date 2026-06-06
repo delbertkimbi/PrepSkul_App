@@ -115,23 +115,59 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
     }
   }
 
-  // Helper to parse "3:00 PM" to DateTime (using dummy date)
-  DateTime _parseTime(String timeStr) {
+  /// Parse "09:00" or "3:00 PM" into hour/minute (same rules as trial booking).
+  ({int hour, int minute})? _parseHourMinute(String slot) {
     try {
-      final parts = timeStr.split(' ');
-      final timeParts = parts[0].split(':');
-      int hour = int.parse(timeParts[0]);
-      final minute = int.parse(timeParts[1]);
-      final isPM = parts[1].toUpperCase() == 'PM';
+      final normalized = slot.trim().toUpperCase();
+      int hour;
+      int minute;
 
-      if (isPM && hour != 12) hour += 12;
-      if (!isPM && hour == 12) hour = 0;
+      if (normalized.contains('AM') || normalized.contains('PM')) {
+        final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)').firstMatch(normalized);
+        if (match == null) return null;
+        hour = int.parse(match.group(1)!);
+        minute = int.parse(match.group(2)!);
+        final meridian = match.group(3)!;
+        if (meridian == 'PM' && hour != 12) hour += 12;
+        if (meridian == 'AM' && hour == 12) hour = 0;
+      } else {
+        final parts = normalized.split(':');
+        if (parts.length < 2) return null;
+        hour = int.tryParse(parts[0]) ?? 0;
+        minute = int.tryParse(parts[1].split(' ')[0]) ?? 0;
+      }
 
-      final now = DateTime.now();
-      return DateTime(now.year, now.month, now.day, hour, minute);
-    } catch (e) {
-      return DateTime.now();
+      return (hour: hour.clamp(0, 23), minute: minute.clamp(0, 59));
+    } catch (_) {
+      return null;
     }
+  }
+
+  DateTime _parseTime(String timeStr) {
+    final parsed = _parseHourMinute(timeStr);
+    final now = DateTime.now();
+    if (parsed == null) {
+      return DateTime(now.year, now.month, now.day);
+    }
+    return DateTime(now.year, now.month, now.day, parsed.hour, parsed.minute);
+  }
+
+  bool _isPastSlotForToday(String slot) {
+    final now = DateTime.now();
+    final todayName = _getDayName(now.weekday).toLowerCase();
+    if (_currentDay.toLowerCase() != todayName) return false;
+
+    final parsed = _parseHourMinute(slot);
+    if (parsed == null) return false;
+
+    final slotTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      parsed.hour,
+      parsed.minute,
+    );
+    return !slotTime.isAfter(now);
   }
 
   String _getDayName(int weekday) {
@@ -332,35 +368,8 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
   }
 
   Widget _buildTimeSlot(String time) {
-    // Availability is already filtered by the service, but for the *current* day
-    // we additionally disable times that are already in the past so learners
-    // cannot book a slot that has already passed.
-    final now = DateTime.now();
-    bool isPastForToday = false;
-    final todayName = _getDayName(now.weekday).toLowerCase();
-    final selectedDayName = _currentDay.toLowerCase();
-    final isToday = selectedDayName == todayName;
-
-    if (isToday) {
-      try {
-        // Parse using the same helper used for sorting/grouping.
-        final parsed = _parseTime(time);
-        final slotTime = DateTime(
-          now.year,
-          now.month,
-          now.day,
-          parsed.hour,
-          parsed.minute,
-        );
-        if (!slotTime.isAfter(now)) {
-          isPastForToday = true;
-        }
-      } catch (_) {
-        // If parsing fails, keep slot selectable rather than over-restricting.
-        isPastForToday = false;
-      }
-    }
-
+    // Disable times already in the past when the selected weekday is today.
+    final isPastForToday = _isPastSlotForToday(time);
     final isSelected = !isPastForToday && _selectedTimes[_currentDay] == time;
 
     return GestureDetector(

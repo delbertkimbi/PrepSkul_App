@@ -3761,7 +3761,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   try {
                     final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
                       recurringSessionId: recurringSessionId,
-                      weeksAhead: 8,
                     );
                     
                     if (sessionsGenerated > 0) {
@@ -4212,7 +4211,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           if (existingSessions.isEmpty) {
             final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
               recurringSessionId: recurringSessionId,
-              weeksAhead: 8,
             );
             LogService.success('✅ Generated $sessionsGenerated individual sessions');
           } else {

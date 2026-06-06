@@ -84,7 +84,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   double _trialFee = 3500.0; // Default, will be loaded from database
   double _basePrice = 3500.0; // Base price without discount
-  bool _isLoadingPrice = false;
+  bool _isLoadingPrice = true;
   bool _discountApplied = false; // Track if user clicked "Get Discount"
   Map<int, Map<String, dynamic>> _pricingDetails = {}; // Stores pricing details for each duration
 
@@ -1365,13 +1365,33 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: _buildDurationOption(30, '30 min', '2,000 XAF')),
-              const SizedBox(width: 12),
-              Expanded(child: _buildDurationOption(60, '1 hour', '3,500 XAF')),
-            ],
-          ),
+          if (_isLoadingPrice)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDurationOption(
+                    30,
+                    '30 min',
+                    _formatDurationPrice(30),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDurationOption(
+                    60,
+                    '1 hour',
+                    _formatDurationPrice(60),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -2006,6 +2026,14 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         ],
       ),
     );
+  }
+
+  String _formatDurationPrice(int minutes) {
+    final details = _pricingDetails[minutes];
+    if (details != null && details['basePrice'] != null) {
+      return PricingService.formatPrice(details['basePrice'] as double);
+    }
+    return '—';
   }
 
   Widget _buildDurationOption(int minutes, String label, String fallbackPrice) {

@@ -3,6 +3,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/prepskul_back_app_bar.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/unblock_request_service.dart';
 
@@ -84,22 +85,11 @@ class _TutorAdminFeedbackScreenState extends State<TutorAdminFeedbackScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
+      appBar: PrepSkulBackAppBar(
+        title: 'Admin Feedback',
         backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () =>
-              Navigator.of(context).pop(true), // Return true to refresh
-        ),
-        title: Text(
-          'Admin Feedback',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+        returnToTutorHome: false,
+        onBack: () => Navigator.of(context).pop(true),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
