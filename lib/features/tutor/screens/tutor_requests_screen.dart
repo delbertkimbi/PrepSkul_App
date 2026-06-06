@@ -10,6 +10,7 @@ import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/widgets/empty_state_widget.dart';
 import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
+import '../../../features/booking/utils/tutor_request_list_filters.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'tutor_request_detail_full_screen.dart';
@@ -31,49 +32,16 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   bool _isLoading = true;
   String _selectedFilter = 'all'; // all, pending, approved, rejected
 
-  bool _isPaidStatus(String? status) {
-    final normalized = (status ?? '').toLowerCase();
-    return normalized == 'paid' || normalized == 'completed';
-  }
+  bool _isPaidStatus(String? status) => isTutorRequestPaid(status);
 
-  bool _isSessionLinkedStatus(String status) {
-    final normalized = status.toLowerCase();
-    return normalized == 'approved' || normalized == 'matched' || normalized == 'scheduled';
-  }
+  bool _isSessionLinkedStatus(String status) =>
+      isTutorRequestSessionLinked(status);
 
-  bool _isPastRequest(BookingRequest request) {
-    final now = DateTime.now();
-    final cutoff = now.subtract(const Duration(days: 30));
-    final status = request.status.toLowerCase();
+  bool _isPastRequest(BookingRequest request) =>
+      isPastTutorBookingRequest(request);
 
-    // Always treat old records as past-history.
-    if (request.createdAt.isBefore(cutoff)) return true;
-
-    // Terminal states should live in Past.
-    if (status == 'rejected' || status == 'cancelled' || status == 'completed' || status == 'expired') {
-      return true;
-    }
-
-    // Approved requests are considered past once there is evidence payment
-    // completed and the associated scheduled date has already passed.
-    if (_isSessionLinkedStatus(status) &&
-        _isPaidStatus(request.paymentStatus) &&
-        request.scheduledDate != null) {
-      final endOfDay = DateTime(
-        request.scheduledDate!.year,
-        request.scheduledDate!.month,
-        request.scheduledDate!.day,
-        23,
-        59,
-        59,
-      );
-      if (now.isAfter(endOfDay)) return true;
-    }
-
-    return false;
-  }
-
-  bool _isActiveRequest(BookingRequest request) => !_isPastRequest(request);
+  bool _isActiveRequest(BookingRequest request) =>
+      isActiveTutorBookingRequest(request);
 
   @override
   void initState() {
@@ -382,9 +350,13 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
     if (status == 'all') return _allRequests.where(_isActiveRequest).length;
     if (status == 'past') return _allRequests.where(_isPastRequest).length;
     if (status == 'rejected') {
-      return _allRequests.where((r) => _isPastRequest(r) && r.status == status).length;
+      return _allRequests
+          .where((r) => _isPastRequest(r) && r.status == status)
+          .length;
     }
-    return _allRequests.where((r) => r.status == status).length;
+    return _allRequests
+        .where((r) => _isActiveRequest(r) && r.status == status)
+        .length;
   }
 
   Widget _buildEmptyState() {

@@ -30,6 +30,12 @@ class AgoraVideoViewWidget extends StatefulWidget {
   // Prevent repeated local web setup calls on every rebuild.
   static final Map<String, String> _lastLocalSetupSignatureByUid = <String, String>{};
   static final Map<String, DateTime> _lastLocalSetupAtByUid = <String, DateTime>{};
+
+  /// Clears web local setup throttle so the next build re-binds the canvas.
+  static void clearLocalSetupCacheForWeb() {
+    _lastLocalSetupSignatureByUid.clear();
+    _lastLocalSetupAtByUid.clear();
+  }
   static final Map<String, String> _lastRemoteRenderSignatureByUid = <String, String>{};
   static final Map<String, DateTime> _lastRemoteRenderLogAtByUid = <String, DateTime>{};
 
@@ -176,7 +182,12 @@ class _AgoraVideoViewWidgetState extends State<AgoraVideoViewWidget> {
                 AgoraVideoViewWidget._lastLocalSetupSignatureByUid[uidKey];
             final previousAt =
                 AgoraVideoViewWidget._lastLocalSetupAtByUid[uidKey];
-            final shouldSetup = previousSig != sourceSig ||
+            final forceScreenRebind =
+                actualSourceType ==
+                    agora_rtc_engine.VideoSourceType.videoSourceScreen &&
+                AgoraService().isPublishingScreen;
+            final shouldSetup = forceScreenRebind ||
+                previousSig != sourceSig ||
                 previousAt == null ||
                 now.difference(previousAt) > const Duration(seconds: 10);
 

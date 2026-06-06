@@ -2145,6 +2145,10 @@ class AgoraService {
         source: 'local_start',
       );
 
+      if (kIsWeb) {
+        await rebindLocalScreenSharePreview();
+      }
+
       // Mute camera AFTER screen capture is ready - avoids blackout on remote
       if (_isVideoEnabled && _engine != null) {
         LogService.info('📹 Muting camera now that screen capture is active');
@@ -2185,6 +2189,33 @@ class AgoraService {
         source: 'local_start_error',
         forceStopOwner: true,
       );
+    }
+  }
+
+  /// Re-bind the local screen canvas on web after capture starts or layout changes.
+  /// Flutter web only supports one [setupLocalVideo] surface; a delayed second bind
+  /// helps once the stage [AgoraVideoView] is mounted.
+  Future<void> rebindLocalScreenSharePreview() async {
+    if (_engine == null || !_isPublishingScreen || !kIsWeb) return;
+    try {
+      await _engine!.setupLocalVideo(
+        const VideoCanvas(
+          uid: 0,
+          sourceType: VideoSourceType.videoSourceScreen,
+          renderMode: RenderModeType.renderModeFit,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 280));
+      await _engine!.setupLocalVideo(
+        const VideoCanvas(
+          uid: 0,
+          sourceType: VideoSourceType.videoSourceScreen,
+          renderMode: RenderModeType.renderModeFit,
+        ),
+      );
+      LogService.info('📺 Rebound local screen share preview (web)');
+    } catch (e) {
+      LogService.warning('Failed to rebind local screen share preview: $e');
     }
   }
 

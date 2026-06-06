@@ -821,6 +821,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      // Web can only bind one local video surface — fullscreen share avoids
+      // companion camera tiles fighting the screen canvas.
+      _screenShareLayoutPreset = ScreenShareLayoutPreset.stageOnly;
+    }
     _recoveryQoeCorrelationId = QoeTelemetryService.buildCorrelationId(
       widget.sessionId,
     );
@@ -1161,6 +1166,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         _recoveryUnstableObservedAt = null;
       }
       if (reason == null &&
+          !_anyScreenShareActive &&
           SessionHeartbeatService().lastPeerBeatAt != null &&
           DateTime.now().difference(SessionHeartbeatService().lastPeerBeatAt!) >
               const Duration(seconds: 105)) {
@@ -3067,7 +3073,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
 
     _errorSubscription = _agoraService.errorStream.listen((error) {
       final userMessage = _toUserFriendlyError(error);
-      final lowered = userMessage.toLowerCas e();
+      final lowered = userMessage.toLowerCase();
       final isRecoverableConnectionIssue =
           lowered.contains('connection') ||
           lowered.contains('network') ||
@@ -3228,12 +3234,18 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             uid == myUid &&
             ownerUid == myUid &&
             mounted) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
             if (!mounted) return;
+            agora_widget.AgoraVideoViewWidget.clearLocalSetupCacheForWeb();
             safeSetState(() {
-              _screenShareLayoutPreset =
-                  ScreenShareLayoutPreset.shareWithCompanionCameras;
+              _screenShareLayoutPreset = kIsWeb
+                  ? ScreenShareLayoutPreset.stageOnly
+                  : ScreenShareLayoutPreset.shareWithCompanionCameras;
             });
+            if (kIsWeb) {
+              await _agoraService.rebindLocalScreenSharePreview();
+              if (mounted) safeSetState(() {});
+            }
           });
         }
       });
@@ -3737,6 +3749,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     _localPreviewWatchdogTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
       if (!_isVideoEnabled) return;
+      if (_localScreenShareCapturing || _agoraService.isPublishingScreen) {
+        return;
+      }
       if (_agoraService.engine == null) return;
 
       LogService.info(
@@ -3765,7 +3780,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
 
   Future<void> _ensureLocalPreviewActiveNow({bool force = false}) async {
     if (_agoraService.engine == null || !_isVideoEnabled) return;
-    if (_agoraService.isPublishingScreen && !_localScreenShareCapturing) {
+    if (_localScreenShareCapturing || _agoraService.isPublishingScreen) {
       return;
     }
     if (_localPreviewEnsureInProgress) return;
@@ -3921,6 +3936,13 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         return;
       }
       await _agoraService.startScreenSharing();
+      if (kIsWeb && mounted) {
+        agora_widget.AgoraVideoViewWidget.clearLocalSetupCacheForWeb();
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          await _agoraService.rebindLocalScreenSharePreview();
+          if (mounted) safeSetState(() {});
+        });
+      }
     } catch (e) {
       final errorStr = e.toString().toLowerCase();
       final isUserCancel =
@@ -5273,7 +5295,20 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           return _wrapLocalScreenShareStatusChrome(
             context: context,
             isLocalSharing: isLocalSharing,
-            child: stage,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                stage,
+                _screenShareStageHeaderPill(isLocalSharing: isLocalSharing),
+                if (_remoteUID != null && !_remoteUserLeft)
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: isLocalSharing ? 88 : 20,
+                    child: _screenShareParticipantPresenceBar(),
+                  ),
+              ],
+            ),
           );
         }
 
@@ -5497,6 +5532,165 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             ),
         ],
       ),
+    );
+  }
+
+  Widget _screenShareStageHeaderPill({required bool isLocalSharing}) {
+    final label = isLocalSharing ? 'Your screen' : '${_remoteCompanionLabel()}\'s screen';
+    return Positioned(
+      top: 14,
+      left: 14,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.58),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.55)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.cast_rounded,
+                size: 16,
+                color: AppTheme.primaryColor.withOpacity(0.95),
+              ),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  color: Colors.white.withOpacity(0.95),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _screenShareParticipantPresenceBar() {
+    final chips = <Widget>[];
+    if (_remoteUID != null && !_remoteUserLeft) {
+      chips.add(
+        _screenSharePresenceChip(
+          label: _remoteCompanionLabel(),
+          cameraOff: _remoteVideoMuted || !_remoteVideoReady || _remoteScreenOff,
+          speaking: _speakingUids.contains(_remoteUID),
+        ),
+      );
+    }
+    final myUid = _agoraService.currentUID;
+    if (myUid != null) {
+      chips.add(
+        _screenSharePresenceChip(
+          label: 'You',
+          cameraOff: !_isVideoEnabled || _localScreenShareCapturing,
+          speaking: _speakingUids.contains(myUid),
+          highlight: true,
+        ),
+      );
+    }
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Align(
+      alignment: Alignment.center,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.42),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.14)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < chips.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                chips[i],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _screenSharePresenceChip({
+    required String label,
+    required bool cameraOff,
+    required bool speaking,
+    bool highlight = false,
+  }) {
+    final avatarUrl = highlight
+        ? (_localProfile?['avatar_url'] as String?)
+        : (_remoteProfile?['avatar_url'] as String?);
+    final initials =
+        label.isNotEmpty ? label.substring(0, 1).toUpperCase() : '?';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: speaking
+                  ? AppTheme.primaryColor
+                  : (highlight
+                      ? Colors.white.withOpacity(0.5)
+                      : Colors.white24),
+              width: speaking ? 2.2 : 1.2,
+            ),
+          ),
+          child: CircleAvatar(
+            radius: 16,
+            backgroundColor: highlight
+                ? AppTheme.primaryDark
+                : Colors.white.withOpacity(0.12),
+            backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
+                ? NetworkImage(avatarUrl)
+                : null,
+            child: (avatarUrl == null || avatarUrl.isEmpty)
+                ? Text(
+                    initials,
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
+                : null,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            color: Colors.white.withOpacity(0.92),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        if (cameraOff) ...[
+          const SizedBox(width: 5),
+          Icon(
+            Icons.videocam_off_rounded,
+            size: 14,
+            color: Colors.white.withOpacity(0.55),
+          ),
+        ],
+      ],
     );
   }
 
