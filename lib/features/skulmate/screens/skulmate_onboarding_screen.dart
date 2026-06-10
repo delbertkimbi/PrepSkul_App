@@ -9,7 +9,11 @@ import 'character_selection_screen.dart';
 
 /// 3-screen onboarding for skulMate
 class SkulMateOnboardingScreen extends StatefulWidget {
-  const SkulMateOnboardingScreen({Key? key}) : super(key: key);
+  /// When true, character selection pops back to the caller (main tab flow).
+  final bool popWhenDone;
+
+  const SkulMateOnboardingScreen({Key? key, this.popWhenDone = false})
+    : super(key: key);
 
   @override
   State<SkulMateOnboardingScreen> createState() => _SkulMateOnboardingScreenState();
@@ -79,14 +83,16 @@ class _SkulMateOnboardingScreenState extends State<SkulMateOnboardingScreen>
 
   Future<void> _completeOnboarding() async {
     await SkulMateOnboardingService.markOnboardingComplete();
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const CharacterSelectionScreen(isFirstTime: true),
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CharacterSelectionScreen(
+          isFirstTime: true,
+          popWhenDone: widget.popWhenDone,
         ),
-      );
-    }
+      ),
+    );
   }
 
   void _skipOnboarding() {

@@ -15,15 +15,20 @@ class TutorPageBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pad = ResponsiveHelper.responsiveHorizontalPadding(context);
+    // Mobile tabs manage their own gutters — avoid double padding with screen scroll views.
+    final horizontalPad = ResponsiveHelper.isMobile(context)
+        ? 0.0
+        : ResponsiveHelper.responsiveHorizontalPadding(context);
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: pad.clamp(12, 32)),
-          child: child,
-        ),
+        child: horizontalPad > 0
+            ? Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPad),
+                child: child,
+              )
+            : child,
       ),
     );
   }

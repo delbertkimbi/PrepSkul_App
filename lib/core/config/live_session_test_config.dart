@@ -41,6 +41,20 @@ class LiveSessionTestConfig {
     return isTestUser(userId);
   }
 
+  /// Test accounts may start onsite sessions outside the presence window (debug QA).
+  static bool canStartOnsiteEarly(String? userId) {
+    if (userId == null || userId.isEmpty) return false;
+    if (!kDebugMode) return false;
+    return isTestUser(userId);
+  }
+
+  /// Debug/test accounts may record check-in when GPS is unavailable (e.g. Flutter web).
+  static bool canBypassOnsiteLocationVerify(String? userId) {
+    if (userId == null || userId.isEmpty) return false;
+    if (!kDebugMode) return false;
+    return isTestUser(userId);
+  }
+
   /// Returns true if the user is allowed to join a session.
   /// When [restrictJoinsToTestUsersForLocalTesting] is true (debug only),
   /// only test users can join; otherwise all users can join.

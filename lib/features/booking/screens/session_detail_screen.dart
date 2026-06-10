@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/responsive_helper.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
 import 'package:prepskul/core/config/live_session_test_config.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:intl/intl.dart';
 import 'package:prepskul/features/sessions/widgets/session_location_map.dart';
 import 'package:prepskul/features/sessions/widgets/location_tracking_widget.dart';
+import 'package:prepskul/features/sessions/widgets/family_onsite_session_panel.dart';
+import 'package:prepskul/features/sessions/widgets/onsite_session_experience.dart';
+import 'package:prepskul/features/sessions/widgets/live_session_route_registrar.dart';
+import 'package:prepskul/features/sessions/widgets/onsite_live_safety_bar.dart';
+import 'package:prepskul/features/sessions/services/session_safety_service.dart';
 import 'package:prepskul/features/sessions/widgets/session_mode_statistics_widget.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
@@ -18,8 +26,11 @@ import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:prepskul/features/booking/services/session_reschedule_service.dart';
 import 'package:prepskul/features/booking/services/onsite_confirmation_service.dart';
 import 'package:prepskul/features/booking/widgets/report_issue_bottom_sheet.dart';
+import 'package:prepskul/features/booking/widgets/next_session_hero_card.dart';
+import 'package:prepskul/features/booking/widgets/collapsible_session_details.dart';
+import 'package:prepskul/features/booking/models/upcoming_session_item.dart';
+import 'package:prepskul/features/booking/utils/session_live_utils.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:intl/intl.dart';
 
 /// Session Detail Screen
 ///
@@ -58,6 +69,15 @@ class SessionDetailScreen extends StatelessWidget {
         return 'Approved';
       default:
         return status;
+    }
+  }
+
+  DateTime? _parseSessionStartedAt(dynamic raw) {
+    if (raw == null) return null;
+    try {
+      return DateTime.parse(raw.toString());
+    } catch (_) {
+      return null;
     }
   }
 
@@ -448,6 +468,26 @@ class SessionDetailScreen extends StatelessWidget {
     }
   }
 
+  Future<String?> _loadUserSurveyAddress() async {
+    try {
+      final profile = await AuthService.getUserProfile();
+      if (profile == null) return null;
+      final userType = profile['user_type'] as String?;
+      final userId = profile['id'] as String?;
+      if (userId == null) return null;
+      Map<String, dynamic>? survey;
+      if (userType == 'student') {
+        survey = await SurveyRepository.getStudentSurvey(userId);
+      } else if (userType == 'parent') {
+        survey = await SurveyRepository.getParentSurvey(userId);
+      }
+      return GeocodingHelper.formatSurveyAddress(survey);
+    } catch (e) {
+      LogService.debug('Could not load survey address for map visibility: $e');
+      return null;
+    }
+  }
+
   Widget _buildDetailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -484,15 +524,27 @@ class SessionDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
     final tutorName = recurringData?['tutor_name'] as String? ?? 'Tutor';
+    final tutorAvatarUrl = recurringData?['tutor_avatar_url'] as String?;
+    final learnerName = recurringData?['learner_name'] as String?;
+    final learnerAvatarUrl = recurringData?['learner_avatar_url'] as String?;
     final subject = recurringData?['subject'] as String? ?? 'Session';
     final scheduledDate = session['scheduled_date'] as String;
     final scheduledTime = session['scheduled_time'] as String;
     final duration = session['duration_minutes'] as int? ?? 60;
     final location = session['location'] as String? ?? 'online';
     final status = session['status'] as String;
+    final isGenuinelyLive = SessionLiveUtils.isSessionGenuinelyLive(session);
     final sessionId = session['id'] as String;
-    final onsiteAddress = session['onsite_address'] as String?;
+    final onsiteAddressRaw = session['address'] as String? ??
+        session['onsite_address'] as String? ??
+        session['location_description'] as String?;
+    final onsiteAddress = onsiteAddressRaw != null && onsiteAddressRaw.trim().isNotEmpty
+        ? GeocodingHelper.stripEmbeddedCoords(onsiteAddressRaw)
+        : null;
     final locationDescription = session['location_description'] as String?;
+    final addressCoordinates = (session['onsite_coordinates'] as String?) ??
+        GeocodingHelper.extractEmbeddedCoordinates(locationDescription) ??
+        GeocodingHelper.extractEmbeddedCoordinates(session['address'] as String?);
     
     // Get current user info for check-in
     String? currentUserId;
@@ -506,7 +558,25 @@ class SessionDetailScreen extends StatelessWidget {
           userType = snapshot.data?['user_type'] as String?;
         }
         
-        return Scaffold(
+        final heroItem = UpcomingSessionItem.fromSessionDetailMap(session);
+        final showStickyJoin =
+            location == 'online' && (status == 'scheduled' || isGenuinelyLive);
+        final showStickySafety = location == 'onsite' && isGenuinelyLive;
+        final profile = snapshot.data;
+        final studentName = learnerName ?? profile?['full_name'] as String? ?? 'Student';
+        final studentAvatarUrl = learnerAvatarUrl ?? profile?['avatar_url'] as String?;
+        final safetyRole = userType == 'parent' ? 'parent' : 'learner';
+        final safetyUserType = userType == 'parent' ? 'parent' : 'student';
+
+        return LiveSessionRouteRegistrar(
+          session: session,
+          userRole: userType ?? 'student',
+          counterpartyName: tutorName,
+          subject: subject,
+          localAvatarUrl: studentAvatarUrl,
+          counterpartyAvatarUrl: tutorAvatarUrl,
+          isOnline: location == 'online',
+          child: Scaffold(
           backgroundColor: Colors.white,
           appBar: AppBar(
             backgroundColor: Colors.white,
@@ -516,7 +586,11 @@ class SessionDetailScreen extends StatelessWidget {
               onPressed: () => Navigator.pop(context),
             ),
             title: Text(
-              'Session Details',
+              location == 'onsite' && isGenuinelyLive
+                  ? 'Live session'
+                  : (location == 'onsite' && (status == 'completed' || status == 'evaluated')
+                      ? 'Session complete'
+                      : 'Session details'),
               style: GoogleFonts.poppins(
                 fontWeight: FontWeight.w600,
                 fontSize: 18,
@@ -524,31 +598,35 @@ class SessionDetailScreen extends StatelessWidget {
               ),
             ),
           ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          body: Column(
               children: [
-                // Session Details Section
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey[200]!),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                    vertical: ResponsiveHelper.responsiveVerticalPadding(context),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                if (heroItem != null) ...[
+                  NextSessionHeroCard(
+                    session: heroItem,
+                    variant: NextSessionHeroVariant.detail,
+                  ),
+                  const SizedBox(height: 16),
+                  if (location != 'onsite')
+                    CollapsibleSessionDetails(
                     children: [
                       _buildDetailRow('Tutor', tutorName),
                       _buildDetailRow('Subject', subject),
                       _buildDetailRow('Date & Time', _formatDateTime(scheduledDate, scheduledTime)),
                       _buildDetailRow('Duration', '$duration minutes'),
                       _buildDetailRow('Location', location == 'online' ? 'Online' : 'On-site'),
-                      _buildDetailRow('Status', _getStatusLabel(status)),
+                        _buildDetailRow('Status', _getStatusLabel(SessionLiveUtils.effectiveStatus(session))),
                     ],
                   ),
-                ),
+                ],
                 
                 // Mode statistics for flexible sessions
                 if (recurringData != null && recurringData['id'] != null) ...[
@@ -559,79 +637,123 @@ class SessionDetailScreen extends StatelessWidget {
                   ),
                 ],
                 
-                // Location map for onsite sessions
-                if (location == 'onsite' && 
-                    onsiteAddress != null && onsiteAddress.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  SessionLocationMap(
-                    address: onsiteAddress,
-                    coordinates: null,
-                    locationDescription: locationDescription,
-                    sessionId: sessionId,
-                    currentUserId: currentUserId,
-                    userType: userType,
-                    showCheckIn: status == 'scheduled' || status == 'in_progress',
-                    scheduledDateTime: _parseSessionDateTime(scheduledDate, scheduledTime),
-                    locationType: location,
-                  ),
-                  // Real-time location tracking for parents during active sessions
-                  if (status == 'in_progress' && 
-                      (userType == 'parent' || userType == 'student')) ...[
-                    const SizedBox(height: 20),
-                    LocationTrackingWidget(
-                      sessionId: sessionId,
-                      sessionAddress: onsiteAddress,
-                      sessionCoordinates: null,
-                    ),
-                  ],
-                  // Onsite: show tutor check-in time for family when available
-                  if ((userType == 'parent' || userType == 'student') && location == 'onsite' && session['type'] != 'trial') ...[
-                    const SizedBox(height: 12),
+                // Progressive onsite experience (parent / learner)
+                if (location == 'onsite') ...[
+                  if (onsiteStageFromSession(session) ==
+                      OnsiteExperienceStage.preSession) ...[
                     _TutorCheckInLine(sessionId: sessionId),
+                    const SizedBox(height: 12),
                   ],
-                  // Optional parent/learner confirm start (onsite, in_progress)
-                  if ((userType == 'parent' || userType == 'student') &&
-                      status == 'in_progress' &&
-                      session['type'] != 'trial') ...[
-                    const SizedBox(height: 20),
-                    _OnsiteConfirmStartCard(
+                  const SizedBox(height: 8),
+                  FutureBuilder<String?>(
+                    future: _loadUserSurveyAddress(),
+                    builder: (context, addressSnapshot) {
+                      return FamilyOnsiteSessionPanel(
+                    session: session,
+                    status: status,
+                    tutorName: tutorName,
+                    tutorAvatarUrl: tutorAvatarUrl,
+                    studentName: studentName,
+                    studentAvatarUrl: studentAvatarUrl,
+                    subject: subject,
+                    address: onsiteAddress ?? 'On-site location pending',
+                    addressCoordinates: addressCoordinates,
+                    locationDescription: locationDescription,
+                    userAddress: addressSnapshot.data,
+                    scheduledStart: _parseSessionDateTime(scheduledDate, scheduledTime),
+                    sessionStartedAt: _parseSessionStartedAt(session['session_started_at']),
+                    sessionDetailsSlot: !isGenuinelyLive
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Session details',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textDark,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Column(
+                                  children: [
+                                    _buildDetailRow('Tutor', tutorName),
+                                    _buildDetailRow('Subject', subject),
+                                    _buildDetailRow('Date & Time', _formatDateTime(scheduledDate, scheduledTime)),
+                                    _buildDetailRow('Duration', '$duration minutes'),
+                                    _buildDetailRow('Status', _getStatusLabel(SessionLiveUtils.effectiveStatus(session))),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          )
+                        : null,
+                    trackingWidget: isGenuinelyLive &&
+                            (userType == 'parent' || userType == 'student')
+                        ? LocationTrackingWidget(
+                            sessionId: sessionId,
+                            sessionAddress: onsiteAddress,
+                            sessionCoordinates: null,
+                          )
+                        : null,
+                    confirmStartWidget: (userType == 'parent' || userType == 'student') &&
+                            isGenuinelyLive &&
+                            session['type'] != 'trial'
+                        ? _OnsiteConfirmStartCard(
                       sessionId: sessionId,
                       parentConfirmedAt: session['parent_confirmed_start_at'],
                       learnerConfirmedAt: session['learner_confirmed_start_at'],
                       isParent: userType == 'parent',
                       isLearner: userType == 'student',
-                    ),
-                  ],
-                  // Optional parent/learner confirm end (onsite, completed)
-                  if ((userType == 'parent' || userType == 'student') &&
+                          )
+                        : null,
+                    confirmEndWidget: (userType == 'parent' || userType == 'student') &&
                       status == 'completed' &&
-                      session['type'] != 'trial') ...[
-                    const SizedBox(height: 20),
-                    _OnsiteConfirmEndCard(
+                            session['type'] != 'trial'
+                        ? _OnsiteConfirmEndCard(
                       sessionId: sessionId,
                       parentConfirmedAt: session['parent_confirmed_end_at'],
                       learnerConfirmedAt: session['learner_confirmed_end_at'],
                       isParent: userType == 'parent',
                       isLearner: userType == 'student',
+                          )
+                        : null,
+                    messageTutorButton: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _navigateToChat(context, session),
+                        icon: Icon(PhosphorIcons.chatCircleDots(), size: 20, color: AppTheme.primaryColor),
+                        label: Text(
+                          'Message tutor',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          side: BorderSide(color: AppTheme.primaryColor),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
                     ),
-                  ],
+                      );
+                    },
+                  ),
                 ],
-                
-                // Action buttons: upcoming or in progress
-                if (status == 'scheduled' || status == 'in_progress') ...[
+
+                // Secondary actions for online (join is sticky footer)
+                if ((status == 'scheduled' || status == 'in_progress') && location == 'online') ...[
                   const SizedBox(height: 24),
-                  // Join button: inactive until session time, with countdown
-                  if (location == 'online')
-                    _JoinVideoButtonWithCountdown(
-                      sessionId: sessionId,
-                      status: status,
-                      scheduledDate: scheduledDate,
-                      scheduledTime: scheduledTime,
-                      currentUserId: SupabaseService.currentUser?.id,
-                      onJoin: () => _joinAgoraSession(context, sessionId),
-                    ),
-                  const SizedBox(height: 12),
-                  // Message Tutor button (white, deep blue border + text)
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -656,8 +778,8 @@ class SessionDetailScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Report issue (only for individual sessions; trials use trial_sessions.id)
-                  if (session['type'] != 'trial') ...[
+                  // Report only once the session is live or after it ends
+                  if (isGenuinelyLive && session['type'] != 'trial') ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
@@ -790,6 +912,76 @@ class SessionDetailScreen extends StatelessWidget {
                     },
                   ),
                 ],
+                    ],
+                  ),
+                ),
+              ),
+              if (showStickyJoin)
+                Container(
+                  padding: EdgeInsets.fromLTRB(
+                    ResponsiveHelper.responsiveHorizontalPadding(context),
+                    12,
+                    ResponsiveHelper.responsiveHorizontalPadding(context),
+                    16 + MediaQuery.paddingOf(context).bottom,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: _JoinVideoButtonWithCountdown(
+                    sessionId: sessionId,
+                    session: session,
+                    status: status,
+                    scheduledDate: scheduledDate,
+                    scheduledTime: scheduledTime,
+                    currentUserId: SupabaseService.currentUser?.id,
+                    onJoin: () => _joinAgoraSession(context, sessionId),
+                  ),
+                ),
+              if (showStickySafety && currentUserId != null)
+                Container(
+                  padding: EdgeInsets.fromLTRB(
+                    ResponsiveHelper.responsiveHorizontalPadding(context),
+                    12,
+                    ResponsiveHelper.responsiveHorizontalPadding(context),
+                    16 + MediaQuery.paddingOf(context).bottom,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: OnsiteLiveSafetyBar(
+                    onReport: session['type'] != 'trial'
+                        ? () => showReportIssueBottomSheet(
+                              context: context,
+                              sessionId: sessionId,
+                              role: safetyRole,
+                            )
+                        : null,
+                    onShareLocation: () => SessionSafetyService.shareWithEmergencyContact(
+                      sessionId: sessionId,
+                      userId: currentUserId!,
+                      userType: safetyUserType,
+                    ),
+                    onPanic: () => SessionSafetyService.triggerPanicButton(
+                      sessionId: sessionId,
+                      userId: currentUserId!,
+                      userType: safetyUserType,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -802,6 +994,7 @@ class SessionDetailScreen extends StatelessWidget {
 /// Join button disabled until session time; shows countdown when scheduled.
 class _JoinVideoButtonWithCountdown extends StatefulWidget {
   final String sessionId;
+  final Map<String, dynamic>? session;
   final String status;
   final String scheduledDate;
   final String scheduledTime;
@@ -810,6 +1003,7 @@ class _JoinVideoButtonWithCountdown extends StatefulWidget {
 
   const _JoinVideoButtonWithCountdown({
     required this.sessionId,
+    this.session,
     required this.status,
     required this.scheduledDate,
     required this.scheduledTime,
@@ -857,7 +1051,9 @@ class _JoinVideoButtonWithCountdownState extends State<_JoinVideoButtonWithCount
   Widget build(BuildContext context) {
     final start = _parseStart(widget.scheduledDate, widget.scheduledTime);
     final now = DateTime.now();
-    final inProgress = widget.status == 'in_progress';
+    final inProgress = widget.session != null
+        ? SessionLiveUtils.isSessionGenuinelyLive(widget.session!)
+        : widget.status == 'in_progress';
     final allowedToJoin = LiveSessionTestConfig.canUserJoinSession(widget.currentUserId);
     final canJoin = allowedToJoin &&
         (inProgress ||
@@ -901,7 +1097,7 @@ class _JoinVideoButtonWithCountdownState extends State<_JoinVideoButtonWithCount
             onPressed: canJoin ? widget.onJoin : null,
             icon: Icon(PhosphorIcons.videoCamera(), size: 20),
             label: Text(
-              widget.status == 'in_progress' ? 'Join Session' : 'Join Video Session',
+              inProgress ? 'Join Session' : 'Join Video Session',
               style: GoogleFonts.poppins(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -909,7 +1105,7 @@ class _JoinVideoButtonWithCountdownState extends State<_JoinVideoButtonWithCount
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: canJoin
-                  ? (widget.status == 'in_progress' ? AppTheme.accentGreen : AppTheme.primaryColor)
+                  ? AppTheme.primaryColor
                   : Colors.grey[400],
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),

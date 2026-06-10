@@ -10,6 +10,8 @@ import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
+import 'package:prepskul/features/payment/widgets/payment_checkout_ui.dart';
+import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
@@ -731,300 +733,139 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       },
 
       child: Scaffold(
-        backgroundColor: Colors.grey[50],
+        backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: Text(
           'Complete Payment',
           style: GoogleFonts.poppins(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: AppTheme.textDark,
           ),
         ),
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Session Summary Card
-                  _buildSessionSummary(),
-                  const SizedBox(height: 24),
-
-                  // Payment Amount Card
-                  _buildPaymentAmount(),
-                  const SizedBox(height: 24),
-
-                  // Phone Number Input
-                  if (_paymentStatus == 'idle' || _paymentStatus == 'failed')
-                    _buildPhoneInput(),
-                  const SizedBox(height: 24),
-
-                  // Payment Status
-                  if (_paymentStatus == 'pending' || _isPolling)
-                    _buildPaymentPending(),
-                  if (_paymentStatus == 'successful')
-                    _buildPaymentSuccess(),
-                  if (_paymentStatus == 'successful' && _errorMessage != null)
-                    const SizedBox(height: 12),
-                  if (_errorMessage != null) _buildErrorMessage(),
-
-                  const SizedBox(height: 16),
-
-                  // Action Buttons
-                  if (_paymentStatus == 'idle' || _paymentStatus == 'failed' || _paymentStatus == 'timeout')
-                    _buildPayButton(),
-                  if (_paymentStatus == 'failed' || _paymentStatus == 'timeout') ...[
-                    const SizedBox(height: 12),
-                    _buildRetryButton(),
-                  ],
-                  if (needsCalendarAuth) _buildCalendarRetryButton(),
-
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+      body: _paymentStatus == 'pending' ||
+              _isPolling ||
+              _paymentStatus == 'successful'
+          ? _buildTrialStatusBody(needsCalendarAuth)
+          : _buildTrialCheckoutBody(),
       ),
 
     );
 
   }
 
-  Widget _buildSessionSummary() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Trial Session Details',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildDetailRow('Subject', widget.trialSession.subject),
-          _buildDetailRow('Date', widget.trialSession.formattedDate),
-          _buildDetailRow('Time', widget.trialSession.formattedTime),
-          _buildDetailRow('Duration', widget.trialSession.formattedDuration),
-        ],
-      ),
+  Widget _buildTrialCheckoutBody() {
+    final amount = _payableAmount ?? widget.trialSession.trialFee;
+    final trialOrder = PaymentCheckoutOrder(
+      title: widget.trialSession.subject,
+      subtitle:
+          '${widget.trialSession.formattedDate} · ${widget.trialSession.formattedTime}',
+      paymentPlan: 'trial',
+      detailRows: [
+        ('Subject', widget.trialSession.subject),
+        ('Date', widget.trialSession.formattedDate),
+        ('Time', widget.trialSession.formattedTime),
+        ('Duration', widget.trialSession.formattedDuration),
+      ],
+      footerNote:
+          'One-time trial payment. After confirmation, join from My Sessions.',
+    );
+
+    if (_loadingAmount) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return PaymentCheckoutUi.checkoutShell(
+      context: context,
+      order: trialOrder,
+      subtotal: amount,
+      charges: 0,
+      total: amount,
+      phoneField: _buildPhoneInput(),
+      errorBanner: _buildTrialCheckoutFooter(),
+      payEnabled: _phoneController.text.trim().isNotEmpty &&
+          _detectedProvider != null &&
+          !_isProcessing,
+      isProcessing: _isProcessing,
+      payLabel: 'Pay ${amount.toStringAsFixed(0)} XAF',
+      onPay: _initiatePayment,
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Flexible(
-            flex: 2,
-            child: Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-            ),
+  Widget _buildTrialStatusBody(bool needsCalendarAuth) {
+    final hPad = ResponsiveHelper.responsiveHorizontalPadding(context);
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.responsiveCardMaxWidth(context),
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            flex: 3,
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentAmount() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppTheme.primaryColor.withOpacity(0.3),
-          width: 2,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Flexible(
-            child: Text(
-              'Total Amount',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Flexible(
-            child: _loadingAmount
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor),
-                  )
-                : Text(
-                    '${(_payableAmount ?? widget.trialSession.trialFee).toStringAsFixed(0)} XAF',
-                    style: GoogleFonts.poppins(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.primaryColor,
-                    ),
-                    textAlign: TextAlign.right,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Phone input with provider badge (same UX as recurring)
-  Widget _buildPhoneInput() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Phone Number',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-              if (_detectedProvider != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        PaymentProviderHelper.getProviderIcon(_detectedProvider),
-                        size: 14,
-                        color: PaymentProviderHelper.getProviderColor(_detectedProvider),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        PaymentProviderHelper.getProviderName(_detectedProvider),
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: PaymentProviderHelper.getProviderColor(_detectedProvider),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              if (_paymentStatus == 'pending' || _isPolling)
+                _buildPaymentPending(),
+              if (_paymentStatus == 'successful') _buildPaymentSuccess(),
+              if (_paymentStatus == 'successful' && _errorMessage != null)
+                const SizedBox(height: 12),
+              if (_errorMessage != null) _buildErrorMessage(),
+              if (needsCalendarAuth) ...[
+                const SizedBox(height: 12),
+                _buildCalendarRetryButton(),
+              ],
             ],
           ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            onChanged: (value) {
-              safeSetState(() {
-                if (value.trim().isEmpty) {
-                  _phoneError = null;
-                } else {
-                  final normalized = _validatePhoneNumber(value.trim());
-                  _phoneError = normalized == null
-                      ? 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)'
-                      : null;
-                }
-              });
-            },
-            decoration: InputDecoration(
-              hintText: '67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
-              prefixIcon: Icon(Icons.phone, color: AppTheme.primaryColor, size: 20),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              errorText: _phoneError,
-            ),
-          ),
-          if (_detectedProvider == null && _phoneController.text.trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Please enter a valid MTN or Orange number',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppTheme.accentOrange,
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget? _buildTrialCheckoutFooter() {
+    final showRetry =
+        _paymentStatus == 'failed' || _paymentStatus == 'timeout';
+    if (_errorMessage == null && !showRetry) return null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_errorMessage != null) _buildErrorMessage(),
+        if (showRetry) ...[
+          if (_errorMessage != null) const SizedBox(height: 12),
+          _buildRetryButton(),
+          _buildSandboxPayBypass(),
+        ],
+      ],
+    );
+  }
+
+  /// Phone input with provider badge (same UX as recurring checkout).
+  Widget _buildPhoneInput() {
+    return PaymentMobileMoneyPhoneField(
+      controller: _phoneController,
+      detectedProvider: _detectedProvider,
+      errorText: _phoneError,
+      validationHint: _detectedProvider == null &&
+              _phoneController.text.trim().isNotEmpty
+          ? 'Enter a valid MTN or Orange number'
+          : null,
+      onChanged: (value) {
+        safeSetState(() {
+          if (value.trim().isEmpty) {
+            _phoneError = null;
+          } else {
+            final normalized = _validatePhoneNumber(value.trim());
+            _phoneError = normalized == null
+                ? 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)'
+                : null;
+          }
+        });
+      },
     );
   }
 
@@ -1371,115 +1212,71 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     );
   }
 
-  Widget _buildPayButton() {
+  Widget _buildSandboxPayBypass() {
     final isSandbox = !FapshiService.isProduction;
+    if (!isSandbox ||
+        _paymentStatus != 'failed' ||
+        _errorMessage == null ||
+        (!_errorMessage!.contains('phone') &&
+            !_errorMessage!.contains('valid'))) {
+      return const SizedBox.shrink();
+    }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: (_phoneController.text.trim().isEmpty || _detectedProvider == null || _isProcessing)
-                ? null
-                : _initiatePayment,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: _isProcessing
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : Text(
-                    'Pay ${(_payableAmount ?? widget.trialSession.trialFee).toStringAsFixed(0)} XAF',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-          ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.orange[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange[200]!),
         ),
-        // Only show "Mark as paid" in sandbox as absolute last resort
-        // This should only appear if:
-        // 1. We're in sandbox
-        // 2. Payment failed due to phone number validation (not network/polling issues)
-        // 3. User explicitly needs to test the flow
-        if (isSandbox && _paymentStatus == 'failed' && _errorMessage != null && 
-            (_errorMessage!.contains('phone') || _errorMessage!.contains('valid'))) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.orange[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange[200]!),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 16, color: Colors.orange[900]),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Sandbox Testing Only',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.orange[900],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+                Icon(Icons.info_outline, size: 16, color: Colors.orange[900]),
+                const SizedBox(width: 8),
                 Text(
-                  'If you\'re testing and the phone number validation is blocking you, you can simulate a successful payment to test the rest of the flow.',
+                  'Sandbox testing only',
                   style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: Colors.orange[800],
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 8),
-          TextButton(
-            onPressed: _isProcessing ? null : _forceCompleteSandbox,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    backgroundColor: Colors.orange[100],
-                  ),
-            child: Text(
-                    'Simulate Payment Success (Testing Only)',
-              style: GoogleFonts.poppins(
-                      fontSize: 12,
-                fontWeight: FontWeight.w600,
-                      color: Colors.orange[900],
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-                  '⚠️ This bypasses actual payment. In production, use valid phone numbers (67XXXXXXX or 69XXXXXXX).',
-            style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    color: Colors.orange[800],
-                    fontStyle: FontStyle.italic,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange[900],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
-      ],
+            const SizedBox(height: 8),
+            Text(
+              'Simulate success to test the rest of the booking flow.',
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                color: Colors.orange[800],
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _isProcessing ? null : _forceCompleteSandbox,
+              style: TextButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                backgroundColor: Colors.orange[100],
+              ),
+              child: Text(
+                'Simulate payment success',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange[900],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

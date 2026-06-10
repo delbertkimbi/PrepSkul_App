@@ -1,5 +1,6 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
@@ -7,6 +8,7 @@ import 'package:prepskul/features/booking/services/recurring_session_service.dar
 import 'package:prepskul/features/booking/services/availability_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
+import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 
 class BookingService {
@@ -60,7 +62,9 @@ class BookingService {
       // Get tutor profile for denormalized data
       final tutorProfile = await SupabaseService.client
           .from('tutor_profiles')
-          .select('user_id, admin_approved_rating, base_session_price, profile_photo_url, status')
+          .select(
+            'user_id, admin_approved_rating, base_session_price, profile_photo_url, status, subjects, specializations, personal_statement',
+          )
           .eq('user_id', tutorId)
           .maybeSingle();
 
@@ -81,6 +85,13 @@ class BookingService {
           .select('full_name, avatar_url')
           .eq('id', tutorUserId)
           .maybeSingle();
+
+      final resolvedTutorName = TutorService.resolveTutorDisplayName(
+        Map<String, dynamic>.from(tutorProfile),
+        tutorProfileData != null
+            ? Map<String, dynamic>.from(tutorProfileData)
+            : null,
+      );
 
       // Map user_type to student_type for booking_requests constraint
       // Constraint expects: ('learner', 'parent')
@@ -273,6 +284,9 @@ class BookingService {
         'location': location,
         'address': address,
         'location_description': locationDescription,
+        if (locationDescription != null &&
+            locationDescription.contains('@coords:'))
+          'address_coordinates': GeocodingHelper.extractEmbeddedCoordinates(locationDescription),
         'payment_plan': paymentPlan,
         'monthly_total': monthlyTotal,
         'status': 'pending',
@@ -292,7 +306,7 @@ class BookingService {
         'student_name': userProfile['full_name'],
         'student_avatar_url': studentAvatarUrl,
         'student_type': studentType, // Validated: 'learner' or 'parent' - MUST be one of these
-        'tutor_name': tutorProfileData?['full_name'] ?? 'Tutor',
+        'tutor_name': resolvedTutorName,
         'tutor_avatar_url': effectiveTutorAvatarUrl,
         'tutor_rating':
             (tutorProfile?['admin_approved_rating'] as num?)?.toDouble() ?? 0.0,

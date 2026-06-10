@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
+import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/core/widgets/app_logo_header.dart';
@@ -352,9 +353,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         });
       }
       
-      // If offline, try to load from cache
+      // If offline, try cache first — but still attempt network if cache is empty
+      // (connectivity checks can be wrong on web while Supabase still works).
       if (_isOffline) {
-        LogService.info('FindTutorsScreen: Offline - loading from cache...');
+        LogService.info('FindTutorsScreen: Offline signal — trying cache first...');
         final cachedTutors = await OfflineCacheService.getCachedTutors();
         if (cachedTutors != null && cachedTutors.isNotEmpty) {
           final currentUserData = await AuthService.getCurrentUser();
@@ -372,21 +374,16 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               _tutors = orderedCachedTutors;
               _filteredTutors = orderedCachedTutors;
               _isLoading = false;
-              _hasMoreTutors = false; // No more when using cache
-              _cacheTimestamp = timestamp > 0 
+              _hasMoreTutors = false;
+              _cacheTimestamp = timestamp > 0
                   ? DateTime.fromMillisecondsSinceEpoch(timestamp)
                   : null;
             });
           }
           LogService.success('FindTutorsScreen: Loaded ${cachedTutors.length} tutors from cache');
           return;
-        } else {
-          // No cache available - just show empty state
-          if (mounted) {
-            safeSetState(() => _isLoading = false);
-          }
-          return;
         }
+        LogService.warning('FindTutorsScreen: Cache empty — attempting network fetch anyway');
       }
       
       LogService.debug('FindTutorsScreen: Starting to load tutors...');
@@ -494,6 +491,18 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             _hasMoreTutors = orderedTutors.length >= _tutorsPerPage;
             _cacheTimestamp = DateTime.now();
           });
+        }
+      }
+      if (mounted && _tutors.isEmpty) {
+        final cachedTutors = await OfflineCacheService.getCachedTutors();
+        if (cachedTutors != null && cachedTutors.isNotEmpty) {
+          final ordered = _applyUserSpecificOrder(cachedTutors, _userIdForSort);
+          safeSetState(() {
+            _tutors = ordered;
+            _filteredTutors = ordered;
+            _isLoading = false;
+          });
+          LogService.info('FindTutorsScreen: Restored ${ordered.length} tutors from cache after empty fetch');
         }
       }
     } catch (e, stackTrace) {
@@ -1027,12 +1036,18 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Widget _buildTutorCard(Map<String, dynamic> tutor) {
-    final fullName = tutor['full_name'] ?? 'Unknown';
-    // Show only first 2 names in outer card
-    final nameParts = fullName.trim().split(' ');
-    final displayName = nameParts.length > 2 
-        ? '${nameParts[0]} ${nameParts[1]}'
-        : fullName;
+    Map<String, dynamic>? profile;
+    final profilesData = tutor['profiles'];
+    if (profilesData is Map) {
+      profile = Map<String, dynamic>.from(profilesData);
+    } else {
+      profile = {
+        if (tutor['full_name'] != null) 'full_name': tutor['full_name'],
+        if (tutor['email'] != null) 'email': tutor['email'],
+      };
+    }
+    final fullName = TutorDisplayNameUtils.resolve(tutor, profile);
+    final displayName = TutorDisplayNameUtils.cardLabel(tutor, profile);
     
     // Use pre-calculated values from tutor_service (no duplicate calculation)
     final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;

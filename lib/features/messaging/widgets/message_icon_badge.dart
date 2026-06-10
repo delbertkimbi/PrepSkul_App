@@ -7,6 +7,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/messaging/screens/conversations_list_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:prepskul/core/widgets/icon_badge_pulse.dart';
 
 /// Message Icon Badge Widget
 /// 
@@ -15,8 +16,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 /// Shows total unread messages across all conversations
 class MessageIconBadge extends StatefulWidget {
   final Color? iconColor;
-  
-  const MessageIconBadge({super.key, this.iconColor});
+  final bool outlined;
+
+  const MessageIconBadge({super.key, this.iconColor, this.outlined = false});
 
   @override
   State<MessageIconBadge> createState() => _MessageIconBadgeState();
@@ -176,69 +178,83 @@ class _MessageIconBadgeState extends State<MessageIconBadge> with WidgetsBinding
     super.dispose();
   }
 
+  void _openConversations() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ConversationsListScreen(),
+      ),
+    ).then((_) => _loadUnreadCount());
+  }
+
   @override
   Widget build(BuildContext context) {
+    final icon = PhosphorIcon(
+      PhosphorIcons.chatCircleDots(),
+      color: widget.iconColor ?? AppTheme.textDark,
+      size: 22,
+    );
+
+    final useOutlined = widget.outlined || widget.iconColor == null;
+
+    if (useOutlined) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: IconBadgePulse(
+          count: _unreadCount,
+          icon: icon,
+          onTap: _openConversations,
+        ),
+      );
+    }
+
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const ConversationsListScreen(),
-          ),
-        ).then((_) {
-          // Reload count when returning from conversations list
-          _loadUnreadCount();
-        });
-      },
+      onTap: _openConversations,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: widget.iconColor != null 
-                  ? Colors.white.withOpacity(0.2)
+              color: widget.iconColor != null
+                  ? Colors.white.withValues(alpha: 0.2)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
+              border: widget.iconColor != null
+                  ? Border.all(color: Colors.white.withValues(alpha: 0.35))
+                  : null,
             ),
-            child: PhosphorIcon(
-              PhosphorIcons.chatCircleDots(), // Facebook-style chat icon with dots
-              color: widget.iconColor ?? AppTheme.textDark,
-              size: 24,
-            ),
+            child: icon,
           ),
-          if (_unreadCount > 0)
-            Positioned(
-              right: -4,
-              top: -4,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 2,
-                  ),
-                ),
-                constraints: const BoxConstraints(
-                  minWidth: 16,
-                  minHeight: 16,
-                ),
-                child: Center(
-                  child: Text(
-                    _unreadCount > 99 ? '99+' : '$_unreadCount',
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ),
+          if (_unreadCount > 0) _legacyBadge(_unreadCount),
         ],
+      ),
+    );
+  }
+
+  Widget _legacyBadge(int count) {
+    return Positioned(
+      right: -4,
+      top: -4,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+        ),
+        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+        child: Center(
+          child: Text(
+            count > 99 ? '99+' : '$count',
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
       ),
     );
   }

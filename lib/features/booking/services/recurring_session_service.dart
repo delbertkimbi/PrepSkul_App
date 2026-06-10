@@ -3,6 +3,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/transportation_cost_service.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 
@@ -619,6 +620,10 @@ class RecurringSessionService {
               transportationCostPerSession = 0.0; // No transportation for online sessions
             }
           }
+
+          final locationDesc = recurringSession['location_description'] as String?;
+          final onsiteCoords = GeocodingHelper.extractEmbeddedCoordinates(locationDesc) ??
+              GeocodingHelper.extractEmbeddedCoordinates(address);
           
           // Set learner_id and parent_id correctly based on learner_type
           // If learner_type is 'learner': learner_id = studentId, parent_id = null
@@ -640,6 +645,8 @@ class RecurringSessionService {
             'duration_minutes': durationMinutes,
             'location': sessionLocation, // Only 'online' or 'onsite'
             'address': sessionAddress, // Column is 'address', not 'onsite_address'
+            if (onsiteCoords != null) 'onsite_coordinates': onsiteCoords,
+            if (locationDesc != null) 'location_description': locationDesc,
             'transportation_cost': transportationCostPerSession, // Transportation cost for onsite sessions only (0 for online)
             'status': 'scheduled',
             'created_at': DateTime.now().toIso8601String(),

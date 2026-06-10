@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
+import '../../../core/services/offline_cache_service.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/utils/status_bar_utils.dart';
@@ -19,6 +20,7 @@ import '../../tutor/screens/tutor_onboarding_screen.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
+import 'package:prepskul/core/utils/phone_auth_utils.dart';
 import '../../tutor/widgets/tutor_dashboard_layout.dart';
 import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../support/screens/help_support_screen.dart';
@@ -41,6 +43,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   Map<String, dynamic>? _surveyData;
   bool _isLoadingProfile = false;
+  bool _hasLoadedOnce = false;
+  DateTime? _lastProfileRefresh;
 
   @override
   void initState() {
@@ -51,10 +55,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh profile data when screen becomes visible again
-    // This ensures saved phone and profile picture are displayed
+    if (!_hasLoadedOnce) return;
+    final lastRefresh = _lastProfileRefresh;
+    if (lastRefresh != null &&
+        DateTime.now().difference(lastRefresh) < const Duration(seconds: 8)) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
+      if (mounted && !_isLoadingProfile) {
         _loadUserInfo();
       }
     });
@@ -65,31 +73,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _isLoadingProfile = true;
     try {
       final user = await AuthService.getCurrentUser();
-      final userId = user['userId'] as String;
+      final userId = user['userId'] as String?;
+      if (userId == null || userId.isEmpty) {
+        if (mounted) safeSetState(() => _isLoading = false);
+        return;
+      }
       final prefs = await SharedPreferences.getInstance();
+      final cachedProfile = await OfflineCacheService.getCachedUserProfile(userId);
 
       // Show local data immediately so opening Profile stays fast offline.
       if (mounted) {
-        final cachedName =
-            (user['fullName']?.toString().trim().isNotEmpty == true)
-            ? user['fullName'].toString().trim()
-            : (widget.userType == 'parent'
-                  ? 'Parent'
-                  : widget.userType == 'tutor'
-                  ? 'Tutor'
-                  : 'Student');
-        final cachedEmail =
-            SupabaseService.client.auth.currentUser?.email ??
-            prefs.getString('signup_email') ??
+        final cachedName = _pickDisplayName(
+          profileName: cachedProfile?['full_name']?.toString(),
+          sessionName: user['fullName']?.toString(),
+          storedName: prefs.getString('signup_full_name'),
+          authEmail: SupabaseService.client.auth.currentUser?.email,
+        );
+        final cachedEmail = _displayEmail(
+          cachedProfile?['email']?.toString() ??
+              SupabaseService.client.auth.currentUser?.email ??
+              prefs.getString('signup_email'),
+        );
+        final cachedPhone =
+            cachedProfile?['phone_number']?.toString() ??
+            user['phone']?.toString() ??
             'Not set';
+        final surveyCompleted = user['surveyCompleted'] == true ||
+            prefs.getBool('survey_completed') == true ||
+            cachedProfile?['survey_completed'] == true;
         safeSetState(() {
           _userInfo = {
             ...user,
             'fullName': cachedName,
             'email': cachedEmail,
-            'phone': user['phone']?.toString() ?? 'Not set',
-            'surveyCompleted': prefs.getBool('survey_completed') ?? false,
+            'phone': cachedPhone,
+            'surveyCompleted': surveyCompleted,
           };
+          _profilePhotoUrl = cachedProfile?['avatar_url']?.toString();
+          if (cachedProfile?['survey_data'] is Map) {
+            _surveyData = Map<String, dynamic>.from(
+              cachedProfile!['survey_data'] as Map,
+            );
+          }
           _isLoading = false;
         });
       }
@@ -101,7 +126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Load profile data from Supabase
       var profileResponse = await SupabaseService.client
           .from('profiles')
-          .select('avatar_url, full_name, email, phone_number')
+          .select('avatar_url, full_name, email, phone_number, survey_completed')
           .eq('id', userId)
           .maybeSingle()
           .timeout(const Duration(seconds: 6));
@@ -136,7 +161,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 metadataName != 'Student') {
               nameToUse = metadataName;
             }
-          } else if (authEmail != null) {
+          } else if (authEmail != null &&
+              !PhoneAuthUtils.isPhoneAliasEmail(authEmail)) {
             // Extract name from email as last resort
             final emailName = authEmail.split('@')[0];
             if (emailName.isNotEmpty &&
@@ -169,7 +195,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Fetch the created profile
           profileResponse = await SupabaseService.client
               .from('profiles')
-              .select('avatar_url, full_name, email, phone_number')
+              .select('avatar_url, full_name, email, phone_number, survey_completed')
               .eq('id', userId)
               .maybeSingle()
               .timeout(const Duration(seconds: 6));
@@ -210,13 +236,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final storedEmail = prefs.getString('signup_email');
       
       // Check if email exists in auth but not in profiles - sync it if needed
-      String? email = authEmail ??
-          profileResponse?['email']?.toString() ??
-          storedEmail;
+      String? email = _isRealUserEmail(authEmail)
+          ? authEmail
+          : _isRealUserEmail(profileResponse?['email']?.toString())
+              ? profileResponse!['email'].toString()
+              : _isRealUserEmail(storedEmail)
+                  ? storedEmail
+                  : null;
       
       // Also check auth user metadata for email (some signup flows store it there)
       final metadataEmail = authUser?.userMetadata?['email']?.toString();
-      if (email == null && metadataEmail != null && metadataEmail.isNotEmpty) {
+      if (email == null &&
+          metadataEmail != null &&
+          metadataEmail.isNotEmpty &&
+          !PhoneAuthUtils.isPhoneAliasEmail(metadataEmail)) {
         email = metadataEmail;
       }
       
@@ -239,13 +272,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       
       // If we have email from any source but profiles table doesn't have it, update profiles
       final currentProfileEmail = profileResponse?['email']?.toString();
-      final needsEmailSync = email != null && 
-          email.isNotEmpty && 
-          email != 'Not set' && 
+      final needsEmailSync = email != null &&
+          email.isNotEmpty &&
+          email != 'Not set' &&
           email.contains('@') &&
-          (currentProfileEmail == null || 
-           currentProfileEmail.isEmpty ||
-           currentProfileEmail == 'Not set');
+          !PhoneAuthUtils.isPhoneAliasEmail(email) &&
+          (currentProfileEmail == null ||
+              currentProfileEmail.isEmpty ||
+              currentProfileEmail == 'Not set' ||
+              PhoneAuthUtils.isPhoneAliasEmail(currentProfileEmail));
       
       if (needsEmailSync) {
         try {
@@ -257,7 +292,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Reload profile response to get updated email
           profileResponse = await SupabaseService.client
               .from('profiles')
-              .select('avatar_url, full_name, email, phone_number')
+              .select('avatar_url, full_name, email, phone_number, survey_completed')
               .eq('id', userId)
               .maybeSingle()
               .timeout(const Duration(seconds: 5));
@@ -268,8 +303,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
       
-      // Final fallback
-      email = email ?? 'Not set';
+      // Final fallback — never show internal phone sign-in alias as user email
+      email = _displayEmail(email);
 
       // Get full name from database (most up-to-date)
       // Priority: profile > stored signup data > session > auth metadata > email extraction > empty
@@ -319,7 +354,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           fullName == 'User' ||
           fullName == 'Student') {
         // Extract name from email as last resort
-        if (authEmail != null) {
+        if (authEmail != null &&
+            !PhoneAuthUtils.isPhoneAliasEmail(authEmail)) {
           final emailName = authEmail.split('@')[0];
           if (emailName.isNotEmpty &&
               emailName != 'user' &&
@@ -372,12 +408,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (!mounted) return;
 
+      final surveyCompleted = profileResponse?['survey_completed'] == true ||
+          user['surveyCompleted'] == true ||
+          prefs.getBool('survey_completed') == true;
+
       safeSetState(() {
         _userInfo = {
           ...user,
-          'phone': phoneNumber, // Use phone from database
-          'email': email, // Use email from auth or database
-          'fullName': fullName, // Use name from database (most up-to-date)
+          'phone': phoneNumber,
+          'email': email,
+          'fullName': fullName,
+          'surveyCompleted': surveyCompleted,
         };
         _tutorProfile = tutorProfileData;
         _profilePhotoUrl =
@@ -385,6 +426,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _surveyData = surveyData;
         _isLoading = false;
       });
+
+      await OfflineCacheService.cacheUserProfile(userId, {
+        'user_type':
+            profileResponse?['user_type']?.toString() ??
+            user['userRole']?.toString() ??
+            widget.userType ??
+            prefs.getString('user_role'),
+        'full_name': fullName,
+        'email': email,
+        'phone_number': phoneNumber,
+        'avatar_url': photoUrl ?? profileResponse?['avatar_url']?.toString(),
+        'survey_completed': surveyCompleted,
+        if (surveyData != null) 'survey_data': surveyData,
+      });
+      _hasLoadedOnce = true;
+      _lastProfileRefresh = DateTime.now();
     } catch (e, stackTrace) {
       LogService.error('Error loading profile: $e');
       LogService.error('Stack trace: $stackTrace');
@@ -392,24 +449,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       safeSetState(() {
         _isLoading = false;
-        // Set safe defaults to prevent crashes
-        _userInfo = {
-          'fullName': widget.userType == 'student'
-              ? 'Student'
-              : widget.userType == 'parent'
-              ? 'Parent'
-              : widget.userType == 'tutor'
-              ? 'Tutor'
-              : 'User',
-          'email': 'Not set',
-          'phone': 'Not set',
-          'avatarUrl': null,
-        };
-        _surveyData = null;
       });
+      _hasLoadedOnce = true;
+      _lastProfileRefresh = DateTime.now();
     } finally {
       _isLoadingProfile = false;
     }
+  }
+
+  bool _isRealUserEmail(String? email) {
+    if (email == null || email.isEmpty || email == 'Not set') return false;
+    return !PhoneAuthUtils.isPhoneAliasEmail(email);
+  }
+
+  /// Hides internal `p...@phone.prepskul.local` sign-in aliases from the UI.
+  String _displayEmail(String? email) {
+    return _isRealUserEmail(email) ? email!.trim() : 'Not set';
+  }
+
+  String _pickDisplayName({
+    String? profileName,
+    String? sessionName,
+    String? storedName,
+    String? authEmail,
+  }) {
+    for (final candidate in [profileName, sessionName, storedName]) {
+      final trimmed = candidate?.trim();
+      if (trimmed != null &&
+          trimmed.isNotEmpty &&
+          trimmed != 'User' &&
+          trimmed != 'Student') {
+        return trimmed;
+      }
+    }
+    if (authEmail != null &&
+        authEmail.contains('@') &&
+        !PhoneAuthUtils.isPhoneAliasEmail(authEmail)) {
+      final emailName = authEmail.split('@').first;
+      if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
+        return emailName
+            .split('.')
+            .map(
+              (s) => s.isNotEmpty && s.length > 1
+                  ? s[0].toUpperCase() + s.substring(1)
+                  : s.toUpperCase(),
+            )
+            .where((s) => s.isNotEmpty)
+            .join(' ');
+      }
+    }
+    return widget.userType == 'parent'
+        ? 'Parent'
+        : widget.userType == 'tutor'
+            ? 'Tutor'
+            : 'Student';
   }
 
   Future<void> _handleLogout() async {
@@ -617,7 +710,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // Quick Info Cards (Neumorphic style)
                   Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                      vertical: 10,
+                    ),
                     child: widget.userType == 'tutor' &&
                             ResponsiveHelper.isDesktop(context)
                         ? TutorZRow(
@@ -665,13 +761,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   
                   // Survey Completion Card (if not completed)
-                  if ((widget.userType == 'student' || 
-                       widget.userType == 'learner' || 
-                       widget.userType == 'parent') && 
-                      (_surveyData == null || 
-                       (_userInfo?['surveyCompleted'] != true))) ...[
+                  if ((widget.userType == 'student' ||
+                       widget.userType == 'learner' ||
+                       widget.userType == 'parent') &&
+                      _userInfo?['surveyCompleted'] == false) ...[
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                      ),
                       child: _buildSurveyCompletionCard(),
                     ),
                     const SizedBox(height: 12),
@@ -681,7 +778,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // Settings Section (Neumorphic style)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                    ),
                     child: TutorConstrainedCard(
                       maxWidth: widget.userType == 'tutor' &&
                               ResponsiveHelper.isDesktop(context)
@@ -846,7 +945,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // Logout Button (Neumorphic style)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                    ),
                     child: TutorConstrainedCard(
                       maxWidth: widget.userType == 'tutor' &&
                               ResponsiveHelper.isDesktop(context)

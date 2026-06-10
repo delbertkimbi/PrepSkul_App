@@ -1,27 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shimmer/shimmer.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import '../models/game_model.dart';
-import '../services/daily_challenge_service.dart';
-import 'skulmate_surface_styles.dart';
+import 'package:prepskul/core/widgets/premium_promo_card_shell.dart';
+import 'package:prepskul/features/skulmate/models/game_model.dart';
+import 'package:prepskul/features/skulmate/services/daily_challenge_service.dart';
+import 'package:shimmer/shimmer.dart';
 
 /// Card for "Today's Challenge" – one focused set per day. User-specific (or child-specific).
 class DailyChallengeCard extends StatefulWidget {
   final List<GameModel> games;
   final String? childId;
   final int? currentStreak;
+  final bool compact;
   final VoidCallback onRefresh;
   final void Function(GameModel game, {bool isDailyChallenge}) onPlay;
 
   const DailyChallengeCard({
-    Key? key,
+    super.key,
     required this.games,
     this.childId,
     this.currentStreak,
+    this.compact = false,
     required this.onRefresh,
     required this.onPlay,
-  }) : super(key: key);
+  });
 
   @override
   State<DailyChallengeCard> createState() => _DailyChallengeCardState();
@@ -42,9 +44,15 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
 
   Future<void> _loadState() async {
     setState(() => _loading = true);
-    final completed = await DailyChallengeService.isCompletedToday(childId: widget.childId);
-    final streak = await DailyChallengeService.getDailyStreak(childId: widget.childId);
-    final hidden = await DailyChallengeService.isHiddenToday(childId: widget.childId);
+    final completed = await DailyChallengeService.isCompletedToday(
+      childId: widget.childId,
+    );
+    final streak = await DailyChallengeService.getDailyStreak(
+      childId: widget.childId,
+    );
+    final hidden = await DailyChallengeService.isHiddenToday(
+      childId: widget.childId,
+    );
     final todayGame = await DailyChallengeService.getTodayChallengeGame(
       widget.games,
       childId: widget.childId,
@@ -76,10 +84,15 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
 
   @override
   Widget build(BuildContext context) {
+    final cardHeight = widget.compact ? 88.0 : 108.0;
+    final outerPadding = widget.compact
+        ? EdgeInsets.zero
+        : const EdgeInsets.fromLTRB(16, 8, 16, 12);
+
     if (_loading) {
       return Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        height: 120,
+        margin: outerPadding,
+        height: cardHeight,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -126,15 +139,6 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Container(
-                          height: 12,
-                          width: 120,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -153,18 +157,20 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: SkulMateSurfaceStyles.heroGradient(radius: 16),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: hasChallenge && !_completedToday
-              ? () => widget.onPlay(todayGame, isDailyChallenge: true)
-              : null,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: outerPadding,
+      child: PremiumPromoCardShell(
+        height: cardHeight,
+        radius: 16,
+        accent: AppTheme.skyBlue,
+        padding: EdgeInsets.all(widget.compact ? 12 : 14),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: hasChallenge && !_completedToday
+                ? () => widget.onPlay(todayGame, isDailyChallenge: true)
+                : null,
+            borderRadius: BorderRadius.circular(16),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -179,8 +185,8 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
                 Row(
                   children: [
                     Container(
-                      width: 52,
-                      height: 52,
+                      width: widget.compact ? 44 : 48,
+                      height: widget.compact ? 44 : 48,
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(14),
@@ -189,11 +195,11 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
                         _completedToday
                             ? Icons.check_circle_rounded
                             : Icons.today_rounded,
-                        size: 28,
+                        size: widget.compact ? 22 : 26,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    SizedBox(width: widget.compact ? 10 : 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,27 +210,27 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
                                 ? 'Done for today'
                                 : 'Today\'s Challenge',
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
+                              fontSize: widget.compact ? 14 : 16,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
                             hasChallenge
                                 ? (_completedToday
-                                    ? 'Come back tomorrow for a new challenge, or continue playing.'
+                                    ? 'Come back tomorrow for a new challenge.'
                                     : todayGame.title)
-                                : 'Create a quiz game to unlock daily challenges.',
+                                : 'Create a quiz to unlock daily challenges.',
                             style: GoogleFonts.poppins(
-                              fontSize: 13,
+                              fontSize: widget.compact ? 11 : 13,
                               color: Colors.white.withValues(alpha: 0.95),
-                              height: 1.3,
+                              height: 1.25,
                             ),
-                            maxLines: 2,
+                            maxLines: widget.compact ? 1 : 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (_dailyStreak > 0) ...[
+                          if (_dailyStreak > 0 && !widget.compact) ...[
                             const SizedBox(height: 8),
                             Row(
                               children: [

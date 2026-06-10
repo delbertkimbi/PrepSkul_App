@@ -8,7 +8,11 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/profile_bootstrap_service.dart';
+import 'package:prepskul/core/services/phone_auth_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/models/phone_country.dart';
+import 'package:prepskul/core/widgets/phone_country_code_picker.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
 class BeautifulSignupScreen extends StatefulWidget {
@@ -26,13 +30,8 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  String? _selectedRole;
   bool _isLoading = false;
-
-  String _phoneAliasEmail(String phoneNumber) {
-    final digitsOnly = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-    return 'p$digitsOnly@phone.prepskul.local';
-  }
+  PhoneCountry _selectedCountry = PhoneCountry.cameroon;
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +102,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 22),
+                        const SizedBox(height: 48),
                         // Form
                         Form(
                           key: _formKey,
@@ -186,45 +185,22 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                               const SizedBox(height: 5),
                               Row(
                                 children: [
-                                  // Country code
-                                  Container(
-                                    width: 80,
-                                    height: 56,
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.softBackground,
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: AppTheme.softBorder,
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '+237',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                          color: AppTheme.textDark,
-                                        ),
-                                      ),
-                                    ),
+                                  PhoneCountryCodePicker(
+                                    selected: _selectedCountry,
+                                    onChanged: (country) {
+                                      safeSetState(() => _selectedCountry = country);
+                                    },
                                   ),
                                   const SizedBox(width: 12),
-                                  // Phone number input
                                   Expanded(
                                     child: TextFormField(
                                       controller: _phoneController,
                                       keyboardType: TextInputType.phone,
-                                      validator: (value) {
-                                        if (value == null ||
-                                            value.trim().isEmpty) {
-                                          return 'Please enter phone number';
-                                        }
-                                        if (value.trim().length < 9) {
-                                          return 'Phone number must be 9 digits';
-                                        }
-                                        return null;
-                                      },
+                                      validator: (value) =>
+                                          PhoneCountry.validateLocalNumber(
+                                            _selectedCountry,
+                                            value ?? '',
+                                          ),
                                       decoration: InputDecoration(
                                         hintText: '6 53 30 19 97',
                                         hintStyle: GoogleFonts.poppins(
@@ -435,40 +411,6 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 15),
-
-                              // Role Selection
-                              Text(
-                                'I am a...',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  _buildRoleChip(
-                                    'Student',
-                                    'student',
-                                    Icons.school,
-                                  ),
-                                  _buildRoleChip(
-                                    'Parent',
-                                    'parent',
-                                    Icons.family_restroom,
-                                  ),
-                                  _buildRoleChip(
-                                    'Tutor',
-                                    'tutor',
-                                    Icons.person,
-                                  ),
-                                ],
-                              ),
-
                               const SizedBox(height: 27),
 
                               // Sign Up Button
@@ -508,9 +450,8 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 32),
 
-                              // Already have account link
                               Center(
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -535,6 +476,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                           fontSize: 14,
                                           color: AppTheme.primaryColor,
                                           fontWeight: FontWeight.w600,
+                                          decoration: TextDecoration.underline,
                                         ),
                                       ),
                                     ),
@@ -544,7 +486,6 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
 
                               const SizedBox(height: 16),
 
-                              // Try another auth method Link
                               Center(
                                 child: TextButton(
                                   onPressed: () {
@@ -590,20 +531,6 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
       return;
     }
 
-    // Check if role is selected
-    if (_selectedRole == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please select your role',
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: AppTheme.primaryColor,
-        ),
-      );
-      return;
-    }
-
     // Check if passwords match
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -615,23 +542,11 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
       return;
     }
 
-    // Format phone number (ensure it starts with +237 for Cameroon)
-    // Remove all non-numeric characters first (except leading +)
-    String rawPhone = _phoneController.text.trim();
-    // Remove spaces, dashes, parentheses, and other formatting characters
-    String cleanedPhone = rawPhone.replaceAll(RegExp(r'[^\d+]'), '');
-    
-    String phoneNumber;
-    if (cleanedPhone.startsWith('+')) {
-      phoneNumber = cleanedPhone;
-    } else if (cleanedPhone.startsWith('237')) {
-      phoneNumber = '+$cleanedPhone';
-    } else if (cleanedPhone.startsWith('0')) {
-      phoneNumber = '+237${cleanedPhone.substring(1)}';
-    } else {
-      phoneNumber = '+237$cleanedPhone';
-    }
-    
+    final phoneNumber = PhoneCountry.formatFullNumber(
+      _selectedCountry,
+      _phoneController.text.trim(),
+    );
+
     LogService.debug('📱 Formatted phone number: $phoneNumber');
 
     safeSetState(() => _isLoading = true);
@@ -669,7 +584,6 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
               builder: (context) => OTPVerificationScreen(
                 phoneNumber: phoneNumber,
                 fullName: _nameController.text.trim(),
-                userRole: _selectedRole!,
               ),
             ),
           );
@@ -677,42 +591,28 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
         return;
       }
 
-      // Password-based phone signup (no OTP): use deterministic email alias
-      // to avoid Supabase phone OTP requirement for phone sign-up.
-      final phoneAliasEmail = _phoneAliasEmail(phoneNumber);
-      final response = await SupabaseService.client.auth.signUp(
-        email: phoneAliasEmail,
+      // Password-based phone signup (no OTP, no inbox): admin-confirmed alias account.
+      final response = await PhoneAuthService.signUpWithPhone(
+        phoneNumber: phoneNumber,
         password: _passwordController.text,
-        data: {
-          'full_name': _nameController.text.trim(),
-          'phone_number': phoneNumber,
-        },
+        fullName: _nameController.text.trim(),
       );
-
-      // Ensure we have an active Supabase session before saving local session.
-      // Otherwise NavigationService will clear local auth and bounce to auth screen.
-      if (response.session == null && SupabaseService.currentUser == null) {
-        await SupabaseService.client.auth.signInWithPassword(
-          email: phoneAliasEmail,
-          password: _passwordController.text,
-        );
-      }
 
       final user = SupabaseService.currentUser ?? response.user;
       if (user == null) {
         throw Exception('Could not create account');
       }
 
-      await SupabaseService.client.from('profiles').upsert({
-        'id': user.id,
-        'full_name': _nameController.text.trim(),
-        'phone_number': phoneNumber,
-        'user_type': _selectedRole!,
-      });
+      await ProfileBootstrapService.upsertProfile(
+        userId: user.id,
+        fullName: _nameController.text.trim(),
+        email: user.email,
+        phoneNumber: phoneNumber,
+      );
 
       await AuthService.saveSession(
         userId: user.id,
-        userRole: _selectedRole!,
+        userRole: '',
         phone: phoneNumber,
         fullName: _nameController.text.trim(),
         surveyCompleted: false,
@@ -729,11 +629,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
             replace: true,
           );
         } else {
-          Navigator.pushReplacementNamed(
-            context,
-            '/profile-setup',
-            arguments: {'userRole': _selectedRole},
-          );
+          Navigator.pushReplacementNamed(context, '/role-selection');
         }
       }
     } catch (e) {
@@ -753,47 +649,6 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
         safeSetState(() => _isLoading = false);
       }
     }
-  }
-
-  Widget _buildRoleChip(String label, String value, IconData icon) {
-    final isSelected = _selectedRole == value;
-    return GestureDetector(
-      onTap: () {
-        safeSetState(() {
-          _selectedRole = value;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-            width: 2,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.white : AppTheme.textMedium,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: isSelected ? Colors.white : AppTheme.textDark,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override

@@ -7,8 +7,10 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart' hide LogService;
+import 'package:prepskul/core/services/profile_bootstrap_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/services/whatsapp_support_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,7 +18,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class EmailConfirmationScreen extends StatefulWidget {
   final String email;
   final String fullName;
-  final String userRole;
+  final String? userRole;
   /// When true, shows a warning that the verification link expired
   final bool linkExpiredError;
 
@@ -24,7 +26,7 @@ class EmailConfirmationScreen extends StatefulWidget {
     Key? key,
     required this.email,
     required this.fullName,
-    required this.userRole,
+    this.userRole,
     this.linkExpiredError = false,
   }) : super(key: key);
 
@@ -42,6 +44,17 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   @override
   void initState() {
     super.initState();
+    if (!AppConfig.enableEmailVerification) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/auth-method-selection',
+          (route) => false,
+        );
+      });
+      return;
+    }
     _startCountdown();
     _listenToAuthStateChanges();
   }
@@ -106,36 +119,54 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
           .maybeSingle();
       
       // If profile doesn't exist or user_type is missing, create it now
-      if (profile == null || profile['user_type'] == null || (profile['user_type'] as String).isEmpty) {
-        LogService.warning('Profile missing or user_type not set after verification - creating now');
-        final storedRole = prefs.getString('signup_user_role') ?? widget.userRole;
-        await SupabaseService.client.from('profiles').upsert({
-          'id': user.id,
-          'email': user.email ?? widget.email,
-          'full_name': widget.fullName,
-          'phone_number': null,
-          'user_type': storedRole,
-          'survey_completed': false,
-          'is_admin': false,
-        }, onConflict: 'id');
-        
-        // Re-fetch profile
+      if (profile == null ||
+          profile['user_type'] == null ||
+          (profile['user_type'] as String).isEmpty) {
+        LogService.warning(
+          'Profile missing or user_type not set after verification - creating now',
+        );
+        final storedRole =
+            prefs.getString('signup_user_role') ?? widget.userRole;
+
+        await ProfileBootstrapService.upsertProfile(
+          userId: user.id,
+          fullName: widget.fullName,
+          email: user.email ?? widget.email,
+          phoneNumber: null,
+          userType: storedRole != null && storedRole.trim().isNotEmpty
+              ? storedRole
+              : null,
+          surveyCompleted: false,
+        );
+
         final updatedProfile = await SupabaseService.client
             .from('profiles')
             .select('survey_completed, created_at, user_type')
             .eq('id', user.id)
             .maybeSingle();
-        
-        final userRole = updatedProfile?['user_type'] ?? storedRole;
+
+        final userRole =
+            (updatedProfile?['user_type'] as String?) ?? storedRole ?? '';
+        if (userRole.isEmpty) {
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/role-selection');
+          }
+          return;
+        }
+
         final surveyCompleted = updatedProfile?['survey_completed'] ?? false;
         final isFirstSignup = !surveyCompleted;
-        
-        // Continue with navigation using the correct role
         await _navigateBasedOnRole(userRole, isFirstSignup, prefs);
         return;
       }
-      
-      final userRole = profile['user_type'] ?? widget.userRole;
+
+      final userRole = (profile['user_type'] as String?) ?? widget.userRole ?? '';
+      if (userRole.isEmpty) {
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/role-selection');
+        }
+        return;
+      }
       final surveyCompleted = profile['survey_completed'] ?? false;
       final isFirstSignup = !surveyCompleted;
       
@@ -145,9 +176,13 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       LogService.error('Error navigating after verification', e);
       if (mounted) {
         // Fallback: try to navigate using widget.userRole
-        final fallbackRole = widget.userRole;
-        LogService.warning('Using fallback role: $fallbackRole');
-        await _navigateBasedOnRole(fallbackRole, true, prefs);
+        final fallbackRole = widget.userRole ?? '';
+        if (fallbackRole.isEmpty) {
+          Navigator.pushReplacementNamed(context, '/role-selection');
+        } else {
+          LogService.warning('Using fallback role: $fallbackRole');
+          await _navigateBasedOnRole(fallbackRole, true, prefs);
+        }
       }
     }
   }
@@ -156,7 +191,12 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   Future<void> _navigateBasedOnRole(String userRole, bool isFirstSignup, SharedPreferences prefs) async {
     final user = SupabaseService.currentUser;
     if (user == null || !mounted) return;
-    
+
+    if (userRole.isEmpty) {
+      Navigator.pushReplacementNamed(context, '/role-selection');
+      return;
+    }
+
     try {
         // Save auth method preference
         await prefs.setString('auth_method', 'email');

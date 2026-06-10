@@ -10,7 +10,10 @@ import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/phone_auth_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/models/phone_country.dart';
+import 'package:prepskul/core/widgets/phone_country_code_picker.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
 class BeautifulLoginScreen extends StatefulWidget {
@@ -26,31 +29,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
-
-  Future<void> _quickLogin({
-    required String phone,
-    required String password,
-  }) async {
-    if (phone.trim().isEmpty || password.trim().isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('QA preset is missing phone/password in env config.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    _phoneController.text = phone.trim();
-    _passwordController.text = password;
-    await _handleLogin();
-  }
-
-  String _phoneAliasEmail(String phoneNumber) {
-    final digitsOnly = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-    return 'p$digitsOnly@phone.prepskul.local';
-  }
+  PhoneCountry _selectedCountry = PhoneCountry.cameroon;
 
   @override
   void initState() {
@@ -130,7 +109,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 22),
+                        const SizedBox(height: 48),
                         // Form
                         Form(
                           key: _formKey,
@@ -149,35 +128,22 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                               const SizedBox(height: 12),
                               Row(
                                 children: [
-                                  // Country code
-                                  Container(
-                                    width: 80,
-                                    height: 56,
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.softBackground,
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: AppTheme.softBorder,
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '+237',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                          color: AppTheme.textDark,
-                                        ),
-                                      ),
-                                    ),
+                                  PhoneCountryCodePicker(
+                                    selected: _selectedCountry,
+                                    onChanged: (country) {
+                                      safeSetState(() => _selectedCountry = country);
+                                    },
                                   ),
                                   const SizedBox(width: 12),
-                                  // Phone number input
                                   Expanded(
                                     child: TextFormField(
                                       controller: _phoneController,
                                       keyboardType: TextInputType.phone,
+                                      validator: (value) =>
+                                          PhoneCountry.validateLocalNumber(
+                                            _selectedCountry,
+                                            value ?? '',
+                                          ),
                                       decoration: InputDecoration(
                                         hintText: '6 53 30 19 97',
                                         hintStyle: GoogleFonts.poppins(
@@ -298,68 +264,6 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                   color: AppTheme.textDark,
                                 ),
                               ),
-
-                              if (AppConfig.enableQaQuickSwitch) ...[
-                                const SizedBox(height: 16),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: Colors.amber.withOpacity(0.35),
-                                    ),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'QA Quick Switch (dev)',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.textDark,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          OutlinedButton(
-                                            onPressed: _isLoading
-                                                ? null
-                                                : () => _quickLogin(
-                                                      phone: AppConfig.qaTutorPhone,
-                                                      password: AppConfig.qaTutorPassword,
-                                                    ),
-                                            child: const Text('Tutor QA'),
-                                          ),
-                                          OutlinedButton(
-                                            onPressed: _isLoading
-                                                ? null
-                                                : () => _quickLogin(
-                                                      phone: AppConfig.qaLearnerPhone,
-                                                      password: AppConfig.qaLearnerPassword,
-                                                    ),
-                                            child: const Text('Learner QA'),
-                                          ),
-                                          OutlinedButton(
-                                            onPressed: _isLoading
-                                                ? null
-                                                : () => _quickLogin(
-                                                      phone: AppConfig.qaObserverPhone,
-                                                      password: AppConfig.qaObserverPassword,
-                                                    ),
-                                            child: const Text('Unpaid QA'),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
 
                               const SizedBox(height: 16),
 
@@ -505,23 +409,11 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
       return;
     }
 
-    // Format phone number (ensure it starts with +237 for Cameroon)
-    // Remove all non-numeric characters first (except leading +)
-    String rawPhone = _phoneController.text.trim();
-    // Remove spaces, dashes, parentheses, and other formatting characters
-    String cleanedPhone = rawPhone.replaceAll(RegExp(r'[^\d+]'), '');
-    
-    String phoneNumber;
-    if (cleanedPhone.startsWith('+')) {
-      phoneNumber = cleanedPhone;
-    } else if (cleanedPhone.startsWith('237')) {
-      phoneNumber = '+$cleanedPhone';
-    } else if (cleanedPhone.startsWith('0')) {
-      phoneNumber = '+237${cleanedPhone.substring(1)}';
-    } else {
-      phoneNumber = '+237$cleanedPhone';
-    }
-    
+    final phoneNumber = PhoneCountry.formatFullNumber(
+      _selectedCountry,
+      _phoneController.text.trim(),
+    );
+
     LogService.debug('📱 Formatted phone number: $phoneNumber');
 
     safeSetState(() => _isLoading = true);
@@ -565,13 +457,11 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
         return;
       }
 
-      // Password-based phone login (OTP disabled).
-      // Preferred path: deterministic email alias auth.
-      final aliasEmail = _phoneAliasEmail(phoneNumber);
+      // Password-based phone login (OTP disabled, no inbox step).
       late final dynamic response;
       try {
-        response = await SupabaseService.client.auth.signInWithPassword(
-          email: aliasEmail,
+        response = await PhoneAuthService.signInWithPhone(
+          phoneNumber: phoneNumber,
           password: _passwordController.text,
         );
       } catch (e) {

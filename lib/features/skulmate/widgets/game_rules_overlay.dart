@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui' show ImageFilter;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../services/game_rules_service.dart';
@@ -36,7 +35,6 @@ class GameRulesOverlay extends StatefulWidget {
             await GameRulesService.markRulesSeen(gameType);
             Navigator.pop(context);
 
-            // Ensure the dialog is fully dismissed before showing any bottom sheet.
             await Future.delayed(Duration.zero);
 
             if (onAfterFirstTimeDialogClosed != null) {
@@ -107,140 +105,124 @@ class _GameRulesOverlayState extends State<GameRulesOverlay>
         child: Dialog(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-              child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: 400,
-                  maxHeight: maxDialogHeight,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: 400,
+              maxHeight: maxDialogHeight,
+            ),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppTheme.softBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
                 ),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppTheme.softBackground.withValues(alpha: 0.9),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    width: 1,
-                  ),
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white.withValues(alpha: 0.2),
-                      Colors.white.withValues(alpha: 0.1),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ],
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                    // Title
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.info_outline,
-                            color: AppTheme.primaryColor,
-                            size: 24,
-                          ),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            rules.title,
-                            style: GoogleFonts.poppins(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textDark,
-                            ),
+                        child: Icon(
+                          Icons.info_outline,
+                          color: AppTheme.primaryColor,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          rules.title,
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // Description
-                    Text(
-                      rules.description,
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: AppTheme.textMedium,
-                        height: 1.5,
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Steps
-                    Text(
-                      'How to play:',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textDark,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ...rules.steps.asMap().entries.map((entry) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color:
-                                    AppTheme.primaryColor.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${entry.key + 1}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                entry.value,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 13,
-                                  color: AppTheme.textDark,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 16),
-                    // Got it button
-                    SizedBox(
-                      width: double.infinity,
-                      child: GameStandardsPrimaryButton(
-                        label: 'Got it!',
-                        onPressed: widget.onGotIt,
-                      ),
-                    ),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  Text(
+                    rules.description,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: AppTheme.textMedium,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'How to play:',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...rules.steps.asMap().entries.map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${entry.key + 1}',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              entry.value,
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                color: AppTheme.textDark,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: GameStandardsPrimaryButton(
+                      label: 'Got it!',
+                      onPressed: widget.onGotIt,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

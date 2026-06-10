@@ -29,6 +29,7 @@ class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget 
       backgroundColor: AppTheme.primaryColor,
       foregroundColor: Colors.white,
       iconTheme: const IconThemeData(color: Colors.white),
+      automaticallyImplyLeading: false,
       leading: leading,
       centerTitle: centerTitle,
       actionsIconTheme: const IconThemeData(size: 20, color: Colors.white),
@@ -55,7 +56,12 @@ class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget 
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      actions: actions,
+      actions: actions == null
+          ? null
+          : [
+              ...actions!,
+              const SizedBox(width: 8),
+            ],
     );
   }
 }

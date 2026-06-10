@@ -3,6 +3,11 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
+import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/models/upcoming_session_item.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart';
+import 'package:prepskul/features/booking/utils/session_date_utils.dart';
+import 'package:prepskul/features/booking/utils/session_live_utils.dart';
 
 /// IndividualSessionService
 ///
@@ -11,6 +16,21 @@ import 'package:prepskul/features/sessions/services/meet_service.dart';
 class IndividualSessionService {
   static SupabaseClient get _supabase => SupabaseService.client;
   static bool _legacyParticipantColumnWarningLogged = false;
+
+  static const String _studentUpcomingSelect = '''
+            *,
+            recurring_sessions(
+              id,
+              tutor_name,
+              tutor_avatar_url,
+              tutor_id,
+              subject,
+              start_date,
+              last_session_date,
+              learner_id,
+              parent_id
+            )
+          ''';
 
   static DateTime? _parseSessionStart(Map<String, dynamic> session) {
     final dateStr = session['scheduled_date'] as String?;
@@ -84,6 +104,7 @@ class IndividualSessionService {
               days,
               times,
               start_date,
+              last_session_date,
               monthly_total,
               payment_plan,
               tutor_name,
@@ -138,6 +159,7 @@ class IndividualSessionService {
               days,
               times,
               start_date,
+              last_session_date,
               monthly_total,
               payment_plan,
               tutor_name,
@@ -179,17 +201,10 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = afterDate ?? now;
 
-      // Fetch sessions where user is direct learner/parent.
-      var query = _supabase.from('individual_sessions').select('''
-            *,
-            recurring_sessions(
-              id,
-              tutor_name,
-              tutor_avatar_url,
-              tutor_id,
-              subject
-            )
-          ''')
+      // Fetch sessions where user is direct learner/parent on the session row.
+      var query = _supabase
+          .from('individual_sessions')
+          .select(_studentUpcomingSelect)
           .or('learner_id.eq.$userId,parent_id.eq.$userId')
           .inFilter('status', ['scheduled', 'in_progress'])
           .gte('scheduled_date', queryDate.toIso8601String().split('T')[0]);
@@ -288,55 +303,69 @@ class IndividualSessionService {
         }
       }
 
-      // Filter to paid recurring OR paid group-class sessions.
+      // Parent bookings often store ownership on recurring_sessions only.
+      try {
+        final ownedRecurring = await _supabase
+            .from('recurring_sessions')
+            .select('id')
+            .or('learner_id.eq.$userId,parent_id.eq.$userId')
+            .limit(200);
+
+        final recurringIds = (ownedRecurring as List)
+            .map((row) => row['id'] as String?)
+            .whereType<String>()
+            .where((id) => id.isNotEmpty)
+            .toList();
+
+        if (recurringIds.isNotEmpty) {
+          final viaRecurring = await _supabase
+              .from('individual_sessions')
+              .select(_studentUpcomingSelect)
+              .inFilter('recurring_session_id', recurringIds)
+              .inFilter('status', ['scheduled', 'in_progress'])
+              .gte(
+                'scheduled_date',
+                queryDate.toIso8601String().split('T')[0],
+              )
+              .order('scheduled_date', ascending: true)
+              .order('scheduled_time', ascending: true)
+              .limit(limit * 2);
+
+          for (final session
+              in (viaRecurring as List).cast<Map<String, dynamic>>()) {
+            final id = session['id'] as String?;
+            if (id != null && id.isNotEmpty) {
+              sessionsById[id] = session;
+            }
+          }
+        }
+      } catch (e) {
+        LogService.warning(
+          'Recurring-owned upcoming sessions lookup failed: $e',
+        );
+      }
+
+      // Individual sessions are provisioned only after payment; include all matched rows.
+      // Group-class enrollments still require an explicit paid participant link.
       final sessions = sessionsById.values.toList();
       final paidSessions = <Map<String, dynamic>>[];
-      
+
       for (final session in sessions) {
-        final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
         final sessionId = session['id'] as String?;
         if (sessionId != null && paidGroupSessionIds.contains(sessionId)) {
           paidSessions.add(session);
           continue;
         }
-
-        if (recurringData != null) {
-          final recurringSessionId = recurringData['id'] as String?;
-          if (recurringSessionId != null) {
-            // Check payment status by querying payment_requests
-            try {
-              final paymentResponse = await _supabase
-                  .from('payment_requests')
-                  .select('status')
-                  .eq('recurring_session_id', recurringSessionId)
-                  .limit(1);
-              
-              final paymentRequests = paymentResponse as List<dynamic>?;
-              if (paymentRequests != null && paymentRequests.isNotEmpty) {
-                // Check if any payment request is paid
-                final hasPaidPayment = paymentRequests.any((pr) {
-                  final prMap = pr as Map<String, dynamic>;
-                  final status = (prMap['status'] as String? ?? '').toLowerCase();
-                  return status == 'paid' || status == 'completed';
-                });
-                
-                if (hasPaidPayment) {
-                  paidSessions.add(session);
-                }
-              }
-            } catch (e) {
-              // If payment_requests query fails, skip this session
-              LogService.warning('Error checking payment status for session ${session['id']}: $e');
-            }
-          }
-        }
+        paidSessions.add(session);
       }
 
       // Final classification by full local date+time so same-day already-held
       // sessions do not remain in "Upcoming" due to date-only filtering.
       final upcoming = paidSessions.where((session) {
         final status = (session['status'] as String? ?? '').toLowerCase();
-        if (status == 'in_progress') return true;
+        if (status == 'in_progress') {
+          return SessionLiveUtils.isSessionGenuinelyLive(session);
+        }
         final start = _parseSessionStart(session);
         if (start == null) return true; // fail-open if data is malformed
         return !start.isBefore(now);
@@ -356,6 +385,58 @@ class IndividualSessionService {
       LogService.error('Error fetching student upcoming sessions: $e');
       rethrow;
     }
+  }
+
+  /// Upcoming sessions for home carousel — same sources as My Sessions.
+  static Future<List<UpcomingSessionItem>> getStudentUpcomingItemsForHome({
+    int limit = 50,
+  }) async {
+    final individual = await getStudentUpcomingSessions(limit: limit);
+    final trials = await TrialSessionService.getStudentTrialSessions();
+
+    final individualIds = individual
+        .map((s) => s['id'] as String?)
+        .whereType<String>()
+        .toSet();
+    final individualKeys = individual
+        .map((s) {
+          final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
+          final tutorId = (recurring?['tutor_id'] as String?) ??
+              (s['tutor_id'] as String?);
+          final date = s['scheduled_date'] as String?;
+          final time = s['scheduled_time'] as String?;
+          if (tutorId == null || date == null || time == null) return null;
+          return '$tutorId|$date|$time';
+        })
+        .whereType<String>()
+        .toSet();
+
+    final upcomingTrials = <TrialSession>[];
+    for (final trial in trials) {
+      final status = trial.status.toLowerCase();
+      final paymentStatus = trial.paymentStatus.toLowerCase();
+      final isApproved = status == 'approved' ||
+          status == 'scheduled' ||
+          status == 'in_progress';
+      final isPaid =
+          paymentStatus == 'paid' || paymentStatus == 'completed';
+      if (!isApproved || !isPaid) continue;
+      if (!SessionDateUtils.isSessionUpcoming(trial) &&
+          !SessionDateUtils.isSessionInProgress(trial)) {
+        continue;
+      }
+      if (individualIds.contains(trial.id)) continue;
+      final trialKey =
+          '${trial.tutorId}|${trial.scheduledDate.toIso8601String().split('T')[0]}|${trial.scheduledTime}';
+      if (individualKeys.contains(trialKey)) continue;
+      upcomingTrials.add(trial);
+    }
+
+    final items = UpcomingSessionItem.mergeAndSort(
+      individual: individual,
+      trials: upcomingTrials,
+    );
+    return UpcomingSessionItem.enrichWithTutorProfiles(items);
   }
 
   /// Get past individual sessions for a student/parent
@@ -381,7 +462,9 @@ class IndividualSessionService {
               tutor_name,
               tutor_avatar_url,
               tutor_id,
-              subject
+              subject,
+              start_date,
+              last_session_date
             )
           ''')
           .or('learner_id.eq.$userId,parent_id.eq.$userId')

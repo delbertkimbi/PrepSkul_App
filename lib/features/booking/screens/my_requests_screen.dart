@@ -805,6 +805,18 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     return _trialSessions.where((req) => req.isPending).toList();
   }
 
+  /// Paid/approved bookings move to Sessions — keep only actionable requests here.
+  bool _isBookingActiveForRequests(BookingRequest request) {
+    if (request.status == 'cancelled' || request.status == 'rejected') {
+      return false;
+    }
+    final payment = request.paymentStatus?.toLowerCase();
+    if (payment == 'paid' || payment == 'completed') {
+      return false;
+    }
+    return true;
+  }
+
   /// Determine if a trial session should still appear in the active Requests
   /// views (All / Trial tabs) for the learner.
   ///
@@ -967,7 +979,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         _trialSessions.where(_isTrialActiveForRequests).toList();
     
     // Exclude cancelled booking requests so they disappear after user cancels
-    final activeBookingRequests = _bookingRequests.where((r) => r.status != 'cancelled').toList();
+    final activeBookingRequests =
+        _bookingRequests.where(_isBookingActiveForRequests).toList();
     final allRequests = [
       ...activeBookingRequests.map((r) => _RequestItem(type: 'booking', booking: r)),
       ..._customRequests.map((r) => _RequestItem(type: 'custom', custom: r)),
@@ -1203,7 +1216,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Widget _buildBookingsTab(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    final activeBookings = _bookingRequests.where((r) => r.status != 'cancelled').toList();
+    final activeBookings =
+        _bookingRequests.where(_isBookingActiveForRequests).toList();
     if (activeBookings.isEmpty) {
       return _buildEmptyState(context, 
         icon: Icons.book_outlined,
@@ -1569,49 +1583,32 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
             const SizedBox(height: 14),
             
-            // Session details - flat horizontal layout (no elevation)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildModernInfoItem(
-                      Icons.calendar_today_outlined,
-                      request.getDaysSummary(),
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 20,
-                    color: Colors.grey[300],
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  Expanded(
-                    child: _buildModernInfoItem(
-                      Icons.access_time_outlined,
-                      request.getTimeRange(),
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 20,
-                    color: Colors.grey[300],
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  Expanded(
-                    child: _buildModernInfoItem(
-                      request.location == 'online' 
-                          ? Icons.video_call_outlined 
-                          : Icons.location_on_outlined,
-                      request.location == 'online' ? 'Online' : (request.address ?? 'On-site'),
-                    ),
-                  ),
-                ],
-              ),
+            // Session details - stacked so day, time, and location are fully visible
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildModernInfoItem(
+                  Icons.calendar_today_outlined,
+                  request.getDaysSummary(),
+                  expanded: true,
+                ),
+                const SizedBox(height: 8),
+                _buildModernInfoItem(
+                  Icons.access_time_outlined,
+                  request.getTimeRange(),
+                  expanded: true,
+                ),
+                const SizedBox(height: 8),
+                _buildModernInfoItem(
+                  request.location == 'online'
+                      ? Icons.video_call_outlined
+                      : Icons.location_on_outlined,
+                  request.location == 'online'
+                      ? 'Online'
+                      : (request.address ?? 'On-site'),
+                  expanded: true,
+                ),
+              ],
             ),
 
             // Price and Action button in a row
@@ -3492,13 +3489,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 
-  Widget _buildModernInfoItem(IconData icon, String text) {
+  Widget _buildModernInfoItem(IconData icon, String text, {bool expanded = false}) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 15, color: Colors.grey[600]),
         const SizedBox(width: 6),
-        Flexible(
+        Expanded(
           child: Text(
             text,
             style: GoogleFonts.poppins(
@@ -3506,8 +3503,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               fontWeight: FontWeight.w500,
               color: Colors.grey[700],
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: expanded ? 3 : 1,
+            overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
           ),
         ),
       ],

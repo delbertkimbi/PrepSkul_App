@@ -6,6 +6,24 @@ class SessionDateUtils {
     r'^\s*(\d{1,2})\s*:\s*(\d{2})(?:\s*:\s*(\d{2}))?\s*([AaPp][Mm])?\s*$',
   );
 
+  /// Parse `scheduled_date` + `scheduled_time` into a local start [DateTime].
+  static DateTime? parseScheduledStart(String scheduledDate, String scheduledTime) {
+    try {
+      final dateParts = scheduledDate.split('T')[0].split('-');
+      if (dateParts.length != 3) return null;
+      final parsed = _parseTimeToHourMinute(scheduledTime);
+      return DateTime(
+        int.parse(dateParts[0]),
+        int.parse(dateParts[1]),
+        int.parse(dateParts[2]),
+        parsed.hour,
+        parsed.minute,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   static ({int hour, int minute}) _parseTimeToHourMinute(String time) {
     final trimmed = time.trim();
 

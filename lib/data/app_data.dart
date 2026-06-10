@@ -780,4 +780,21 @@ class AppData {
 
     return specializations.toSet().toList(); // Remove duplicates
   }
+
+  /// Label for users based outside Cameroon (shows free-text location fields).
+  static const String outsideCameroonLabel = 'Outside Cameroon';
+
+  static List<String> get cityDropdownOptions => [
+        outsideCameroonLabel,
+        ...cities.keys,
+      ];
+
+  static bool isCameroonCity(String? city) =>
+      city != null && city.isNotEmpty && cities.containsKey(city);
+
+  static bool isInternationalLocation(String? city) =>
+      city != null &&
+      city.isNotEmpty &&
+      city != outsideCameroonLabel &&
+      !isCameroonCity(city);
 }

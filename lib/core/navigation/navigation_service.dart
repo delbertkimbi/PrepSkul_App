@@ -13,6 +13,8 @@ import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:prepskul/core/navigation/route_guards.dart';
 import 'package:prepskul/core/navigation/navigation_state.dart';
 import 'package:prepskul/core/navigation/navigation_analytics.dart';
+import 'package:prepskul/features/dashboard/utils/home_stats_prefs.dart';
+import 'package:prepskul/features/skulmate/services/skulmate_onboarding_service.dart';
 
 class NavigationService {
   static final NavigationService _instance = NavigationService._internal();
@@ -47,6 +49,48 @@ class NavigationService {
 
   /// Get current context
   BuildContext? get context => _navigatorKey?.currentContext;
+
+  /// Resolve user_type from profile map, then SharedPreferences (offline / stale cache).
+  Future<String?> _resolveUserType(
+    Map<String, dynamic>? profile, {
+    required bool isOnline,
+  }) async {
+    final raw = profile?['user_type'];
+    if (raw != null && raw.toString().trim().isNotEmpty) {
+      return raw.toString().trim();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final cachedRole = prefs.getString('user_role')?.trim();
+    if (cachedRole != null && cachedRole.isNotEmpty) {
+      LogService.info(
+        isOnline
+            ? '[NAV_SERVICE] Profile missing user_type — using cached prefs role: $cachedRole'
+            : '[NAV_SERVICE] Offline — resolved user_type from prefs: $cachedRole',
+      );
+      return cachedRole;
+    }
+
+    return null;
+  }
+
+  /// Fill gaps in a partial offline profile from local session prefs.
+  Future<Map<String, dynamic>> _enrichProfileFromPrefs(
+    Map<String, dynamic> profile,
+    String userId,
+  ) async {
+    final synthetic = await _prefsSyntheticProfile(userId);
+    if (synthetic == null) return profile;
+
+    final enriched = Map<String, dynamic>.from(profile);
+    for (final entry in synthetic.entries) {
+      final value = enriched[entry.key];
+      if (value == null || value.toString().trim().isEmpty) {
+        enriched[entry.key] = entry.value;
+      }
+    }
+    return enriched;
+  }
 
   /// Minimal profile from SharedPreferences when network is too slow for Supabase.
   Future<Map<String, dynamic>?> _prefsSyntheticProfile(String userId) async {
@@ -107,8 +151,15 @@ class NavigationService {
           // Try to get cached profile
           final cachedProfile = await OfflineCacheService.getCachedUserProfile(user.id);
           if (cachedProfile != null) {
-            profile = cachedProfile;
+            profile = await _enrichProfileFromPrefs(cachedProfile, user.id);
             LogService.success('[NAV_SERVICE] Using cached profile data (offline mode)');
+          } else {
+            profile = await _prefsSyntheticProfile(user.id);
+            if (profile != null) {
+              LogService.info(
+                '[NAV_SERVICE] No profile cache — using prefs-only profile (offline)',
+              );
+            }
           }
         }
 
@@ -183,6 +234,9 @@ class NavigationService {
               await prefs.remove('signup_email');
               await prefs.remove('signup_full_name');
               await prefs.remove('pending_deep_link');
+              await SkulMateOnboardingService.clearForUser(cachedUserId);
+              await HomeStatsPrefs.clearForUser(prefs, cachedUserId);
+              await HomeStatsPrefs.clearLegacy(prefs);
               await prefs.remove('skulmate_onboarding_completed');
             }
             
@@ -199,22 +253,27 @@ class NavigationService {
               LogService.success('[NAV_SERVICE] Session synced to local storage for user: ${profile['full_name']} (${profile['user_type']})');
             }
 
-            final userRole = profile['user_type'] ?? 'student';
-            final userTypeRaw = profile['user_type'];
+            final resolvedRole = await _resolveUserType(profile, isOnline: isOnline);
+            if (resolvedRole == null) {
+              LogService.debug(
+                '[NAV_SERVICE] user_type missing and no cached role — redirecting to role selection',
+              );
+              return NavigationResult('/role-selection');
+            }
+
+            if (profile['user_type'] == null ||
+                profile['user_type'].toString().trim().isEmpty) {
+              profile = Map<String, dynamic>.from(profile)
+                ..['user_type'] = resolvedRole;
+            }
+
+            final userRole = resolvedRole;
             LogService.debug('[NAV_SERVICE] User role from profile: $userRole');
             LogService.debug('[NAV_SERVICE] User email: ${user.email ?? "unknown"}');
             if (userRole == 'tutor' && user.email?.contains('student') == true) {
               LogService.warning('[NAV_SERVICE] WARNING: User has tutor role but email suggests student!');
             }
             final hasCompletedSurvey = profile['survey_completed'] ?? false;
-            
-            // Check if user_type is missing/empty (e.g., fresh Google signup)
-            // Only redirect to role selection if user_type is actually null/empty
-            // For email signups, user_type should already be set, so don't redirect
-            if (userTypeRaw == null || userTypeRaw == '' || userTypeRaw.toString().trim().isEmpty) {
-              LogService.debug('[NAV_SERVICE] user_type is missing/invalid in DB - redirecting to role selection');
-              return NavigationResult('/role-selection');
-            }
             
             // If user_type exists and is valid (student, parent, or tutor), continue with normal flow
             // Don't redirect to role selection for email signups who already selected their role
@@ -525,6 +584,27 @@ class NavigationService {
     } else {
       return NavigationResult('/student-nav');
     }
+  }
+
+  /// Clears the entire navigation stack — use after login/signup so back never
+  /// returns to auth screens.
+  Future<void> navigateAndResetStack(
+    String route, {
+    Map<String, dynamic>? arguments,
+  }) =>
+      navigateToRoute(route, arguments: arguments, clearStack: true);
+
+  /// Direct stack reset when [NavigationService] is not ready.
+  static void resetStackNamed(
+    BuildContext context,
+    String route, {
+    Object? arguments,
+  }) {
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      route,
+      (route) => false,
+      arguments: arguments,
+    );
   }
 
   /// Navigate to route with guards and state management

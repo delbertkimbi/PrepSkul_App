@@ -13,12 +13,18 @@ import '../../../features/booking/services/trial_session_service.dart';
 import '../../../features/booking/services/session_lifecycle_service.dart';
 import '../../../features/booking/models/trial_session_model.dart';
 import '../../../features/booking/services/session_reschedule_service.dart';
-import '../../../features/sessions/services/meet_service.dart';
 import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import '../../../features/sessions/screens/agora_video_session_screen.dart';
-import '../../../features/sessions/widgets/session_location_map.dart';
-import '../../../features/sessions/services/location_checkin_service.dart';
-import '../../../core/widgets/image_picker_bottom_sheet.dart';
+import '../../../features/sessions/widgets/session_start_countdown_ring.dart';
+import '../../../core/utils/geocoding_helper.dart';
+import '../../../features/sessions/domain/onsite_session_phase.dart';
+import '../../../features/sessions/widgets/onsite_session_experience.dart';
+import '../../../features/sessions/widgets/onsite_live_safety_bar.dart';
+import '../../../features/sessions/screens/onsite_session_wrap_up_screen.dart';
+import '../../../features/sessions/screens/onsite_presence_wizard_screen.dart';
+import '../../../features/sessions/services/session_safety_service.dart';
+import '../../../features/sessions/services/live_session_overlay_controller.dart';
+import '../../../core/utils/responsive_helper.dart';
 import '../../../features/booking/widgets/report_issue_bottom_sheet.dart';
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
@@ -40,18 +46,54 @@ class TutorSessionDetailFullScreen extends StatefulWidget {
 
 class _TutorSessionDetailFullScreenState
     extends State<TutorSessionDetailFullScreen> {
-  bool _isLoading = false;
+  bool _isActionLoading = false;
   Map<String, dynamic>? _sessionData;
   int _countdownTick = 0; // Force rebuild for countdown
   bool _onsiteBannerDismissed = false;
-  int _attendanceRefreshKey = 0;
+  String _tutorName = 'Tutor';
+  String? _tutorAvatarUrl;
 
   @override
   void initState() {
     super.initState();
+    _sessionData = widget.session;
     _loadSessionData();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncLiveOverlayIfNeeded());
     // Update countdown every 30s when on scheduled session
     Future.delayed(const Duration(seconds: 30), _tickCountdown);
+  }
+
+  void _syncLiveOverlayIfNeeded() {
+    if (!mounted || _sessionData == null) return;
+    if (_getStatus() != 'in_progress') return;
+    LiveSessionOverlayController.instance.registerFromSessionMap(
+      session: _sessionData!,
+      userRole: 'tutor',
+      counterpartyName: _getStudentName(),
+      subject: _getSubject(),
+      localAvatarUrl: _tutorAvatarUrl,
+      counterpartyAvatarUrl: _getStudentAvatar(),
+      isOnline: _getLocation() == 'online',
+    );
+    LiveSessionOverlayController.instance.setRouteSuppressed(true);
+  }
+
+  void _popSessionDetail() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+      return;
+    }
+    Navigator.pushReplacementNamed(
+      context,
+      '/tutor-nav',
+      arguments: {'initialTab': 2},
+    );
+  }
+
+  @override
+  void dispose() {
+    LiveSessionOverlayController.instance.setRouteSuppressed(false);
+    super.dispose();
   }
 
   void _tickCountdown() {
@@ -64,14 +106,69 @@ class _TutorSessionDetailFullScreenState
   }
 
   Future<void> _loadSessionData() async {
-    setState(() => _isLoading = true);
-    try {
       _sessionData = widget.session;
+    if (mounted) setState(() {});
+    try {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId != null) {
+        final profile = await SupabaseService.client
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('id', userId)
+            .maybeSingle();
+        if (profile != null) {
+          _tutorName = profile['full_name'] as String? ?? _tutorName;
+          _tutorAvatarUrl = profile['avatar_url'] as String?;
+        }
+      }
+      await _enrichStudentNameIfNeeded();
     } catch (e) {
       LogService.error('Error loading session data: $e');
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {});
+        if (_getStatus() == 'in_progress') {
+          _syncLiveOverlayIfNeeded();
+        }
+      }
+    }
+  }
+
+  bool _isGenericDisplayName(String? name) {
+    if (name == null || name.trim().isEmpty) return true;
+    final n = name.trim().toLowerCase();
+    return n == 'student' || n == 'user' || n == 'parent' || n == 'learner';
+  }
+
+  Future<void> _enrichStudentNameIfNeeded() async {
+    if (_sessionData == null) return;
+    if (!_isGenericDisplayName(_getStudentName())) return;
+
+    final recurringData =
+        _sessionData!['recurring_sessions'] as Map<String, dynamic>?;
+    final learnerId = recurringData?['learner_id'] as String? ??
+        _sessionData!['learner_id'] as String?;
+    if (learnerId == null || learnerId.isEmpty) return;
+
+    try {
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', learnerId)
+          .maybeSingle();
+      if (profile == null) return;
+      final fullName = profile['full_name'] as String?;
+      if (_isGenericDisplayName(fullName)) return;
+      _sessionData = {
+        ..._sessionData!,
+        'student_name': fullName!.trim(),
+        'student_avatar_url': profile['avatar_url'] as String?,
+      };
+    } catch (e) {
+      LogService.warning('Could not enrich student name: $e');
+    } finally {
+      if (mounted && _getStatus() == 'in_progress') {
+        _syncLiveOverlayIfNeeded();
       }
     }
   }
@@ -107,7 +204,7 @@ class _TutorSessionDetailFullScreenState
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading || _sessionData == null) {
+    if (_sessionData == null) {
       return Scaffold(
         backgroundColor: AppTheme.backgroundColor,
         appBar: AppBar(
@@ -115,7 +212,7 @@ class _TutorSessionDetailFullScreenState
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-            onPressed: () => Navigator.pop(context),
+            onPressed: _popSessionDetail,
           ),
           title: Text(
             'Session Details',
@@ -131,6 +228,40 @@ class _TutorSessionDetailFullScreenState
       );
     }
 
+    if (_getLocation() != 'online') {
+      return _buildOnsiteProgressiveScaffold(context);
+    }
+
+    return _buildStandardDetailScaffold(context);
+  }
+
+  String _onsiteAppBarTitle() {
+    final data = _sessionData;
+    if (data == null) return 'Session details';
+    return switch (onsiteStageFromSession(data)) {
+      OnsiteExperienceStage.live => 'Live session',
+      OnsiteExperienceStage.completed => 'Session complete',
+      OnsiteExperienceStage.preSession => 'Session details',
+    };
+  }
+
+  DateTime? _getSessionStartedAt() {
+    final raw = _sessionData?['session_started_at'] as String?;
+    if (raw == null) return null;
+    try {
+      return DateTime.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildOnsiteProgressiveScaffold(BuildContext context) {
+    final data = _sessionData!;
+    final stage = onsiteStageFromSession(data);
+    final isLive = stage == OnsiteExperienceStage.live;
+    final address = _getAddress() ?? '';
+    final scheduled = _getScheduledDateTime();
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
@@ -138,7 +269,232 @@ class _TutorSessionDetailFullScreenState
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _popSessionDetail,
+        ),
+        title: Text(
+          _onsiteAppBarTitle(),
+          style: GoogleFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textDark,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                vertical: 16,
+                horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!isLive) ...[
+                    _buildStudentProfileSection(),
+                    const SizedBox(height: 20),
+                    _buildSectionTitle('Session details'),
+                    const SizedBox(height: 12),
+                    _buildSessionDetailsCard(),
+                    const SizedBox(height: 20),
+                  ],
+                  OnsiteSessionExperience(
+                    stage: stage,
+                    showProfileHeader: false,
+                    counterpartyName: _getStudentName(),
+                    tutorName: _tutorName,
+                    tutorAvatarUrl: _tutorAvatarUrl,
+                    studentName: _getStudentName(),
+                    studentAvatarUrl: _getStudentAvatar(),
+                    subject: _getSubject(),
+                    address: address,
+                    addressCoordinates: _getAddressCoordinates(),
+                    locationDescription: null,
+                    scheduledStart: scheduled,
+                    sessionStartedAt: _getSessionStartedAt(),
+                    statusLine: stage == OnsiteExperienceStage.preSession
+                        ? 'Take a selfie with your student to confirm presence, then start the session.'
+                        : null,
+                    showMapPreview: stage == OnsiteExperienceStage.preSession,
+                    isLoading: _isActionLoading,
+                    onBackToSessions: stage == OnsiteExperienceStage.completed
+                        ? () => Navigator.pop(context)
+                        : null,
+                  ),
+                  if (stage == OnsiteExperienceStage.preSession && _getPerSessionAmount() != null) ...[
+                    const SizedBox(height: 24),
+                    _buildSectionTitle('Payment'),
+                    const SizedBox(height: 12),
+                    _buildPaymentCard(),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (stage == OnsiteExperienceStage.preSession && _shouldShowActions())
+            _buildOnsitePreSessionFooter(),
+          if (isLive) _buildOnsiteLiveFooter(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOnsiteLiveFooter() {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    final sessionId = _getSessionId();
+    final isIndividual = _isIndividualSession();
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        ResponsiveHelper.responsiveHorizontalPadding(context),
+        12,
+        ResponsiveHelper.responsiveHorizontalPadding(context),
+        16 + MediaQuery.paddingOf(context).bottom,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _isActionLoading ? null : _handleEndSession,
+              icon: const Icon(Icons.stop_circle_outlined, size: 20),
+              label: Text(
+                'End session',
+                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          OnsiteLiveSafetyBar(
+            isLoading: _isActionLoading,
+            onReport: isIndividual
+                ? () => showReportIssueBottomSheet(
+                      context: context,
+                      sessionId: sessionId,
+                      role: 'tutor',
+                    )
+                : null,
+            onShareLocation: userId != null
+                ? () => SessionSafetyService.shareWithEmergencyContact(
+                      sessionId: sessionId,
+                      userId: userId,
+                      userType: 'tutor',
+                    )
+                : null,
+            onPanic: userId != null
+                ? () => SessionSafetyService.triggerPanicButton(
+                      sessionId: sessionId,
+                      userId: userId,
+                      userType: 'tutor',
+                    )
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOnsitePreSessionFooter() {
+    final currentUserId = SupabaseService.client.auth.currentUser?.id;
+    final withinWindow = OnsiteSessionPhaseResolver.isWithinPresenceWindow(
+          _getScheduledDateTime(),
+        ) ||
+        LiveSessionTestConfig.canStartOnsiteEarly(currentUserId);
+    final earlyStart = LiveSessionTestConfig.canStartOnsiteEarly(currentUserId) &&
+        !OnsiteSessionPhaseResolver.isWithinPresenceWindow(_getScheduledDateTime());
+    final opensAt = OnsiteSessionPhaseResolver.presenceWindowStart(_getScheduledDateTime());
+
+    return Container(
+              padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (earlyStart)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Test mode: start anytime',
+                style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
+                textAlign: TextAlign.center,
+              ),
+            )
+          else if (!withinWindow && opensAt != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Start unlocks when check-in opens (${_formatShortTime(opensAt)})',
+                style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: (_isActionLoading || !withinWindow) ? null : _startSessionFromDetail,
+              icon: const Icon(Icons.play_arrow, size: 20),
+              label: Text(
+                'Start session',
+                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => _showMoreSessionActions(
+              sessionId: _getSessionId(),
+              isIndividual: _isIndividualSession(),
+            ),
+            icon: const Icon(Icons.more_horiz),
+            label: Text('More actions', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStandardDetailScaffold(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
+      appBar: AppBar(
+        backgroundColor: AppTheme.backgroundColor,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          onPressed: _popSessionDetail,
         ),
         title: Text(
           'Session Details',
@@ -154,46 +510,30 @@ class _TutorSessionDetailFullScreenState
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.symmetric(
+                horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                vertical: ResponsiveHelper.responsiveVerticalPadding(context),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Student Profile Section
                   _buildStudentProfileSection(),
                   const SizedBox(height: 32),
-
-                  // Session Details Section
                   _buildSectionTitle('Session Details'),
                   const SizedBox(height: 16),
                   _buildSessionDetailsCard(),
-
                   const SizedBox(height: 24),
-
-                  // Schedule Section (if recurring)
                   if (!_isIndividualSession()) ...[
                     _buildSectionTitle('Schedule'),
                     const SizedBox(height: 16),
                     _buildScheduleCard(),
                     const SizedBox(height: 24),
                   ],
-
-                  // Location Section
                   _buildSectionTitle('Location'),
                   const SizedBox(height: 16),
                   _buildLocationCard(),
-
-                  // Onsite in progress: one-line reminder (Uber-style, minimal)
-                  if (_getStatus() == 'in_progress' &&
-                      _getLocation() != 'online' &&
-                      !_onsiteBannerDismissed) ...[
-                    const SizedBox(height: 16),
-                    _buildOnsiteBackgroundBanner(),
-                  ],
-
-                  const SizedBox(height: 24),
-
-                  // Payment Section (if available)
                   if (_getMonthlyTotal() != null) ...[
+                    const SizedBox(height: 24),
                     _buildSectionTitle('Payment'),
                     const SizedBox(height: 16),
                     _buildPaymentCard(),
@@ -202,8 +542,6 @@ class _TutorSessionDetailFullScreenState
               ),
             ),
           ),
-
-          // Action Buttons at the bottom
           if (_shouldShowActions()) _buildActionButtons(),
         ],
       ),
@@ -223,27 +561,58 @@ class _TutorSessionDetailFullScreenState
   }
 
   String _getStudentName() {
+    final preResolved = _sessionData?['student_name'] as String?;
+    if (!_isGenericDisplayName(preResolved)) return preResolved!.trim();
+
     if (_isTrialSession()) {
-      return _sessionData!['student_name'] as String? ?? 'Student';
+      return _sessionData!['student_name'] as String? ??
+          _sessionData!['learner_name'] as String? ??
+          'Student';
     } else if (_isIndividualSession()) {
       final recurringData =
           _sessionData!['recurring_sessions'] as Map<String, dynamic>?;
-      return recurringData?['student_name']?.toString() ?? 'Student';
+      final learnerType = recurringData?['learner_type']?.toString().toLowerCase();
+      final learnerName = recurringData?['learner_name']?.toString();
+      if (learnerType != 'parent' &&
+          !_isGenericDisplayName(learnerName)) {
+        return learnerName!.trim();
+      }
+      return recurringData?['student_name']?.toString() ??
+          _sessionData!['student_name']?.toString() ??
+          (!_isGenericDisplayName(learnerName) ? learnerName!.trim() : null) ??
+          _sessionData!['learner_name']?.toString() ??
+          'Student';
     } else {
-      return _sessionData!['student_name'] as String? ?? 'Student';
+      return _sessionData!['learner_name'] as String? ??
+          _sessionData!['student_name'] as String? ??
+          'Student';
     }
   }
 
   String? _getStudentAvatar() {
     if (_isTrialSession()) {
-      return _sessionData!['student_avatar_url'] as String?;
+      return _sessionData!['student_avatar_url'] as String? ??
+          _sessionData!['learner_avatar_url'] as String?;
     } else if (_isIndividualSession()) {
       final recurringData =
           _sessionData!['recurring_sessions'] as Map<String, dynamic>?;
-      return recurringData?['student_avatar_url']?.toString();
+      return recurringData?['learner_avatar_url']?.toString() ??
+          recurringData?['student_avatar_url']?.toString() ??
+          _sessionData!['learner_avatar_url']?.toString();
     } else {
-      return _sessionData!['student_avatar_url'] as String?;
+      return _sessionData!['learner_avatar_url'] as String? ??
+          _sessionData!['student_avatar_url'] as String?;
     }
+  }
+
+  /// Badge-only: show Scheduled until start time unless tutor already started early.
+  String _badgeDisplayStatus() {
+    final status = _getStatus();
+    if (status != 'in_progress') return status;
+    final start = _getScheduledDateTime();
+    if (start == null) return status;
+    if (DateTime.now().isBefore(start)) return 'started_early';
+    return status;
   }
 
   String _getStatus() {
@@ -306,11 +675,25 @@ class _TutorSessionDetailFullScreenState
 
   String? _getAddress() {
     if (_isTrialSession()) {
-      return null; // Trial sessions don't have address
-    } else {
-      return _sessionData!['address'] as String? ??
-          _sessionData!['onsite_address'] as String?;
+      return null;
     }
+    final raw = _sessionData!['address'] as String? ??
+        _sessionData!['onsite_address'] as String? ??
+        _sessionData!['location_description'] as String?;
+    if (raw == null || raw.trim().isEmpty) return null;
+    return GeocodingHelper.stripEmbeddedCoords(raw);
+  }
+
+  String? _getAddressCoordinates() {
+    final direct = _sessionData?['onsite_coordinates'] as String?;
+    if (direct != null && direct.isNotEmpty) return direct;
+    for (final field in ['address', 'location_description', 'onsite_address']) {
+      final embedded = GeocodingHelper.extractEmbeddedCoordinates(
+        _sessionData?[field] as String?,
+      );
+      if (embedded != null) return embedded;
+    }
+    return null;
   }
 
   String? _getMeetLink() {
@@ -319,6 +702,14 @@ class _TutorSessionDetailFullScreenState
     } else {
       return _sessionData!['meeting_link'] as String?;
     }
+  }
+
+  /// Per-session tutor earnings (monthly plan ÷ sessions per month).
+  double? _getPerSessionAmount() {
+    final monthly = _getMonthlyTotal();
+    final frequency = _getFrequency();
+    if (monthly == null || frequency == null || frequency <= 0) return null;
+    return monthly / (frequency * 4);
   }
 
   double? _getMonthlyTotal() {
@@ -431,8 +822,10 @@ class _TutorSessionDetailFullScreenState
   Widget _buildStudentProfileSection() {
     final studentName = _getStudentName();
     final studentAvatar = _getStudentAvatar();
-    final status = _getStatus();
-    final statusColor = _getStatusColor(status);
+    final badgeStatus = _badgeDisplayStatus();
+    final statusColor = _getStatusColor(
+      badgeStatus == 'started_early' ? 'in_progress' : badgeStatus,
+    );
 
     return Column(
       children: [
@@ -489,7 +882,7 @@ class _TutorSessionDetailFullScreenState
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                status.toUpperCase(),
+                (badgeStatus == 'started_early' ? 'IN PROGRESS' : badgeStatus.toUpperCase()),
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -520,25 +913,26 @@ class _TutorSessionDetailFullScreenState
     final sessionTime = _getSessionTime();
     final frequency = _getFrequency();
     final totalSessions = _getTotalSessionsCompleted();
+    final scheduled = _getScheduledDateTime();
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.softBorder),
       ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (subject != null)
-            _buildInfoRow(
-              Icons.book_outlined,
-              'Subject',
-              subject,
-            ),
+                  _buildInfoRow(Icons.book_outlined, 'Subject', subject),
           if (_isIndividualSession() && sessionDate != null) ...[
-            const SizedBox(height: 16),
+                  const SizedBox(height: 12),
             _buildInfoRow(
               Icons.calendar_today,
               'Date',
@@ -546,27 +940,37 @@ class _TutorSessionDetailFullScreenState
             ),
           ],
           if (_isIndividualSession() && sessionTime != null) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              Icons.access_time,
-              'Time',
-              sessionTime!,
-            ),
+                  const SizedBox(height: 12),
+                  _buildInfoRow(Icons.access_time, 'Time', sessionTime!),
           ],
           if (!_isIndividualSession() && frequency != null) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              Icons.repeat,
-              'Frequency',
-              '$frequency sessions per week',
-            ),
+                  const SizedBox(height: 12),
+                  _buildInfoRow(Icons.repeat, 'Frequency', '$frequency sessions per week'),
           ],
           if (!_isIndividualSession() && totalSessions > 0) ...[
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              Icons.check_circle_outline,
-              'Completed',
-              '$totalSessions sessions',
+                  const SizedBox(height: 12),
+                  _buildInfoRow(Icons.check_circle_outline, 'Completed', '$totalSessions sessions'),
+                ],
+              ],
+            ),
+          ),
+          if (scheduled != null && _getStatus() == 'scheduled') ...[
+            const SizedBox(width: 12),
+            Builder(
+              builder: (_) {
+                final recurring =
+                    _sessionData!['recurring_sessions'] as Map<String, dynamic>?;
+                final window = SessionStartCountdownRing.bookingWindowFromRecurring(
+                  recurring,
+                  scheduled,
+                );
+                return SessionStartCountdownRing(
+                  sessionStart: scheduled,
+                  bookingWindowStart: window.windowStart,
+                  bookingWindowEnd: window.windowEnd,
+                  size: 84,
+                );
+              },
             ),
           ],
         ],
@@ -631,7 +1035,7 @@ class _TutorSessionDetailFullScreenState
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'For onsite sessions, teach in a visible area with an adult at home (especially with minors). If you ever feel unsafe or harassed, end the session and use “Report issue” in the app. Keeping the app in the background also helps document your session and support smooth payment.',
+              'Teach in a visible area with an adult present for minors. Use Safety (shield icon) or Report issue if needed.',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 color: AppTheme.textDark,
@@ -678,37 +1082,6 @@ class _TutorSessionDetailFullScreenState
               'Address',
               address,
             ),
-            // Onsite check-in / check-out and safety (tutor session detail)
-            if (!isOnline && _shouldShowActions()) ...[
-              const SizedBox(height: 16),
-              SessionLocationMap(
-                key: ValueKey(_attendanceRefreshKey),
-                address: address,
-                coordinates: null,
-                sessionId: _getSessionId(),
-                currentUserId: SupabaseService.client.auth.currentUser?.id,
-                userType: 'tutor',
-                showCheckIn: true,
-                scheduledDateTime: _getScheduledDateTime(),
-                locationType: 'onsite',
-                onAddPhotoPressed: () => _handleUploadSelfie(_getSessionId()),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _isLoading ? null : () => _handleUploadSelfie(_getSessionId()),
-                icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                label: Text(
-                  'Upload Selfie',
-                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primaryColor,
-                  side: BorderSide(color: AppTheme.primaryColor),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ],
           ],
           if (isOnline && meetLink != null && meetLink.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -752,7 +1125,7 @@ class _TutorSessionDetailFullScreenState
   }
 
   Widget _buildPaymentCard() {
-    final monthlyTotal = _getMonthlyTotal();
+    final perSession = _getPerSessionAmount();
     final paymentPlan = _getPaymentPlan();
 
     return Container(
@@ -765,18 +1138,18 @@ class _TutorSessionDetailFullScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (paymentPlan != null)
+          if (perSession != null)
             _buildInfoRow(
-              Icons.payment,
-              'Payment Plan',
-              _formatPaymentPlan(paymentPlan),
+              Icons.payments_outlined,
+              'This session',
+              _formatCurrency(perSession),
             ),
-          if (monthlyTotal != null) ...[
+          if (paymentPlan != null) ...[
             const SizedBox(height: 16),
             _buildInfoRow(
-              Icons.attach_money,
-              'Monthly Total',
-              _formatCurrency(monthlyTotal!),
+              Icons.payment,
+              'Billing plan',
+              _formatPaymentPlan(paymentPlan),
             ),
           ],
         ],
@@ -891,7 +1264,7 @@ class _TutorSessionDetailFullScreenState
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: (_isLoading || !canJoin) ? null : () => _joinOrStartAndOpenVideo(),
+                        onPressed: (_isActionLoading || !canJoin) ? null : () => _joinOrStartAndOpenVideo(),
                         icon: const Icon(Icons.video_call, size: 20),
                         label: Text(
                           status == 'scheduled' ? 'Start & Join Session' : 'Join Session',
@@ -901,7 +1274,7 @@ class _TutorSessionDetailFullScreenState
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: canJoin ? AppTheme.accentGreen : Colors.grey[400],
+                          backgroundColor: canJoin ? AppTheme.primaryColor : Colors.grey[400],
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
@@ -915,12 +1288,50 @@ class _TutorSessionDetailFullScreenState
               },
             ),
           ],
-          // Start Session (scheduled + onsite)
-          if (status == 'scheduled' && !isOnline)
+          // Start Session (onsite) — only within check-in window (1h before → 2h after)
+          if (status == 'scheduled' && !isOnline) ...[
+            Builder(
+              builder: (context) {
+                final currentUserId = SupabaseService.client.auth.currentUser?.id;
+                final scheduled = _getScheduledDateTime();
+                final withinWindow = OnsiteSessionPhaseResolver.isWithinPresenceWindow(scheduled) ||
+                    LiveSessionTestConfig.canStartOnsiteEarly(currentUserId);
+                final earlyStart = LiveSessionTestConfig.canStartOnsiteEarly(currentUserId) &&
+                    !OnsiteSessionPhaseResolver.isWithinPresenceWindow(scheduled);
+                final opensAt = OnsiteSessionPhaseResolver.presenceWindowStart(scheduled);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (earlyStart)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'Test mode: start anytime',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.textMedium,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                    else if (!withinWindow && opensAt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'You can start when check-in opens (${_formatShortTime(opensAt)})',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.textMedium,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : () => _startSessionFromDetail(),
+                        onPressed: (_isActionLoading || !withinWindow)
+                            ? null
+                            : () => _startSessionFromDetail(),
                 icon: const Icon(Icons.play_arrow, size: 20),
                 label: Text(
                   'Start Session',
@@ -939,6 +1350,11 @@ class _TutorSessionDetailFullScreenState
                 ),
               ),
             ),
+                  ],
+                );
+              },
+            ),
+          ],
           // End Session (in_progress)
           if (status == 'in_progress')
             Padding(
@@ -946,7 +1362,7 @@ class _TutorSessionDetailFullScreenState
               child: SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: _isLoading ? null : () => _handleEndSession(),
+                  onPressed: _isActionLoading ? null : () => _handleEndSession(),
                   icon: const Icon(Icons.stop, size: 20),
                   label: Text(
                     'End Session',
@@ -967,86 +1383,71 @@ class _TutorSessionDetailFullScreenState
               ),
             ),
           if (status == 'scheduled' || status == 'in_progress') ...[
-            if (status == 'in_progress' || status == 'scheduled') const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _handleReschedule(sessionId, isIndividual),
-                    icon: const Icon(Icons.schedule, size: 18),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => _showMoreSessionActions(
+                sessionId: sessionId,
+                isIndividual: isIndividual,
+              ),
+              icon: const Icon(Icons.more_horiz, size: 20),
                     label: Text(
-                      'Reschedule',
+                'More actions',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
-                      side: BorderSide(color: AppTheme.primaryColor),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
+                  color: AppTheme.textMedium,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _handleCancel(sessionId, isIndividual),
-                    icon: const Icon(Icons.cancel_outlined, size: 18),
-                    label: Text(
-                      'Cancel',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: BorderSide(color: Colors.red),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-            // Report issue (individual sessions only; safety_incidents are per individual_session)
-            if (isIndividual) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => showReportIssueBottomSheet(
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showMoreSessionActions({
+    required String sessionId,
+    required bool isIndividual,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.schedule, color: AppTheme.primaryColor),
+              title: Text('Reschedule', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _handleReschedule(sessionId, isIndividual);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.cancel_outlined, color: Colors.red),
+              title: Text('Cancel session', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _handleCancel(sessionId, isIndividual);
+              },
+            ),
+            if (isIndividual)
+              ListTile(
+                leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                title: Text('Report issue', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showReportIssueBottomSheet(
                     context: context,
                     sessionId: sessionId,
                     role: 'tutor',
-                  ),
-                  icon: const Icon(Icons.warning_amber_rounded, size: 18),
-                  label: Text(
-                    'Something wrong? Report issue',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.orange,
-                    side: const BorderSide(color: Colors.orange),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
+                  );
+                },
               ),
-            ],
+            const SizedBox(height: 8),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1055,7 +1456,48 @@ class _TutorSessionDetailFullScreenState
     final sessionId = _getSessionId();
     final isIndividual = _isIndividualSession();
     final isOnline = _getLocation() == 'online';
-    setState(() => _isLoading = true);
+    final userId = SupabaseService.client.auth.currentUser?.id;
+
+    if (!isOnline) {
+      if (userId == null) return;
+      final checkedIn = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OnsitePresenceWizardScreen(
+            mode: OnsitePresenceWizardMode.checkIn,
+            sessionId: sessionId,
+            userId: userId,
+            address: _getAddress() ?? '',
+            scheduledStart: _getScheduledDateTime(),
+          ),
+        ),
+      );
+      if (checkedIn != true || !mounted) return;
+    }
+
+    final previousStatus = _getStatus();
+    final previousStartedAt = _sessionData?['session_started_at'];
+    final startedAt = DateTime.now().toIso8601String();
+
+    setState(() {
+      _isActionLoading = true;
+      _sessionData = {
+        ..._sessionData!,
+        'status': 'in_progress',
+        'session_started_at': startedAt,
+      };
+    });
+    LiveSessionOverlayController.instance.registerFromSessionMap(
+      session: _sessionData!,
+      userRole: 'tutor',
+      counterpartyName: _getStudentName(),
+      subject: _getSubject(),
+      localAvatarUrl: _tutorAvatarUrl,
+      counterpartyAvatarUrl: _getStudentAvatar(),
+      isOnline: isOnline,
+    );
+    LiveSessionOverlayController.instance.setRouteSuppressed(true);
+
     try {
       if (isIndividual) {
         await SessionLifecycleService.startSession(
@@ -1084,6 +1526,14 @@ class _TutorSessionDetailFullScreenState
     } catch (e) {
       LogService.error('Error starting session: $e');
       if (mounted) {
+        setState(() {
+          _sessionData = {
+            ..._sessionData!,
+            'status': previousStatus,
+            'session_started_at': previousStartedAt,
+          };
+        });
+        LiveSessionOverlayController.instance.clear();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to start session: $e'),
@@ -1092,8 +1542,12 @@ class _TutorSessionDetailFullScreenState
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isActionLoading = false);
     }
+  }
+
+  String _formatShortTime(DateTime dt) {
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _joinOrStartAndOpenVideo() async {
@@ -1113,7 +1567,7 @@ class _TutorSessionDetailFullScreenState
     final status = _getStatus();
     final isIndividual = _isIndividualSession();
     final isOnline = _getLocation() == 'online';
-    setState(() => _isLoading = true);
+    setState(() => _isActionLoading = true);
     try {
       if (status == 'scheduled') {
         if (isIndividual) {
@@ -1126,6 +1580,22 @@ class _TutorSessionDetailFullScreenState
           await TrialSessionService.startTrialSessionAsTutor(sessionId, isOnline: true);
         }
         if (mounted) {
+          setState(() {
+            _sessionData = {
+              ..._sessionData!,
+              'status': 'in_progress',
+              'session_started_at': DateTime.now().toIso8601String(),
+            };
+          });
+          LiveSessionOverlayController.instance.registerFromSessionMap(
+            session: _sessionData!,
+            userRole: 'tutor',
+            counterpartyName: _getStudentName(),
+            subject: _getSubject(),
+            localAvatarUrl: _tutorAvatarUrl,
+            counterpartyAvatarUrl: _getStudentAvatar(),
+            isOnline: true,
+          );
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
@@ -1175,12 +1645,61 @@ class _TutorSessionDetailFullScreenState
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isActionLoading = false);
     }
   }
 
   Future<void> _handleEndSession() async {
     final sessionId = _getSessionId();
+
+    if (_getLocation() != 'online') {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final checkedOut = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OnsitePresenceWizardScreen(
+            mode: OnsitePresenceWizardMode.checkOut,
+            sessionId: sessionId,
+            userId: userId,
+            address: _getAddress() ?? '',
+            scheduledStart: _getScheduledDateTime(),
+          ),
+        ),
+      );
+      if (checkedOut != true || !mounted) return;
+
+      final completed = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OnsiteSessionWrapUpScreen(
+            sessionId: sessionId,
+            studentName: _getStudentName(),
+            subject: _getSubject() ?? 'Tutoring Session',
+          ),
+        ),
+      );
+      if (completed == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text('Session completed', style: GoogleFonts.poppins()),
+              ],
+            ),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+        setState(() => _sessionData = {..._sessionData!, 'status': 'completed'});
+        LiveSessionOverlayController.instance.clear();
+        _refreshSessionStatus();
+      }
+      return;
+    }
+
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) {
@@ -1210,7 +1729,7 @@ class _TutorSessionDetailFullScreenState
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: _popSessionDetail,
               child: Text('Cancel', style: GoogleFonts.poppins()),
             ),
             ElevatedButton(
@@ -1227,7 +1746,7 @@ class _TutorSessionDetailFullScreenState
       },
     );
     if (result == null) return;
-    setState(() => _isLoading = true);
+    setState(() => _isActionLoading = true);
     try {
       await SessionLifecycleService.endSession(
         sessionId,
@@ -1246,6 +1765,8 @@ class _TutorSessionDetailFullScreenState
             backgroundColor: AppTheme.accentGreen,
           ),
         );
+        setState(() => _sessionData = {..._sessionData!, 'status': 'completed'});
+        LiveSessionOverlayController.instance.clear();
         _refreshSessionStatus();
       }
     } catch (e) {
@@ -1259,46 +1780,7 @@ class _TutorSessionDetailFullScreenState
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _handleUploadSelfie(String sessionId) async {
-    final userId = SupabaseService.client.auth.currentUser?.id;
-    if (userId == null) return;
-    try {
-      final pickedFile = await showModalBottomSheet<dynamic>(
-        context: context,
-        builder: (context) => const ImagePickerBottomSheet(),
-        isScrollControlled: true,
-      );
-      if (pickedFile == null || !mounted) return;
-      setState(() => _isLoading = true);
-      final result = await LocationCheckInService.uploadPresenceSelfie(
-        sessionId: sessionId,
-        userId: userId,
-        userType: 'tutor',
-        selfieFile: pickedFile,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] as String? ?? 'Selfie uploaded'),
-          backgroundColor: result['success'] == true ? AppTheme.accentGreen : Colors.red,
-        ),
-      );
-    } catch (e) {
-      LogService.error('Error uploading selfie: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to upload selfie: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isActionLoading = false);
     }
   }
 
@@ -1334,7 +1816,7 @@ class _TutorSessionDetailFullScreenState
     );
 
     if (result != null && result['confirmed'] == true) {
-      setState(() => _isLoading = true);
+      setState(() => _isActionLoading = true);
       try {
         await SessionRescheduleService.requestReschedule(
           sessionId: sessionId,
@@ -1376,7 +1858,7 @@ class _TutorSessionDetailFullScreenState
         }
       } finally {
         if (mounted) {
-          setState(() => _isLoading = false);
+          setState(() => _isActionLoading = false);
         }
       }
     }
@@ -1389,7 +1871,7 @@ class _TutorSessionDetailFullScreenState
     );
 
     if (result != null && result['confirmed'] == true) {
-      setState(() => _isLoading = true);
+      setState(() => _isActionLoading = true);
       try {
         if (isIndividual) {
           await IndividualSessionService.cancelSession(
@@ -1430,7 +1912,7 @@ class _TutorSessionDetailFullScreenState
         }
       } finally {
         if (mounted) {
-          setState(() => _isLoading = false);
+          setState(() => _isActionLoading = false);
         }
       }
     }
@@ -1723,8 +2205,8 @@ class _CancelSessionDialogState extends State<_CancelSessionDialog> {
           TextField(
             controller: _reasonController,
             decoration: InputDecoration(
-              labelText: 'Reason (optional)',
-              hintText: 'Please provide a reason for cancellation',
+              labelText: 'Reason (required)',
+              hintText: 'Why are you cancelling? Family will see this.',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -1741,12 +2223,24 @@ class _CancelSessionDialogState extends State<_CancelSessionDialog> {
         ),
         ElevatedButton(
           onPressed: _isLoading ? null : () async {
+            final reason = _reasonController.text.trim();
+            if (reason.length < 8) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Please add a short reason (at least 8 characters).',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ),
+              );
+              return;
+            }
             setState(() => _isLoading = true);
             await Future.delayed(const Duration(milliseconds: 300));
             if (mounted) {
               Navigator.pop(context, {
                 'confirmed': true,
-                'reason': _reasonController.text.trim(),
+                'reason': reason,
               });
             }
           },

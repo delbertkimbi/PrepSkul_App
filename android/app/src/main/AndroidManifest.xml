@@ -5,6 +5,11 @@
 
     <!-- Android 13+ notification runtime permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Daily local reminders (SkulMate streak, payment nudges) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     
     <!-- Storage permissions for Android 12 and below only -->
     <!-- Android 13+ will use Photo Picker automatically (no permission needed) -->

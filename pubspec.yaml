@@ -55,6 +55,7 @@ dependencies:
   
   # Local Notifications (for displaying notifications)
   flutter_local_notifications: ^16.3.0
+  flutter_timezone: ^4.1.0
   
   # UI Components
   google_fonts: ^6.1.0
@@ -96,6 +97,7 @@ dependencies:
   
   # HTTP Client
   http: ^1.1.0
+  percent_indicator: ^4.2.3
   
   # Audio/Sound Effects
   audioplayers: ^6.0.0

@@ -24,6 +24,7 @@ import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:prepskul/core/services/share_service.dart';
+import 'package:prepskul/features/discovery/widgets/tutor_schedule_preview.dart';
 import 'tutor_schedule_screen.dart';
 
 class TutorDetailScreen extends StatefulWidget {
@@ -1570,158 +1571,20 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       );
     }
 
-    // Show simplified summary (first 2-3 days max) with "View More" button
-    final daysOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    
-    // Sort days by order
-    final sortedDays = availability.keys.toList()
-      ..sort((a, b) {
-        final aIndex = daysOrder.indexOf(a);
-        final bIndex = daysOrder.indexOf(b);
-        if (aIndex == -1 && bIndex == -1) return a.compareTo(b);
-        if (aIndex == -1) return 1;
-        if (bIndex == -1) return -1;
-        return aIndex.compareTo(bIndex);
-      });
-    
-    // Count total days with availability
-    final totalDays = sortedDays.where((day) {
-      final times = availability[day];
-      if (times == null) return false;
-      final timesList = times is List ? times : [times];
-      return timesList.isNotEmpty;
-    }).length;
-    
-    // Show only first 2 days in summary
-    final previewDays = sortedDays.take(2).toList();
-    final hasMore = totalDays > 2;
-    
-    final scheduleItems = <Widget>[];
-    
-    previewDays.forEach((day) {
-      final times = availability[day];
-      if (times != null) {
-        final timesList = times is List ? times : [times];
-        if (timesList.isNotEmpty) {
-          // Show only first 2 time slots per day in preview
-          final previewTimes = timesList.take(2).toList();
-          final hasMoreTimes = timesList.length > 2;
-          
-          scheduleItems.add(
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.grey[200]!, width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    day,
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      ...previewTimes.map((time) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.grey[300]!,
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            time.toString(),
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.primaryColor,
-                            ),
-                          ),
-                        );
-                      }),
-                      if (hasMoreTimes)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                          child: Text(
-                            '+${timesList.length - 2} more',
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-      }
-    });
-
-    if (scheduleItems.isEmpty) {
-      return Text(
-        'Schedule not available',
-        style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey[600]),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ...scheduleItems,
-        if (hasMore)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TutorScheduleScreen(
-                      tutor: widget.tutor,
-                      availability: availability,
-                    ),
-                  ),
-                );
-              },
-              child: Row(
-                children: [
-                  Text(
-                    'View full schedule',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: 10,
-                    color: AppTheme.primaryColor,
-                  ),
-                ],
-              ),
+    return TutorSchedulePreview(
+      availability: availability,
+      maxSlotsPerDay: 4,
+      onViewAll: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TutorScheduleScreen(
+              tutor: widget.tutor,
+              availability: availability,
             ),
           ),
-      ],
+        );
+      },
     );
   }
 

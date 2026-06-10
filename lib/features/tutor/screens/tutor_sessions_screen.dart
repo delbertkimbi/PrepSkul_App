@@ -28,13 +28,15 @@ import '../../../core/feedback/app_feedback.dart';
 import '../../../features/sessions/services/meet_service.dart';
 import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import '../../../features/sessions/screens/agora_video_session_screen.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
+import 'package:prepskul/features/sessions/widgets/session_start_countdown_ring.dart';
 import '../../../features/sessions/services/location_checkin_service.dart';
 import '../../../features/sessions/services/location_sharing_service.dart';
 import '../../../features/sessions/services/continuous_location_monitoring_service.dart';
-import '../../../core/widgets/image_picker_bottom_sheet.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'tutor_session_detail_full_screen.dart';
+import 'package:prepskul/features/sessions/domain/onsite_session_phase.dart';
+import 'package:prepskul/features/sessions/widgets/onsite_presence_summary.dart';
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 
@@ -73,7 +75,6 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
   bool? _isCalendarConnected;
   Timer? _countdownTimer;
   String? _currentUserId;
-  final Map<String, String> _sessionSelfieUrls = {};
   String? _highlightSessionId;
 
   @override
@@ -1282,6 +1283,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       location = session['location'] as String? ?? 'online';
       // Use 'address' column (matches database schema) with fallback to 'onsite_address' for compatibility
       address = session['address'] as String? ?? session['onsite_address'] as String?;
+      if (address == null || address.trim().isEmpty) {
+        address = session['location_description'] as String?;
+      }
+      if (address != null) {
+        address = GeocodingHelper.stripEmbeddedCoords(address);
+      }
       subject = session['subject'] as String?;
       sessionDate = DateTime.parse(session['scheduled_date'] as String);
       sessionTime = session['scheduled_time'] as String?;
@@ -1303,6 +1310,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       studentAvatar = session['student_avatar_url'] as String?;
       location = session['location'] as String? ?? 'online';
       address = session['address'] as String?;
+      if (address == null || address.trim().isEmpty) {
+        address = session['location_description'] as String?;
+      }
+      if (address != null) {
+        address = GeocodingHelper.stripEmbeddedCoords(address);
+      }
       frequency = session['frequency'] as int?;
       totalSessions = session['total_sessions_completed'] as int? ?? 0;
       days = List<String>.from(session['days'] as List? ?? []);
@@ -1397,21 +1410,30 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                       _buildSessionModeBadge(location),
                     ],
                   ),
-                  // Status badge
-                  Container(
+                  // Status badge (time-aware: in_progress before start → Scheduled)
+                  Builder(
+                    builder: (context) {
+                      final displayStatus = _effectiveDisplayStatus(
+                        status: status,
+                        sessionDate: sessionDate,
+                        sessionTime: sessionTime,
+                      );
+                      return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))).withOpacity(0.12),
+                      color: Color(int.parse(_getStatusColor(displayStatus).replaceFirst('#', '0xFF'))).withOpacity(0.12),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      _getStatusLabel(status),
+                      _getStatusLabel(displayStatus),
                       style: GoogleFonts.poppins(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))),
+                        color: Color(int.parse(_getStatusColor(displayStatus).replaceFirst('#', '0xFF'))),
                       ),
                     ),
+                  );
+                    },
                   ),
                 ],
               ),
@@ -1538,121 +1560,120 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                 ),
               ],
               const SizedBox(height: 8),
-              // Session details (date, time, location) - more compact
+              // Session details (date, time, location) — compact row with countdown ring
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.grey[50],
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Column(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Date and time
-                    if (sessionDate != null && sessionTime != null)
-                      Row(
+                    Expanded(
+                      child: Column(
                         children: [
-                          Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _formatDateTime(sessionDate!, sessionTime!),
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey[700],
-                                fontWeight: FontWeight.w500,
-                              ),
+                          if (sessionDate != null && sessionTime != null)
+                            Row(
+                              children: [
+                                Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    _formatDateTime(sessionDate!, sessionTime!),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
-                    if (sessionDate != null && sessionTime != null)
-                      const SizedBox(height: 5),
-                    if (sessionDate != null && sessionTime != null)
-                      Row(
-                        children: [
-                          Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _formatStartEndTime(sessionDate!, sessionTime!, durationMinutes),
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey[700],
-                                fontWeight: FontWeight.w500,
-                              ),
+                          if (sessionDate != null && sessionTime != null)
+                            const SizedBox(height: 5),
+                          if (sessionDate != null && sessionTime != null)
+                            Row(
+                              children: [
+                                Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    _formatStartEndTime(sessionDate!, sessionTime!, durationMinutes),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
-                    if (sessionDate != null && sessionTime != null)
-                      const SizedBox(height: 5),
-                    // Location
-                    Row(
-                      children: [
-                        Icon(
-                          location == 'online' ? Icons.video_call : Icons.location_on,
-                          size: 14,
-                          color: Colors.grey[600],
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            location == 'online' ? 'Online Session' : 'On-site Session',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: Colors.grey[700],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (location != 'online') ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.place_outlined, size: 13, color: Colors.grey[500]),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              address != null && address.trim().isNotEmpty
-                                  ? address
-                                  : 'On-site address not set',
-                              style: GoogleFonts.poppins(
-                                fontSize: 11,
+                          if (sessionDate != null && sessionTime != null)
+                            const SizedBox(height: 5),
+                          Row(
+                            children: [
+                              Icon(
+                                location == 'online' ? Icons.video_call : Icons.location_on,
+                                size: 14,
                                 color: Colors.grey[600],
                               ),
-                            ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  location == 'online' ? 'Online Session' : 'On-site Session',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ],
-                    // Countdown timer for upcoming sessions
-                    if (isUpcoming && (status == 'scheduled' || status == 'in_progress') && sessionDate != null && sessionTime != null) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: AppTheme.primaryColor.withOpacity(0.2),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.timer_outlined,
-                              size: 16,
-                              color: AppTheme.primaryColor,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: _buildCountdownWidget(sessionDate!, sessionTime!),
+                          if (location != 'online') ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.place_outlined, size: 13, color: Colors.grey[500]),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    address != null && address.trim().isNotEmpty
+                                        ? address
+                                        : 'On-site address not set',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
-                        ),
+                        ],
+                      ),
+                    ),
+                    if (isUpcoming &&
+                        (status == 'scheduled' || status == 'in_progress') &&
+                        sessionDate != null &&
+                        sessionTime != null) ...[
+                      const SizedBox(width: 8),
+                      SessionStartCountdownRing(
+                        sessionStart: _sessionStartDateTime(sessionDate!, sessionTime!),
+                        bookingWindowStart: SessionStartCountdownRing
+                            .bookingWindowFromRecurring(
+                              session['recurring_sessions'] as Map<String, dynamic>?,
+                              _sessionStartDateTime(sessionDate!, sessionTime!),
+                            )
+                            .windowStart,
+                        bookingWindowEnd: SessionStartCountdownRing
+                            .bookingWindowFromRecurring(
+                              session['recurring_sessions'] as Map<String, dynamic>?,
+                              _sessionStartDateTime(sessionDate!, sessionTime!),
+                            )
+                            .windowEnd,
+                        size: 72,
                       ),
                     ],
                   ],
@@ -1660,12 +1681,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
               ),
               if (location != 'online' &&
                   (status == 'scheduled' || status == 'in_progress'))
-                _buildOnsiteTrackingSection(
+                _buildOnsitePresenceSummary(
+                  session: session,
                   sessionId: session['id'] as String?,
-                  address: address,
                   scheduledDate: sessionDate,
                   scheduledTime: sessionTime,
-              ),
+                ),
               // Expired session indicator
               if (isExpired) ...[
                 const SizedBox(height: 12),
@@ -1762,7 +1783,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.accentGreen,
+                              backgroundColor: AppTheme.primaryColor,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
@@ -1877,309 +1898,82 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     }
   }
 
-  Widget _buildOnsiteTrackingSection({
+  String _effectiveDisplayStatus({
+    required String status,
+    required DateTime? sessionDate,
+    required String? sessionTime,
+  }) {
+    if (status != 'in_progress' || sessionDate == null || sessionTime == null) {
+      return status;
+    }
+    final start = _parseSessionDateTime(sessionDate, sessionTime);
+    if (start == null) return status;
+    final now = DateTime.now();
+    if (now.isBefore(start)) return 'scheduled';
+    return status;
+  }
+
+  Widget _buildOnsitePresenceSummary({
+    required Map<String, dynamic> session,
     required String? sessionId,
-    required String? address,
     required DateTime? scheduledDate,
     required String? scheduledTime,
   }) {
-    if (sessionId == null) {
+    if (sessionId == null || _currentUserId == null) {
       return const SizedBox.shrink();
     }
 
-    final hasAddress = address != null && address.trim().isNotEmpty;
     final scheduledDateTime = (scheduledDate != null && scheduledTime != null)
         ? _parseSessionDateTime(scheduledDate, scheduledTime)
         : null;
-    final isWithinWindow = _isWithinPresenceWindow(scheduledDateTime);
-
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.location_searching, size: 16, color: AppTheme.primaryColor),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'On-site tracking',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            hasAddress
-                ? 'Confirm arrival and upload a selfie when class starts.'
-                : 'Add an on-site address to enable check-in.',
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: Colors.grey[700],
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _presenceWindowLabel(scheduledDateTime),
-            style: GoogleFonts.poppins(
-              fontSize: 10,
-              color: Colors.grey[600],
-            ),
-          ),
-          if (!isWithinWindow) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Presence actions are available 1h before start until 2h after.',
-              style: GoogleFonts.poppins(
-                fontSize: 10,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          FutureBuilder<Map<String, dynamic>?>(
-            future: _currentUserId == null
-                ? Future.value(null)
-                : LocationCheckInService.getCheckInStatus(
-                    sessionId: sessionId,
-                    userId: _currentUserId!,
-                  ),
-            builder: (context, snapshot) {
-              final status = snapshot.data;
-              final hasCheckedIn = status?['has_checked_in'] == true;
-              final verified = status?['verified'] == true;
-              final statusColor = hasCheckedIn ? AppTheme.accentGreen : Colors.orange[700];
-              final statusText = hasCheckedIn
-                  ? (verified ? 'Checked in • Verified' : 'Checked in')
-                  : 'Check-in pending';
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        hasCheckedIn ? Icons.check_circle : Icons.pending,
-                        size: 16,
-                        color: statusColor,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        statusText,
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: (!isWithinWindow || !hasAddress || _currentUserId == null || hasCheckedIn)
-                              ? null
-                              : () async {
-                                  await _handleOnsiteCheckIn(
-                                    sessionId: sessionId,
-                                    address: address!,
-                                    scheduledDateTime: scheduledDateTime,
-                                  );
-                                },
-                          icon: const Icon(Icons.how_to_reg, size: 16),
-                          label: Text(
-                            hasCheckedIn ? 'Checked in' : 'Confirm Arrival',
-                            style: GoogleFonts.poppins(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.primaryColor,
-                            side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.4)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: (!isWithinWindow || _currentUserId == null || !hasCheckedIn)
-                              ? null
-                              : () async {
-                                  await _handlePresenceSelfieUpload(sessionId: sessionId);
-                                },
-                          icon: const Icon(Icons.camera_alt_outlined, size: 16),
-                          label: Text(
-                            'Upload Selfie',
-                            style: GoogleFonts.poppins(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.primaryColor,
-                            side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.4)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: (!isWithinWindow || _currentUserId == null || !hasCheckedIn)
-                              ? null
-                              : () async {
-                                  await _handleOnsiteCheckOut(sessionId: sessionId);
-                                },
-                          icon: const Icon(Icons.flag_outlined, size: 16),
-                          label: Text(
-                            'Confirm End',
-                            style: GoogleFonts.poppins(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.grey[700],
-                            side: BorderSide(color: Colors.grey[300]!),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_sessionSelfieUrls.containsKey(sessionId)) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.verified, size: 14, color: AppTheme.accentGreen),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Selfie uploaded for attendance review.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppTheme.accentGreen,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              );
-            },
-          ),
-        ],
-      ),
+    final displayStatus = _effectiveDisplayStatus(
+      status: session['status'] as String? ?? 'scheduled',
+      sessionDate: scheduledDate,
+      sessionTime: scheduledTime,
     );
-  }
 
-  Future<void> _handleOnsiteCheckIn({
-    required String sessionId,
-    required String address,
-    required DateTime? scheduledDateTime,
-  }) async {
-    if (_currentUserId == null) return;
-    try {
-      final result = await LocationCheckInService.checkInToSession(
-        sessionId: sessionId,
-        userId: _currentUserId!,
-        userType: 'tutor',
-        sessionAddress: address,
-        verifyProximity: true,
-        scheduledDateTime: scheduledDateTime,
-      );
-      if (mounted) {
-        final ok = result['success'] == true;
-        final msg = result['message'] as String? ?? 'Check-in updated';
-        if (ok) {
-          AppFeedback.showSuccess(context, msg);
-        } else {
-          AppFeedback.showErrorToast(context, msg);
-        }
-        safeSetState(() {});
-      }
-    } catch (e) {
-      if (mounted) {
-        AppFeedback.showErrorToast(context, 'Failed to check in: $e');
-      }
-    }
-  }
+    return FutureBuilder<List<dynamic>>(
+      future: Future.wait([
+        LocationCheckInService.getCheckInStatus(
+          sessionId: sessionId,
+          userId: _currentUserId!,
+        ),
+        LocationCheckInService.getAttendanceRecord(
+          sessionId: sessionId,
+          userId: _currentUserId!,
+        ),
+      ]),
+      builder: (context, snapshot) {
+        final checkIn = snapshot.data != null && snapshot.data!.isNotEmpty
+            ? snapshot.data![0] as Map<String, dynamic>?
+            : null;
+        final attendance = snapshot.data != null && snapshot.data!.length > 1
+            ? snapshot.data![1] as Map<String, dynamic>?
+            : null;
+        final hasCheckedIn = checkIn?['has_checked_in'] == true;
+        final hasCheckedOut = attendance?['check_out_time'] != null;
+        final photoUrl = attendance?['check_in_photo_url'] as String?;
+        final hasSelfie = photoUrl != null && photoUrl.trim().isNotEmpty;
 
-  Future<void> _handleOnsiteCheckOut({required String sessionId}) async {
-    if (_currentUserId == null) return;
-    try {
-      final result = await LocationCheckInService.checkOutFromSession(
-        sessionId: sessionId,
-        userId: _currentUserId!,
-        userType: 'tutor',
-      );
-      if (mounted) {
-        final ok = result['success'] == true;
-        final msg = result['message'] as String? ?? 'Check-out updated';
-        if (ok) {
-          AppFeedback.showSuccess(context, msg);
-        } else {
-          AppFeedback.showErrorToast(context, msg);
-        }
-        safeSetState(() {});
-      }
-    } catch (e) {
-      if (mounted) {
-        AppFeedback.showErrorToast(context, 'Failed to check out: $e');
-      }
-    }
-  }
+        final phase = OnsiteSessionPhaseResolver.resolve(
+          sessionStatus: displayStatus,
+          scheduledStart: scheduledDateTime,
+          hasCheckedIn: hasCheckedIn,
+          hasCheckedOut: hasCheckedOut,
+        );
+        final message = OnsiteSessionPhaseResolver.tutorNextStepLabel(
+          phase: phase,
+          scheduledStart: scheduledDateTime,
+          hasSelfie: hasSelfie,
+        );
 
-  Future<void> _handlePresenceSelfieUpload({required String sessionId}) async {
-    try {
-      final pickedFile = await showModalBottomSheet<dynamic>(
-        context: context,
-        builder: (context) => const ImagePickerBottomSheet(),
-        isScrollControlled: true,
-      );
-
-      if (pickedFile == null || !mounted) return;
-
-      await SchedulerBinding.instance.endOfFrame;
-      if (!mounted || _currentUserId == null) return;
-
-      final result = await LocationCheckInService.uploadPresenceSelfie(
-        sessionId: sessionId,
-        userId: _currentUserId!,
-        userType: 'tutor',
-        selfieFile: pickedFile,
-      );
-
-      if (!mounted) return;
-
-      final ok = result['success'] == true;
-      final msg = result['message'] as String? ?? 'Selfie uploaded';
-      if (ok) {
-        AppFeedback.showSuccess(context, msg);
-      } else {
-        AppFeedback.showErrorToast(context, msg);
-      }
-
-      if (ok && result['photo_url'] is String) {
-        safeSetState(() {
-          _sessionSelfieUrls[sessionId] = result['photo_url'] as String;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        AppFeedback.showErrorToast(context, 'Failed to upload selfie: $e');
-      }
-    }
+        return OnsitePresenceSummary(
+          phase: phase,
+          message: message,
+          onTap: () => _showSessionDetails(session),
+        );
+      },
+    );
   }
 
   /// Build visual countdown widget
@@ -2436,6 +2230,15 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     } catch (e) {
       return '${date.toString().split(' ')[0]} at $time';
     }
+  }
+
+  DateTime _sessionStartDateTime(DateTime date, String time) {
+    final parts = time.split(':');
+    final hour = parts.isNotEmpty ? (int.tryParse(parts[0].trim()) ?? 0) : 0;
+    final minute = parts.length > 1
+        ? (int.tryParse(parts[1].trim().split(' ').first) ?? 0)
+        : 0;
+    return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
   String _getStatusColor(String status) {
@@ -3644,6 +3447,12 @@ class _SessionDetailsSheet extends StatelessWidget {
       location = session['location'] as String? ?? 'online';
       // Use 'address' column (matches database schema) with fallback to 'onsite_address' for compatibility
       address = session['address'] as String? ?? session['onsite_address'] as String?;
+      if (address == null || address.trim().isEmpty) {
+        address = session['location_description'] as String?;
+      }
+      if (address != null) {
+        address = GeocodingHelper.stripEmbeddedCoords(address);
+      }
       subject = session['subject'] as String?;
       sessionDate = DateTime.parse(session['scheduled_date'] as String);
       sessionTime = session['scheduled_time'] as String?;
@@ -3663,6 +3472,12 @@ class _SessionDetailsSheet extends StatelessWidget {
       studentName = session['student_name'] as String? ?? 'Student';
       location = session['location'] as String? ?? 'online';
       address = session['address'] as String?;
+      if (address == null || address.trim().isEmpty) {
+        address = session['location_description'] as String?;
+      }
+      if (address != null) {
+        address = GeocodingHelper.stripEmbeddedCoords(address);
+      }
       frequency = session['frequency'] as int?;
       totalSessions = session['total_sessions_completed'] as int? ?? 0;
       days = List<String>.from(session['days'] as List? ?? []);
@@ -3784,7 +3599,7 @@ class _SessionDetailsSheet extends StatelessWidget {
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.accentGreen,
+                            backgroundColor: AppTheme.primaryColor,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
                               vertical: 16,
@@ -3794,7 +3609,7 @@ class _SessionDetailsSheet extends StatelessWidget {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            elevation: 2,
+                            elevation: 0,
                           ),
                         );
                       }

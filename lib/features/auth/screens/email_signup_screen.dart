@@ -31,7 +31,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  String? _selectedRole;
   bool _isLoading = false;
 
   @override
@@ -364,45 +363,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 32),
-
-                              // Role Selection
-                              Text(
-                                'I am a...',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildRoleChip(
-                                      'Student',
-                                      'learner',
-                                      Icons.school_outlined,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _buildRoleChip(
-                                      'Parent',
-                                      'parent',
-                                      Icons.family_restroom_outlined,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _buildRoleChip(
-                                      'Tutor',
-                                      'tutor',
-                                      Icons.person_outline,
-                                    ),
-                                  ),
-                                ],
-                              ),
                               const SizedBox(height: 40),
 
                               // Signup Button
@@ -444,63 +404,60 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                         ),
                                 ),
                               ),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 32),
 
-                              // Already have account?
                               Center(
-                                child: Column(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          'Already have an account? ',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            color: AppTheme.textMedium,
-                                          ),
-                                        ),
-                                        GestureDetector(
-                                          onTap: () {
-                                            Navigator.pushReplacementNamed(
-                                              context,
-                                              '/email-login',
-                                            );
-                                          },
-                                          child: Text(
-                                            'Sign in',
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppTheme.primaryColor,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                    Text(
+                                      'Already have an account? ',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: AppTheme.textMedium,
+                                      ),
                                     ),
-                                    // Phone signup option - only show if enabled
-                                    if (AppConfig.enablePhoneSignIn) ...[
-                                      const SizedBox(height: 16),
-                                      TextButton(
-                                        onPressed: () {
-                                          Navigator.pushReplacementNamed(
-                                            context,
-                                            '/beautiful-signup',
-                                          );
-                                        },
-                                        child: Text(
-                                          'Use phone number instead',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            color: AppTheme.primaryColor,
-                                          ),
+                                    GestureDetector(
+                                      onTap: () {
+                                        Navigator.pushReplacementNamed(
+                                          context,
+                                          '/email-login',
+                                        );
+                                      },
+                                      child: Text(
+                                        'Sign in',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.primaryColor,
+                                          decoration: TextDecoration.underline,
                                         ),
                                       ),
-                                    ],
+                                    ),
                                   ],
                                 ),
                               ),
+                              if (AppConfig.enablePhoneSignIn) ...[
+                                const SizedBox(height: 16),
+                                Center(
+                                  child: TextButton(
+                                    onPressed: () {
+                                      Navigator.pushReplacementNamed(
+                                        context,
+                                        '/beautiful-signup',
+                                      );
+                                    },
+                                    child: Text(
+                                      'Use phone number instead',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.primaryColor,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -523,22 +480,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       return;
     }
 
-    // Check if role is selected
-    if (_selectedRole == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please select your role',
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: AppTheme.primaryColor,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-        ),
-      );
-      return;
-    }
-
     // Check if passwords match
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -558,8 +499,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final fullName = _nameController.text.trim();
-      final selectedRole = _selectedRole!;
-
       // Get redirect URL for email verification
       final redirectUrl = AuthService.getRedirectUrl();
       LogService.debug('📧 [SIGNUP] Signing up with email: $email');
@@ -587,7 +526,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       await MobileAnalyticsIngestService.trackEvent(
         eventType: 'signup',
         userId: response.user?.id,
-        userRole: selectedRole,
         metadata: {
           'method': 'email',
           'email_confirmed': response.user?.emailConfirmedAt != null,
@@ -606,61 +544,45 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       }
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('signup_user_role', selectedRole);
       await prefs.setString('signup_full_name', fullName);
       await prefs.setString('signup_email', email);
       await prefs.setString('auth_method', 'email');
 
       final user = response.user!;
 
-      if (user.emailConfirmedAt != null) {
-        await AuthService.completeEmailVerification(user);
+      // Trust Supabase response: no session + unconfirmed email means verify first.
+      final needsEmailVerification =
+          AppConfig.enableEmailVerification &&
+          response.session == null &&
+          user.emailConfirmedAt == null;
+
+      if (needsEmailVerification) {
         if (mounted) {
-          Navigator.pushNamedAndRemoveUntil(
+          Navigator.pushReplacement(
             context,
-            '/profile-setup',
-            (route) => false,
-            arguments: {'userRole': selectedRole},
+            MaterialPageRoute(
+              builder: (context) => EmailConfirmationScreen(
+                email: email,
+                fullName: fullName,
+              ),
+            ),
           );
         }
         return;
       }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(
-                  Icons.check_circle_outline,
-                  color: Colors.white,
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Account created! Please check your email to verify your account.',
-                    style: GoogleFonts.poppins(fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 3),
-          ),
+      if (response.session == null) {
+        await SupabaseService.client.auth.signInWithPassword(
+          email: email,
+          password: password,
         );
-
-        Navigator.pushReplacement(
+      }
+      await AuthService.completeEmailVerification(user);
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
           context,
-          MaterialPageRoute(
-            builder: (context) => EmailConfirmationScreen(
-              email: email,
-              fullName: fullName,
-              userRole: selectedRole,
-            ),
-          ),
+          '/role-selection',
+          (route) => false,
         );
       }
     } catch (e) {
@@ -708,50 +630,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         safeSetState(() => _isLoading = false);
       }
     }
-  }
-
-  Widget _buildRoleChip(String label, String value, IconData icon) {
-    final isSelected = _selectedRole == value;
-    return GestureDetector(
-      onTap: () {
-        safeSetState(() {
-          _selectedRole = value;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-            width: 2,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.white : AppTheme.textMedium,
-              size: 18,
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isSelected ? Colors.white : AppTheme.textDark,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override

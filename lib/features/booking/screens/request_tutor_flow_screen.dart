@@ -668,7 +668,7 @@ safeSetState(() {
                   decoration: BoxDecoration(
                         color: isSelected 
                             ? AppTheme.primaryColor.withOpacity(0.1)
-                            : Colors.grey[50],
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isSelected
@@ -744,7 +744,7 @@ safeSetState(() {
                     )
                   : null,
               filled: true,
-              fillColor: Colors.grey[50],
+              fillColor: Colors.white,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.grey[300]!),
@@ -928,7 +928,7 @@ safeSetState(() {
                   decoration: BoxDecoration(
                     color: isSelected 
                         ? AppTheme.primaryColor.withOpacity(0.1)
-                        : Colors.grey[50],
+                        : Colors.white,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isSelected
@@ -1526,7 +1526,7 @@ safeSetState(() {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.softCard,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppTheme.softBorder),
             ),

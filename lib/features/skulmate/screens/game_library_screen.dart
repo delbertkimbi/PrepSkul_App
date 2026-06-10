@@ -6,8 +6,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import 'package:prepskul/core/navigation/navigation_service.dart';
-import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -94,8 +92,6 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
   bool _swipeHintSeen =
       true; // After load: true = user has seen/dismissed the hint
   bool _isFetchingGames = false;
-  bool _showOfflineGamesNotice = false;
-  String _cacheNoticeMessage = 'Showing saved games from this device.';
   bool _expandUploadHistory = false;
   bool _initialGameHandled = false;
 
@@ -185,21 +181,13 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
         _currentPage = 0;
         _isLoading = false;
         _showAllGamesForList = false;
-        _showOfflineGamesNotice = fromCache;
-        _cacheNoticeMessage = fromCache
-            ? 'Showing saved games from this device. Pull down to refresh.'
-            : _cacheNoticeMessage;
       });
-      _openInitialSharedGameIfNeeded();
-      if (mounted && fromCache) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_cacheNoticeMessage),
-            backgroundColor: Colors.orange.shade700,
-            behavior: SnackBarBehavior.floating,
-          ),
+      if (fromCache) {
+        LogService.debug(
+          '🎮 [GameLibrary] Loaded ${loadedGames.length} games from local cache',
         );
       }
+      _openInitialSharedGameIfNeeded();
     } catch (e) {
       LogService.error('🎮 [skulMate] Error loading games: $e');
       safeSetState(() => _isLoading = false);
@@ -258,7 +246,6 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
         _hasMore = fromCache ? false : hasMore;
         _currentPage = nextPage;
         _isLoadingMore = false;
-        if (fromCache) _showOfflineGamesNotice = true;
       });
     } catch (e) {
       LogService.error('🎮 [skulMate] Error loading more games: $e');
@@ -835,24 +822,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: AppTheme.textDark,
-            size: 24,
-          ),
-          onPressed: () async {
-            final role = await AuthService.getUserRole();
-            final navService = NavigationService();
-            final route = role == 'parent' ? '/parent-nav' : '/student-nav';
-            if (navService.isReady) {
-              await navService.navigateToRoute(route, replace: true);
-            } else if (context.mounted) {
-              Navigator.of(context).pop();
-            }
-          },
-          tooltip: 'Back to main app',
-        ),
+        automaticallyImplyLeading: false,
         centerTitle: true,
         titleSpacing: 0,
         title: LayoutBuilder(
@@ -905,53 +875,68 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.emoji_events_outlined, size: 20),
-            tooltip: 'Leaderboard',
-            iconSize: 20,
-            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
-            constraints: const BoxConstraints(minWidth: 20, minHeight: 28),
-            visualDensity: VisualDensity.compact,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LeaderboardScreen(),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_horiz, size: 22, color: AppTheme.textDark),
+            tooltip: 'More',
+            padding: const EdgeInsets.only(right: 12),
+            onSelected: (value) {
+              switch (value) {
+                case 'leaderboard':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LeaderboardScreen(),
+                    ),
+                  );
+                  break;
+                case 'friends':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const FriendsScreen(),
+                    ),
+                  );
+                  break;
+                case 'challenges':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ChallengesScreen(),
+                    ),
+                  );
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'leaderboard',
+                child: ListTile(
+                  leading: Icon(Icons.emoji_events_outlined, size: 20),
+                  title: Text('Leaderboard'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
                 ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.people_outline, size: 20),
-            tooltip: 'Friends',
-            iconSize: 20,
-            padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 4),
-            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            visualDensity: VisualDensity.compact,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const FriendsScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.sports_esports_outlined, size: 20),
-            tooltip: 'Challenges',
-            iconSize: 20,
-            padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 4),
-            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            visualDensity: VisualDensity.compact,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ChallengesScreen(),
+              ),
+              PopupMenuItem(
+                value: 'friends',
+                child: ListTile(
+                  leading: Icon(Icons.people_outline, size: 20),
+                  title: Text('Friends'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
                 ),
-              );
-            },
+              ),
+              PopupMenuItem(
+                value: 'challenges',
+                child: ListTile(
+                  leading: Icon(Icons.sports_esports_outlined, size: 20),
+                  title: Text('Challenges'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+              ),
+            ],
           ),
-          SizedBox(width: 8),
           // if (_gameStats != null && _gameStats!.currentStreak > 0)
           //   Padding(
           //     padding: const EdgeInsets.only(right: 8, left: 0, top: 8),
@@ -1273,25 +1258,6 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
             ],
           ),
         ),
-        if (_showOfflineGamesNotice)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.orange.shade200),
-            ),
-            child: Text(
-              _cacheNoticeMessage,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.orange.shade900,
-              ),
-            ),
-          ),
         // First-time: swipe to delete hint
         if (!_swipeHintSeen) _buildSwipeToDeleteHint(),
         // Games list

@@ -568,8 +568,10 @@ class TrialSessionService {
 
       var query = _supabase
           .from('trial_sessions')
-          .select() // Select all fields including payment_status
-          .eq('requester_id', userId);
+          .select()
+          .or(
+            'requester_id.eq.$userId,parent_id.eq.$userId,learner_id.eq.$userId',
+          );
 
       if (status != null && status != 'all') {
         query = query.eq('status', status);

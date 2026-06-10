@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../../tutor/screens/instruction_screen.dart';
 import '../../../core/widgets/confetti_celebration.dart';
+import '../../../core/widgets/onboarding_location_fields.dart';
 
 class ParentSurvey extends StatefulWidget {
   const ParentSurvey({Key? key}) : super(key: key);
@@ -307,7 +308,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
         });
 
         // Update quarters if city is selected
-        if (_selectedCity != null) {
+        if (_selectedCity != null && AppData.isCameroonCity(_selectedCity)) {
           _availableQuarters = AppData.cities[_selectedCity!] ?? [];
         }
 
@@ -609,7 +610,10 @@ class _ParentSurveyState extends State<ParentSurvey> {
                 },
                 itemCount: _steps.length,
                 itemBuilder: (context, index) {
-                  return _buildStep(_steps[index], index);
+                  return KeyedSubtree(
+                    key: ValueKey(_steps[index].title),
+                    child: _buildStep(_steps[index], index),
+                  );
                 },
               ),
             ),
@@ -1178,56 +1182,31 @@ class _ParentSurveyState extends State<ParentSurvey> {
   // Age calculation is now done inline in _buildDateField
 
   Widget _buildLocation() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        buildDropdownField(
-          label: 'City',
-          value: _selectedCity,
-          items: AppData.cities.keys.toList(),
-          onChanged: (value) {
-            setState(() {
-              _selectedCity = value;
-              _selectedQuarter = null;
-              _customQuarter = null;
-              _isCustomQuarter = false;
-              _availableQuarters = value != null
-                  ? AppData.cities[value] ?? []
-                  : [];
-            });
-          },
-          isRequired: true,
-        ),
-        const SizedBox(height: 20),
-        buildDropdownField(
-          label: 'Quarter/Neighborhood',
-          value: _isCustomQuarter ? 'Other' : _selectedQuarter,
-          items: [..._availableQuarters, 'Other'],
-          onChanged: (value) {
-            setState(() {
-              if (value == 'Other') {
-                _isCustomQuarter = true;
-                _selectedQuarter = null;
-              } else {
-                _isCustomQuarter = false;
-                _selectedQuarter = value;
-                _customQuarter = null;
-              }
-            });
-          },
-          isRequired: true,
-        ),
-        if (_isCustomQuarter) ...[
-          const SizedBox(height: 20),
-          _buildInputField(
-            label: 'Enter Quarter/Neighborhood',
-            hint: 'Type your quarter or neighborhood',
-            value: _customQuarter,
-            onChanged: (value) => setState(() => _customQuarter = value),
-            isRequired: true,
-          ),
-        ],
-      ],
+    return OnboardingLocationFields(
+      initialCity: _selectedCity,
+      initialQuarter: _isCustomQuarter ? _customQuarter : _selectedQuarter,
+      initialIsCustomQuarter: _isCustomQuarter,
+      onChanged: ({
+        required String? city,
+        required String? quarter,
+        required bool isCustomQuarter,
+      }) {
+        if (!mounted) return;
+        setState(() {
+          _selectedCity = city;
+          _isCustomQuarter = isCustomQuarter;
+          if (isCustomQuarter) {
+            _customQuarter = quarter;
+            _selectedQuarter = null;
+          } else {
+            _selectedQuarter = quarter;
+            _customQuarter = null;
+          }
+          _availableQuarters = AppData.isCameroonCity(city)
+              ? (AppData.cities[city] ?? [])
+              : [];
+        });
+      },
     );
   }
 
@@ -2899,6 +2878,15 @@ class _ParentSurveyState extends State<ParentSurvey> {
       return _childConfidenceLevel != null;
     } else if (step.title == 'Location' ||
         step.title == 'Where is your child located?') {
+      if (_selectedCity == AppData.outsideCameroonLabel) {
+        return false;
+      }
+      if (AppData.isInternationalLocation(_selectedCity)) {
+        return _selectedCity != null &&
+            _selectedCity!.trim().isNotEmpty &&
+            _selectedQuarter != null &&
+            _selectedQuarter!.trim().isNotEmpty;
+      }
       return _selectedCity != null &&
           (_selectedQuarter != null ||
               (_isCustomQuarter &&

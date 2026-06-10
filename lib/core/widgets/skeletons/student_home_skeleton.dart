@@ -2,186 +2,74 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/status_bar_utils.dart';
+import '../../../core/utils/responsive_helper.dart';
 
 class StudentHomeSkeleton extends StatelessWidget {
   const StudentHomeSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
-        body: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Hero Header skeleton
-              Container(
-                width: double.infinity,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-                padding: const EdgeInsets.fromLTRB(20, 50, 20, 32),
-                child: Shimmer.fromColors(
-                  baseColor: Colors.white.withOpacity(0.2),
-                  highlightColor: Colors.white.withOpacity(0.5),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Greeting skeleton
-                                Container(
-                                  width: 120,
-                                  height: 16,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                // Name skeleton
-                                Container(
-                                  width: 180,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Notification bell skeleton
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+          elevation: 0,
+          surfaceTintColor: Colors.white,
+          title: Shimmer.fromColors(
+            baseColor: AppTheme.neutral200,
+            highlightColor: Colors.white,
+            child: Container(
+              width: 160,
+              height: 22,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(4),
               ),
-
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Shimmer.fromColors(
-                baseColor: Colors.grey[300]!,
-                highlightColor: Colors.grey[100]!,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Section title skeleton
-                    Container(
-                      width: 150,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Stats cards skeleton
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[200]!),
-                            ),
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
+            ),
+          ),
+          actions: [
+            Shimmer.fromColors(
+              baseColor: AppTheme.neutral200,
+              highlightColor: Colors.white,
+              child: Container(
+                width: 72,
+                height: 24,
+                margin: EdgeInsets.only(
+                  right: ResponsiveHelper.responsiveHorizontalPadding(context),
+                ),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  width: 40,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Container(
-                                  width: 80,
-                                  height: 14,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[200]!),
-                            ),
+        body: SingleChildScrollView(
+          child: Padding(
+            padding: ResponsiveHelper.responsivePadding(context),
                             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
+                Shimmer.fromColors(
+                  baseColor: AppTheme.neutral200,
+                  highlightColor: Colors.white,
+                  child: Container(
+                    width: double.infinity,
+                    height: 160,
                                   decoration: BoxDecoration(
                                     color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  width: 40,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Container(
-                                  width: 80,
-                                  height: 14,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                              ],
+                      borderRadius: BorderRadius.circular(16),
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 28),
-
-                    // Quick Actions section title skeleton
-                    Container(
+                const SizedBox(height: 20),
+                Shimmer.fromColors(
+                  baseColor: AppTheme.neutral200,
+                  highlightColor: Colors.white,
+                  child: Container(
                       width: 120,
                       height: 20,
                       decoration: BoxDecoration(
@@ -189,87 +77,65 @@ class StudentHomeSkeleton extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
-                    const SizedBox(height: 14),
-
-                    // Action cards skeleton (Sessions + Payment History + optional)
-                    ...List.generate(3, (index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey[200]!),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.03),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      width: double.infinity,
-                                      height: 16,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: _statSkeletonTile()),
+                    const SizedBox(width: 12),
+                    Expanded(child: _statSkeletonTile()),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Shimmer.fromColors(
+                  baseColor: AppTheme.neutral200,
+                  highlightColor: Colors.white,
+                  child: Container(
+                    width: 120,
+                    height: 20,
                                       decoration: BoxDecoration(
                                         color: Colors.white,
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
-                                    Container(
-                                      width: 200,
-                                      height: 14,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                    ),
+                ),
+                const SizedBox(height: 16),
+                _actionSkeletonTile(),
+                const SizedBox(height: 12),
+                _actionSkeletonTile(),
                                   ],
                                 ),
                               ),
-                              Container(
-                                width: 16,
-                                height: 16,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statSkeletonTile() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.neutral200,
+      highlightColor: Colors.white,
+      child: Container(
+        height: 88,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                       );
-                    }),
+  }
 
-                    const SizedBox(height: 32),
-                  ],
-                ),
-              ),
-            ),
-            ],
-          ),
+  Widget _actionSkeletonTile() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.neutral200,
+      highlightColor: Colors.white,
+      child: Container(
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );
   }
 }
-
-
-

@@ -1,6 +1,8 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:prepskul/core/config/live_session_test_config.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/storage_service.dart';
@@ -14,7 +16,10 @@ import 'package:prepskul/core/services/storage_service.dart';
 class LocationCheckInService {
   static final _supabase = SupabaseService.client;
 
-  /// Check if location services are enabled
+  /// Debug/test accounts may record check-in when GPS is unavailable (e.g. Flutter web).
+  static bool canBypassLocationVerify(String? userId) {
+    return LiveSessionTestConfig.canBypassOnsiteLocationVerify(userId);
+  }
   static Future<bool> isLocationServiceEnabled() async {
     return await Geolocator.isLocationServiceEnabled();
   }
@@ -114,31 +119,47 @@ class LocationCheckInService {
         }
       }
 
-      // If not coordinates, try geocoding to convert address to coordinates
+      // If not coordinates, resolve via geocoder + Nominatim
       if (sessionPosition == null) {
-        try {
-          final locations = await locationFromAddress(sessionAddress);
-          if (locations.isNotEmpty) {
-            final location = locations.first;
-            sessionPosition = Position(
-              latitude: location.latitude,
-              longitude: location.longitude,
-              timestamp: DateTime.now(),
-              accuracy: 0,
-              altitude: 0,
-              altitudeAccuracy: 0,
-              heading: 0,
-              headingAccuracy: 0,
-              speed: 0,
-              speedAccuracy: 0,
-            );
-          } else {
-            LogService.warning('Geocoding returned no results for: $sessionAddress');
-            return false; // Can't verify without coordinates
+        final resolved = await GeocodingHelper.resolve(sessionAddress);
+        if (resolved != null) {
+          sessionPosition = Position(
+            latitude: resolved.lat,
+            longitude: resolved.lng,
+            timestamp: DateTime.now(),
+            accuracy: 0,
+            altitude: 0,
+            altitudeAccuracy: 0,
+            heading: 0,
+            headingAccuracy: 0,
+            speed: 0,
+            speedAccuracy: 0,
+          );
+        } else {
+          try {
+            final locations = await locationFromAddress(sessionAddress);
+            if (locations.isNotEmpty) {
+              final location = locations.first;
+              sessionPosition = Position(
+                latitude: location.latitude,
+                longitude: location.longitude,
+                timestamp: DateTime.now(),
+                accuracy: 0,
+                altitude: 0,
+                altitudeAccuracy: 0,
+                heading: 0,
+                headingAccuracy: 0,
+                speed: 0,
+                speedAccuracy: 0,
+              );
+            } else {
+              LogService.warning('Geocoding returned no results for: $sessionAddress');
+              return false;
+            }
+          } catch (e) {
+            LogService.warning('Geocoding failed for address: $sessionAddress, error: $e');
+            return false;
           }
-        } catch (e) {
-          LogService.warning('Geocoding failed for address: $sessionAddress, error: $e');
-          return false; // Can't verify without coordinates
         }
       }
 
@@ -179,36 +200,64 @@ class LocationCheckInService {
     DateTime? scheduledDateTime,
   }) async {
     try {
-      // Get current location
-      final currentPosition = await getCurrentLocation();
-      final locationString = '${currentPosition.latitude},${currentPosition.longitude}';
+      Position? currentPosition;
+      String locationString;
+      try {
+        currentPosition = await getCurrentLocation();
+        locationString = '${currentPosition.latitude},${currentPosition.longitude}';
+      } catch (e) {
+        if (canBypassLocationVerify(userId)) {
+          final resolved = await GeocodingHelper.resolve(sessionAddress);
+          if (resolved == null) {
+            return {
+              'success': false,
+              'message': 'Could not resolve session address. Add a fuller address at booking.',
+            };
+          }
+          locationString = '${resolved.lat},${resolved.lng}';
+          LogService.warning('GPS unavailable; test-mode check-in at session coordinates: $e');
+        } else {
+          rethrow;
+        }
+      }
 
       bool isVerified = false;
       double? distance;
 
       // Verify proximity if requested
-      if (verifyProximity) {
+      if (verifyProximity && currentPosition != null) {
         final isAtLocation = await verifyLocationProximity(
           sessionAddress: sessionAddress,
           allowedRadiusMeters: allowedRadiusMeters,
         );
         isVerified = isAtLocation;
 
-        if (isAtLocation && sessionAddress.contains(',')) {
-          // Calculate actual distance
-          final parts = sessionAddress.split(',');
-          final lat = double.tryParse(parts[0].trim());
-          final lon = double.tryParse(parts[1].trim());
-          if (lat != null && lon != null) {
+        if (isAtLocation) {
+          final resolved = await GeocodingHelper.resolve(sessionAddress);
+          if (resolved != null) {
             distance = calculateDistance(
               currentPosition.latitude,
               currentPosition.longitude,
-              lat,
-              lon,
+              resolved.lat,
+              resolved.lng,
             );
+          } else if (sessionAddress.contains(',')) {
+            final parts = sessionAddress.split(',');
+            final lat = double.tryParse(parts[0].trim());
+            final lon = double.tryParse(parts[1].trim());
+            if (lat != null && lon != null) {
+              distance = calculateDistance(
+                currentPosition.latitude,
+                currentPosition.longitude,
+                lat,
+                lon,
+              );
+            }
           }
         }
-      } else {
+      } else if (verifyProximity && currentPosition == null && canBypassLocationVerify(userId)) {
+        isVerified = true;
+      } else if (!verifyProximity) {
         // If not verifying, mark as verified (manual check-in)
         isVerified = true;
       }
@@ -365,6 +414,8 @@ class LocationCheckInService {
           .select('check_in_location, check_in_verified, joined_at')
           .eq('session_id', sessionId)
           .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(1)
           .maybeSingle();
 
       if (attendance == null) {
@@ -461,6 +512,7 @@ class LocationCheckInService {
             check_in_location,
             check_in_verified,
             check_in_photo_url,
+            check_out_photo_url,
             punctuality_status,
             arrival_time_minutes,
             duration_minutes,
@@ -468,13 +520,15 @@ class LocationCheckInService {
           ''')
           .eq('session_id', sessionId)
           .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(1)
           .maybeSingle();
 
       if (attendance == null) {
         return null;
       }
 
-      return attendance as Map<String, dynamic>;
+      return Map<String, dynamic>.from(attendance as Map);
     } catch (e) {
       LogService.error('Error getting attendance record: $e');
       return null;
@@ -485,6 +539,39 @@ class LocationCheckInService {
   ///
   /// Stores the image in Supabase Storage and attempts to attach it to
   /// the session_attendance record (if the column exists).
+  static Future<String> _uploadDocumentWithRetry({
+    required String userId,
+    required dynamic documentFile,
+    required String documentType,
+  }) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await StorageService.uploadDocument(
+          userId: userId,
+          documentFile: documentFile,
+          documentType: documentType,
+        );
+      } catch (e) {
+        lastError = e;
+        final msg = e.toString();
+        final retryable = msg.contains('504') ||
+            msg.contains('Timeout') ||
+            msg.contains('timeout') ||
+            msg.contains('Gateway');
+        if (attempt < 2 && retryable) {
+          LogService.warning(
+            'Upload retry ${attempt + 1}/2 for $documentType: $e',
+          );
+          await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+          continue;
+        }
+        rethrow;
+      }
+    }
+    throw lastError ?? Exception('Upload failed');
+  }
+
   static Future<Map<String, dynamic>> uploadPresenceSelfie({
     required String sessionId,
     required String userId,
@@ -492,7 +579,7 @@ class LocationCheckInService {
     required dynamic selfieFile,
   }) async {
     try {
-      final photoUrl = await StorageService.uploadDocument(
+      final photoUrl = await _uploadDocumentWithRetry(
         userId: userId,
         documentFile: selfieFile,
         documentType: 'session_selfie_$sessionId',
@@ -527,6 +614,54 @@ class LocationCheckInService {
       return {
         'success': false,
         'message': 'Failed to upload selfie. Please try again.',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// Upload checkout selfie for presence validation at session end.
+  static Future<Map<String, dynamic>> uploadCheckoutSelfie({
+    required String sessionId,
+    required String userId,
+    required String userType,
+    required dynamic selfieFile,
+  }) async {
+    try {
+      final photoUrl = await _uploadDocumentWithRetry(
+        userId: userId,
+        documentFile: selfieFile,
+        documentType: 'session_checkout_selfie_$sessionId',
+      );
+
+      try {
+        final attendance = await _supabase
+            .from('session_attendance')
+            .select('id')
+            .eq('session_id', sessionId)
+            .eq('user_id', userId)
+            .eq('user_type', userType)
+            .maybeSingle();
+
+        if (attendance != null) {
+          await _supabase.from('session_attendance').update({
+            'check_out_photo_url': photoUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', attendance['id']);
+        }
+      } catch (e) {
+        LogService.warning('Checkout selfie uploaded but not saved to attendance: $e');
+      }
+
+      return {
+        'success': true,
+        'photo_url': photoUrl,
+        'message': 'Checkout selfie uploaded successfully',
+      };
+    } catch (e) {
+      LogService.error('Error uploading checkout selfie: $e');
+      return {
+        'success': false,
+        'message': 'Failed to upload checkout selfie. Please try again.',
         'error': e.toString(),
       };
     }

@@ -90,7 +90,9 @@ class TrialSession {
     return TrialSession(
       id: json['id'] as String,
       tutorId: json['tutor_id'] as String,
-      learnerId: json['learner_id'] as String,
+      learnerId: json['learner_id'] as String? ??
+          json['requester_id'] as String? ??
+          '',
       parentId: json['parent_id'] as String?,
       requesterId: json['requester_id'] as String,
       subject: json['subject'] as String,

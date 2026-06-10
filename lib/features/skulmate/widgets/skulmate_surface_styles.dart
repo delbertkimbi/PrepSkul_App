@@ -33,7 +33,29 @@ class SkulMateSurfaceStyles {
     );
   }
 
-  /// Soft dual-shadow “neumorphic” lift (light cards on softBackground).
+  /// Hero strip with neumorphic lift (no heavy drop shadow).
+  static BoxDecoration heroNeumorphic({
+    double radius = 22,
+    List<Color>? colors,
+  }) {
+    final c = colors ??
+        <Color>[
+          AppTheme.primaryDark,
+          AppTheme.primaryColor,
+          AppTheme.primaryLight.withValues(alpha: 0.95),
+        ];
+    return BoxDecoration(
+      gradient: LinearGradient(
+        colors: c,
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      borderRadius: BorderRadius.circular(radius),
+      boxShadow: neumorphicSoft(),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+    );
+  }
+
   static List<BoxShadow> neumorphicSoft() => [
         BoxShadow(
           color: Colors.white.withValues(alpha: 0.95),

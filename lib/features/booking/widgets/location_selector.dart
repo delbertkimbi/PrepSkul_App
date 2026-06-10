@@ -6,6 +6,7 @@ import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
 import 'package:prepskul/features/sessions/widgets/embedded_map_widget.dart';
 // import 'package:prepskul/features/booking/widgets/map_location_picker.dart'; // File removed
 
@@ -337,10 +338,13 @@ class _LocationSelectorState extends State<LocationSelector> {
     // For online, address is optional (tutor location, can be edited)
     // For onsite, address is required
     final address = needsAddress ? _addressController.text.trim() : null;
-    // Location description is optional for both online and onsite
-    final locationDescription = _locationDescriptionController.text.trim().isNotEmpty
-        ? _locationDescriptionController.text.trim()
-        : null;
+    // Embed verified coordinates for accurate maps + check-in (hidden tag).
+    var description = _locationDescriptionController.text.trim();
+    if (_validatedCoordinates != null && _validatedCoordinates!.isNotEmpty) {
+      final tag = '@coords:${_validatedCoordinates!}';
+      description = description.isEmpty ? tag : '$description\n$tag';
+    }
+    final locationDescription = description.isEmpty ? null : description;
 
     widget.onLocationSelected(_selectedLocation!, address, locationDescription);
   }
@@ -680,26 +684,18 @@ class _LocationSelectorState extends State<LocationSelector> {
     });
 
     try {
-      // Use geocoding to verify address exists
-      final locations = await locationFromAddress(address);
-      
-      if (locations.isEmpty) {
+      final resolved = await GeocodingHelper.resolve(address);
+      if (resolved == null) {
         safeSetState(() {
           _isValidatingAddress = false;
           _isAddressValid = false;
-          _addressValidationError = 'Address not found. Please check and try again.';
+          _addressValidationError = 'Address not found. Try a fuller address or landmark + city.';
         });
         return;
       }
 
-      final location = locations.first;
-      final coordinates = '${location.latitude},${location.longitude}';
-
-      // Get placemarks for additional info (city, country, etc.)
-      final placemarks = await placemarkFromCoordinates(
-        location.latitude,
-        location.longitude,
-      );
+      final coordinates = '${resolved.lat},${resolved.lng}';
+      final placemarks = await placemarkFromCoordinates(resolved.lat, resolved.lng);
 
       safeSetState(() {
         _isValidatingAddress = false;

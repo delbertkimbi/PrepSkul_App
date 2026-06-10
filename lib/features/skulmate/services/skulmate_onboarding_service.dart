@@ -34,6 +34,18 @@ class SkulMateOnboardingService {
     }
   }
 
+  /// Clear onboarding flag for a specific user (logout / account switch).
+  static Future<void> clearForUser(String userId) async {
+    if (userId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('$_onboardingCompletedKeyPrefix$userId');
+      await prefs.remove(_legacyKey);
+    } catch (e) {
+      LogService.error('Error clearing skulMate onboarding: $e');
+    }
+  }
+
   /// Mark onboarding as completed for current user
   static Future<void> markOnboardingComplete() async {
     try {

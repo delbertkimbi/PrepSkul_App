@@ -74,19 +74,27 @@ class SkulMateStreakReminderService {
           lastPlayed.month == now.month &&
           lastPlayed.day == now.day;
 
+      final time = await getReminderTime();
+      final streakCount = stats.currentStreak > 0 ? stats.currentStreak : 0;
+
       if (playedToday) {
-        await PushNotificationService().cancelSkulMateStreakReminder();
+        // Already played today — skip today's nudge but keep tomorrow's on the calendar.
+        await PushNotificationService().scheduleSkulMateStreakReminder(
+          hour: time.hour,
+          minute: time.minute,
+          streakCount: streakCount,
+          startFromTomorrow: true,
+        );
         LogService.debug(
-          '🔥 [StreakReminder] User played today - reminder cancelled',
+          '🔥 [StreakReminder] Played today — next reminder scheduled for tomorrow',
         );
         return;
       }
 
-      final time = await getReminderTime();
       await PushNotificationService().scheduleSkulMateStreakReminder(
         hour: time.hour,
         minute: time.minute,
-        streakCount: stats.currentStreak > 0 ? stats.currentStreak : 0,
+        streakCount: streakCount,
       );
       LogService.info(
         '🔥 [StreakReminder] Scheduled for ${time.hour}:${time.minute.toString().padLeft(2, '0')}',

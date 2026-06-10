@@ -1,7 +1,7 @@
-import 'package:prepskul/core/services/push_notification_service.dart';
+import 'skulmate_streak_reminder_service.dart';
 
-/// Hook called when user completes a game - cancels today's streak reminder.
+/// Hook called when user completes a game — reschedule from tomorrow.
 /// Used by GameStatsService to avoid circular imports.
 void onSkulMateGameCompleted() {
-  PushNotificationService().cancelSkulMateStreakReminder();
+  SkulMateStreakReminderService.rescheduleIfNeeded();
 }

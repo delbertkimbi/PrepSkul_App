@@ -28,7 +28,9 @@ import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
 import '../../../core/services/notification_permission_nudge_service.dart';
 import '../../../core/config/app_config.dart';
+import '../../skulmate/widgets/skulmate_surface_styles.dart';
 import '../widgets/tutor_dashboard_layout.dart';
+import '../../payment/widgets/prepskul_wallet_card.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -457,25 +459,32 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       Scaffold(
         backgroundColor: Colors.grey[50],
         appBar: AppBar(
-        automaticallyImplyLeading: false, // No back button in bottom nav
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        title: Text(
-          'PrepSkul',
-          style: GoogleFonts.poppins(
-            fontSize: ResponsiveHelper.responsiveHeadingSize(context),
-            fontWeight: FontWeight.w700,
-            color: AppTheme.primaryColor,
+          automaticallyImplyLeading: false,
+          backgroundColor: Colors.white,
+          elevation: 0,
+          surfaceTintColor: Colors.white,
+          centerTitle: false,
+          title: Text(
+            _userInfo?['fullName'] != null
+                ? 'Hi, ${_getFirstName(_userInfo!['fullName'] as String)}'
+                : 'PrepSkul',
+            style: GoogleFonts.poppins(
+              fontSize: ResponsiveHelper.responsiveHeadingSize(context),
+              fontWeight: FontWeight.w700,
+              color: AppTheme.primaryColor,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ),
-        actions: [
-          const MessageIconBadge(),
-          Padding(
-            padding: EdgeInsets.only(right: ResponsiveHelper.responsiveHorizontalPadding(context)),
-            child: const NotificationBell(),
-          ),
-        ],
+          actions: [
+            const MessageIconBadge(),
+            Padding(
+              padding: EdgeInsets.only(
+                right: ResponsiveHelper.responsiveHorizontalPadding(context),
+              ),
+              child: const NotificationBell(),
+            ),
+          ],
         ),
         body: _isLoading
           ? const TutorHomeSkeleton()
@@ -509,9 +518,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   // Hide this button after submission - user should see Profile Completion widget instead
                   // If _approvalStatus is not null, it means profile has been submitted (pending/approved/rejected/etc)
                   if (_onboardingComplete && !_onboardingSkipped && _approvalStatus == null)
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: ResponsiveHelper.responsiveHorizontalPadding(context)),
-                      child: SizedBox(
+                    SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
                           onPressed: () {
@@ -545,7 +552,6 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                             elevation: 2,
                           ),
                         ),
-                      ),
                     ),
 
                   if (_onboardingComplete && !_onboardingSkipped)
@@ -1127,182 +1133,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Widget _buildWalletSection() {
-    // Use actual wallet balances
-    final activeBalanceStr = _activeBalance.toStringAsFixed(0);
-    final pendingBalanceStr = _pendingBalance.toStringAsFixed(0);
-    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18);
-    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 28, desktop: 32);
-
-    return Container(
-      padding: EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.primaryColor,
-            AppTheme.primaryColor.withOpacity(0.8),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.15),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.account_balance_wallet,
-                  color: Colors.white,
-                  size: iconSize,
-                ),
-              ),
-              SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'PrepSkul Wallet',
-                      style: GoogleFonts.poppins(
-                        fontSize: ResponsiveHelper.responsiveSubheadingSize(context) + 2,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Text(
-                      'Your earnings and balance',
-                      style: GoogleFonts.poppins(
-                        fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
-                        color: Colors.white.withOpacity(0.9),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 16, tablet: 20, desktop: 24)),
-          Row(
-            children: [
-              Expanded(
-                child: _buildWalletBalanceCard(
-                  label: 'Active Balance',
-                amount: activeBalanceStr,
-                
-                  icon: Icons.check_circle,
-                  color: Colors.green.shade300,
-                ),
-              ),
-              SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
-              Expanded(
-                child: _buildWalletBalanceCard(
-                  label: 'Pending Balance',
-                  amount: pendingBalanceStr,
-                
-                  icon: Icons.pending,
-                  color: Colors.orange.shade300,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
-            SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const TutorEarningsScreen(),
-                  ),
-                );
-              },
-              icon: Icon(Icons.arrow_forward, size: ResponsiveHelper.responsiveIconSize(context, mobile: 16, tablet: 18, desktop: 20)),
-              label: Text(
-                'View Earnings',
-                style: GoogleFonts.poppins(
-                  fontSize: ResponsiveHelper.responsiveBodySize(context),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white, width: 1.5),
-                padding: EdgeInsets.symmetric(vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWalletBalanceCard({
-    required String label,
-    required String amount,
-    required IconData icon,
-    required Color color,
-  }) {
-    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
-    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 18, tablet: 20, desktop: 22);
-    
-    return Container(
-      padding: EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: iconSize),
-              SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10)),
-              Flexible(
-                child: Text(
-                  label,
-                  style: GoogleFonts.poppins(
-                    fontSize: ResponsiveHelper.responsiveBodySize(context) - 3,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10)),
-          Text(
-            '${amount.toString()} XAF',
-            style: GoogleFonts.poppins(
-              fontSize: ResponsiveHelper.responsiveSubheadingSize(context) + 2,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-        ],
-      ),
+    return PrepSkulWalletCard(
+      activeBalance: _activeBalance,
+      pendingBalance: _pendingBalance,
+      onViewEarnings: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const TutorEarningsScreen()),
+        );
+      },
     );
   }
 
@@ -1317,22 +1155,16 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 21, tablet: 24, desktop: 26);
     final iconPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
     
-    return InkWell(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: EdgeInsets.all(cardPadding),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[200]!),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+        decoration: SkulMateSurfaceStyles.neumorphicCard(
+          color: AppTheme.surfaceColor,
+          radius: 14,
         ),
         child: Row(
           children: [
@@ -1373,11 +1205,12 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             Icon(
               Icons.arrow_forward_ios, 
               size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18), 
-              color: Colors.grey[400]
+              color: AppTheme.textMedium.withOpacity(0.5),
             ),
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -1390,16 +1223,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     
     return Container(
         padding: EdgeInsets.all(padding),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+        decoration: SkulMateSurfaceStyles.neumorphicCard(
+          color: AppTheme.surfaceColor,
+          radius: 14,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

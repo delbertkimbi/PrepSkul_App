@@ -5,12 +5,116 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
 
+import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
+
 // Helper function to safely cast dynamic values
 T? _safeCast<T>(dynamic value) {
   if (value is T) {
     return value;
   }
   return null;
+}
+
+bool _looksLikePersonName(String value) =>
+    TutorDisplayNameUtils.looksLikePersonName(value);
+
+String _resolveTutorDisplayName(
+  Map<String, dynamic> tutor, [
+  Map<String, dynamic>? profile,
+]) =>
+    TutorDisplayNameUtils.resolve(tutor, profile);
+
+List<Map<String, dynamic>> _refreshTutorDisplayNames(
+  List<Map<String, dynamic>> tutors,
+) {
+  return tutors.map((raw) {
+    final tutor = Map<String, dynamic>.from(raw);
+    Map<String, dynamic>? profile;
+    final profilesData = tutor['profiles'];
+    if (profilesData is Map) {
+      profile = Map<String, dynamic>.from(profilesData);
+    } else {
+      profile = {
+        if (tutor['full_name'] != null) 'full_name': tutor['full_name'],
+        if (tutor['email'] != null) 'email': tutor['email'],
+      };
+    }
+    tutor['full_name'] = _resolveTutorDisplayName(tutor, profile);
+    return tutor;
+  }).toList();
+}
+
+Map<String, dynamic> _fallbackProfile(Map<String, dynamic> tutor) {
+  return {
+    'full_name': _resolveTutorDisplayName(tutor),
+    'avatar_url': tutor['profile_photo_url'],
+    'email': null,
+  };
+}
+
+Future<List<Map<String, dynamic>>> _attachProfilesToTutors(List rawTutors) async {
+  if (rawTutors.isEmpty) return const [];
+
+  final tutors = rawTutors
+      .map((t) => Map<String, dynamic>.from(t as Map))
+      .toList();
+
+  final needsProfiles = tutors.any((t) => t['profiles'] == null);
+  if (!needsProfiles) return tutors;
+
+  final userIds = tutors
+      .map((t) => t['user_id']?.toString())
+      .whereType<String>()
+      .where((id) => id.isNotEmpty)
+      .toList();
+  if (userIds.isEmpty) {
+    for (final tutor in tutors) {
+      if (tutor['profiles'] == null) {
+        tutor['profiles'] = _fallbackProfile(tutor);
+      }
+    }
+    return tutors;
+  }
+
+  try {
+    final profilesResponse = await SupabaseService.client
+        .from('profiles')
+        .select('id, full_name, avatar_url, email')
+        .inFilter('id', userIds);
+
+    final profileMap = {
+      for (final profile in profilesResponse as List)
+        profile['id'] as String: profile,
+    };
+
+    var attachedFromDb = 0;
+    var attachedFallback = 0;
+    for (final tutor in tutors) {
+      final userId = tutor['user_id']?.toString();
+      if (tutor['profiles'] == null &&
+          userId != null &&
+          profileMap.containsKey(userId)) {
+        tutor['profiles'] = profileMap[userId];
+        attachedFromDb++;
+      } else if (tutor['profiles'] == null) {
+        tutor['profiles'] = _fallbackProfile(tutor);
+        attachedFallback++;
+      }
+    }
+    LogService.success(
+      'Tutor profiles: $attachedFromDb from DB, $attachedFallback fallback, '
+      '${tutors.length} total',
+    );
+    return tutors;
+  } catch (e) {
+    LogService.error('Failed to attach profiles in batch', e);
+    for (final tutor in tutors) {
+      if (tutor['profiles'] == null) {
+        tutor['profiles'] = _fallbackProfile(tutor);
+      }
+    }
+    return tutors;
+  }
 }
 
 /// Tutor Service - Handles fetching tutor data
@@ -26,6 +130,15 @@ T? _safeCast<T>(dynamic value) {
 class TutorService {
   // ⚠️ TOGGLE THIS TO SWITCH BETWEEN DEMO AND REAL DATA
   static const bool USE_DEMO_DATA = false; // Using real tutors from Supabase
+
+  static String resolveTutorDisplayName(
+    Map<String, dynamic> tutor, [
+    Map<String, dynamic>? profile,
+  ]) =>
+      TutorDisplayNameUtils.resolve(tutor, profile);
+
+  static bool looksLikePersonName(String value) =>
+      TutorDisplayNameUtils.looksLikePersonName(value);
 
   /// Fetch tutors with pagination support
   /// Returns list of tutor profiles with all details
@@ -52,7 +165,7 @@ class TutorService {
         LogService.success('TutorService: Returning ${cachedTutors.length} tutors from cache');
         // Apply filters to cached data if needed
         return _applyFiltersToTutors(
-          cachedTutors,
+          _refreshTutorDisplayNames(cachedTutors),
           subject: subject,
           minRate: minRate,
           maxRate: maxRate,
@@ -304,14 +417,7 @@ class TutorService {
       
       var query = SupabaseService.client
           .from('tutor_profiles')
-          .select('''
-            *,
-            profiles!tutor_profiles_user_id_fkey(
-              full_name,
-              avatar_url,
-              email
-            )
-          ''')
+          .select('*')
           .eq('status', 'approved')
           .neq('is_hidden', true); // Only show approved & not-hidden tutors
 
@@ -344,7 +450,7 @@ class TutorService {
       final response = await query
           .order('rating', ascending: false)
           .range(offset, offset + limit - 1);
-        rawTutors = response as List;
+        rawTutors = await _attachProfilesToTutors(response as List);
         LogService.success('Query successful: Raw query returned ${rawTutors.length} approved tutors from Supabase');
       } catch (queryError) {
         final errorStr = queryError.toString().toLowerCase();
@@ -408,17 +514,19 @@ class TutorService {
                   profile['id'] as String: profile
               };
 
-              // Attach profiles to tutors
+              // Attach profiles when available; keep all approved tutors (RLS may block profiles).
               final tutorsWithProfiles = <Map<String, dynamic>>[];
               for (var tutor in fallbackTutors) {
                 final userId = tutor['user_id']?.toString();
                 if (userId != null && profileMap.containsKey(userId)) {
                   tutor['profiles'] = profileMap[userId];
-                  tutorsWithProfiles.add(tutor);
                 }
+                tutorsWithProfiles.add(tutor);
               }
 
-              LogService.success('Fetched ${tutorsWithProfiles.length} tutors with profiles in batch');
+              LogService.success(
+                'Attached profiles to ${profileMap.length}/${fallbackTutors.length} tutors via batch fetch',
+              );
               rawTutors = tutorsWithProfiles;
             } catch (e) {
               LogService.error('Failed to fetch profiles in batch', e);
@@ -494,16 +602,12 @@ class TutorService {
       final filteredTutors = rawTutors.where((tutor) {
         final userId = tutor['user_id']?.toString() ?? 'unknown';
 
-        // Ensure tutor has a profile and required fields
+        // Profile join may be null when RLS blocks student reads — still show tutor.
         final profilesData = tutor['profiles'];
-        if (profilesData == null) {
-          LogService.error('FILTERED OUT: Tutor $userId has no profile data');
-          return false;
-        }
-
-        // Safely handle profiles - might be Map, String (JSON), or List
         Map<String, dynamic>? profile;
-        if (profilesData is Map) {
+        if (profilesData == null) {
+          profile = null;
+        } else if (profilesData is Map) {
           profile = Map<String, dynamic>.from(profilesData);
         } else if (profilesData is String) {
           // Try to parse JSON string
@@ -517,7 +621,7 @@ class TutorService {
             }
           } catch (e) {
             LogService.warning('Tutor $userId: Could not parse profile JSON string: $e');
-            return false;
+            profile = null;
           }
         } else if (profilesData is List && profilesData.isNotEmpty) {
           // Profile might be returned as a list
@@ -527,17 +631,9 @@ class TutorService {
           }
         }
 
-        if (profile == null) {
-          LogService.error('FILTERED OUT: Tutor $userId has invalid profile data type: ${profilesData.runtimeType}');
-          return false;
-        }
-
-        // Check for required fields
-        final fullName = profile['full_name']?.toString() ?? '';
-        if (fullName.trim().isEmpty) {
-          LogService.debug(
-            '❌ FILTERED OUT: Tutor $userId has no full_name (profile exists but name is empty)',
-          );
+        final resolvedName = _resolveTutorDisplayName(tutor, profile);
+        if (resolvedName.trim().isEmpty) {
+          LogService.debug('❌ FILTERED OUT: Tutor $userId has no display name');
           return false;
         }
 
@@ -576,7 +672,7 @@ class TutorService {
         }
 
         LogService.debug(
-          '✅ Tutor $userId PASSED all checks: name="$fullName", subjects=$subjects',
+          '✅ Tutor $userId PASSED all checks: name="$resolvedName", subjects=$subjects',
         );
         return true;
       }).toList();
@@ -880,7 +976,7 @@ class TutorService {
 
         return {
           'id': tutor['user_id']?.toString() ?? '',
-          'full_name': (profile?['full_name']?.toString() ?? 'Unknown').toString(),
+          'full_name': _resolveTutorDisplayName(tutor, profile),
           'avatar_url': effectiveAvatarUrl?.toString(), // Use consolidated avatar URL
           'profile_photo_url': profilePhotoUrl?.toString(), // Include profile_photo_url for BookingReview widget
           'email': profile?['email']?.toString(),
@@ -974,7 +1070,10 @@ class TutorService {
         throw Exception('Tutor profile not found: $tutorId');
       }
 
-      final profile = response['profiles'];
+      final profileRaw = response['profiles'];
+      final profile = profileRaw is Map
+          ? Map<String, dynamic>.from(profileRaw)
+          : null;
 
       // Calculate effective rating: Use admin_approved_rating if total_reviews < 3
       final totalReviews = (response['total_reviews'] ?? 0) as int;
@@ -1096,7 +1195,7 @@ class TutorService {
 
       // Get avatar from tutor_profiles.profile_photo_url first, then fallback to profiles.avatar_url
       final profilePhotoUrl = response['profile_photo_url']?.toString();
-      final avatarUrl = profile['avatar_url']?.toString();
+      final avatarUrl = profile?['avatar_url']?.toString();
       final effectiveAvatarUrl =
           (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
           ? profilePhotoUrl
@@ -1123,10 +1222,10 @@ class TutorService {
 
       return {
         'id': response['user_id'],
-        'full_name': profile['full_name']?.toString() ?? 'Unknown',
+        'full_name': _resolveTutorDisplayName(response, profile),
         'avatar_url': effectiveAvatarUrl?.toString(), // Use consolidated avatar URL
         'profile_photo_url': profilePhotoUrl?.toString(), // Include profile_photo_url for BookingReview widget
-        'email': profile['email']?.toString(),
+        'email': profile?['email']?.toString(),
         'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
         'personal_statement':
             effectivePersonalStatement, // Full bio for detail page (with "Hello!")
@@ -1244,11 +1343,14 @@ class TutorService {
           .or('profiles!tutor_profiles_user_id_fkey.full_name.ilike.%$query%,subjects.cs.{$query}');
 
       return (response as List).map((tutor) {
-        final profile = tutor['profiles'];
+        final profileRaw = tutor['profiles'];
+        final profile = profileRaw is Map
+            ? Map<String, dynamic>.from(profileRaw)
+            : null;
         return {
           'id': tutor['user_id']?.toString() ?? '',
-          'full_name': profile['full_name']?.toString() ?? 'Unknown',
-          'avatar_url': profile['avatar_url']?.toString(),
+          'full_name': _resolveTutorDisplayName(tutor, profile),
+          'avatar_url': profile?['avatar_url']?.toString(),
           'subjects': tutor['subjects'] ?? [],
           'hourly_rate': tutor['hourly_rate'],
           'is_verified': tutor['is_verified'] ?? false,

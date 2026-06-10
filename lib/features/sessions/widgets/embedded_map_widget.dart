@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -51,11 +52,28 @@ class _EmbeddedMapWidgetState extends State<EmbeddedMapWidget> {
     _initializeMap();
   }
 
+  List<String> _geocodeQueries(String address) {
+    final trimmed = address.trim();
+    if (trimmed.isEmpty) return const [];
+    final lower = trimmed.toLowerCase();
+    final hasCountry = lower.contains('cameroon') || lower.contains('cameroun');
+    final hasComma = trimmed.contains(',');
+    return [
+      trimmed,
+      if (!hasCountry && !hasComma) '$trimmed, Cameroon',
+      if (!hasCountry && hasComma) '$trimmed, Cameroon',
+    ];
+  }
+
   Future<void> _initializeMap() async {
     try {
-      // Try to parse coordinates if provided
-      if (widget.coordinates != null) {
-        final parts = widget.coordinates!.split(',');
+      // Coordinates prop, embedded @coords tag, or plain lat,lng in address
+      final embeddedFromAddress =
+          GeocodingHelper.extractEmbeddedCoordinates(widget.address);
+      final coordSource = widget.coordinates ?? embeddedFromAddress;
+
+      if (coordSource != null) {
+        final parts = coordSource.split(',');
         if (parts.length == 2) {
           final lat = double.tryParse(parts[0].trim());
           final lon = double.tryParse(parts[1].trim());
@@ -70,19 +88,32 @@ class _EmbeddedMapWidgetState extends State<EmbeddedMapWidget> {
         }
       }
 
-      // Try to geocode the address
-      try {
-        final locations = await locationFromAddress(widget.address);
-        if (locations.isNotEmpty) {
-          setState(() {
-            _latitude = locations.first.latitude;
-            _longitude = locations.first.longitude;
-            _isLoading = false;
-          });
-          return;
+      // Try geocoding the address (with Cameroon + Nominatim + landmark fallback)
+      final displayAddress = GeocodingHelper.stripEmbeddedCoords(widget.address);
+      final resolved = await GeocodingHelper.resolve(displayAddress);
+      if (resolved != null) {
+        setState(() {
+          _latitude = resolved.lat;
+          _longitude = resolved.lng;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      for (final query in _geocodeQueries(widget.address)) {
+        try {
+          final locations = await locationFromAddress(query);
+          if (locations.isNotEmpty) {
+            setState(() {
+              _latitude = locations.first.latitude;
+              _longitude = locations.first.longitude;
+              _isLoading = false;
+            });
+            return;
+          }
+        } catch (e) {
+          LogService.warning('Geocoding failed for "$query": $e');
         }
-      } catch (e) {
-        LogService.warning('Geocoding failed: $e');
       }
 
       // If we can't get coordinates, show placeholder
@@ -135,38 +166,76 @@ class _EmbeddedMapWidgetState extends State<EmbeddedMapWidget> {
       return Container(
         height: widget.height,
         decoration: BoxDecoration(
-          color: Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.map_outlined,
-                size: 48,
-                color: Colors.grey[400],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Map Preview Unavailable',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Tap "View Map" to open in maps app',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppTheme.primaryColor.withOpacity(0.08),
+              AppTheme.skyBlue.withOpacity(0.12),
             ],
           ),
+          border: Border.all(color: AppTheme.softBorder),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -20,
+              right: -10,
+              child: Icon(
+                Icons.map_outlined,
+                size: 100,
+                color: AppTheme.primaryColor.withOpacity(0.06),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          Icons.location_on_rounded,
+                          color: AppTheme.primaryColor,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          GeocodingHelper.stripEmbeddedCoords(widget.address),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap Navigate there for directions',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: AppTheme.textMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       );
     }

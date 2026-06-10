@@ -21,6 +21,7 @@ import '../../../core/services/profile_completion_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/widgets/confetti_celebration.dart';
+import '../../../core/widgets/onboarding_location_fields.dart';
 import '../../../core/utils/status_bar_utils.dart';
 import 'instruction_screen.dart';
 
@@ -842,7 +843,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       case 2:
         // Location - validate city exists in AppData.cities
         final cityValue = data['selectedCity'];
-        if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+        if (cityValue != null && AppData.isCameroonCity(cityValue.toString())) {
           _selectedCity = cityValue;
           _availableQuarters = AppData.cities[cityValue] ?? [];
           
@@ -863,6 +864,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               _customQuarter = data['customQuarter']?.toString() ?? '';
             }
           }
+        } else if (cityValue != null &&
+            AppData.isInternationalLocation(cityValue.toString())) {
+          _selectedCity = cityValue.toString();
+          _selectedQuarter = data['selectedQuarter']?.toString();
+          _isCustomQuarter = false;
+          _availableQuarters = [];
         } else {
           // City doesn't exist in AppData - reset location
           _selectedCity = null;
@@ -978,7 +985,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       _hasTraining = data['hasTraining'] ?? false;
       // Location - validate city exists in AppData.cities
       final cityValue = data['selectedCity'];
-      if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+      if (cityValue != null && AppData.isCameroonCity(cityValue.toString())) {
         _selectedCity = cityValue;
         _availableQuarters = AppData.cities[cityValue] ?? [];
         
@@ -996,6 +1003,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _selectedQuarter = null;
           _isCustomQuarter = false;
         }
+      } else if (cityValue != null &&
+          AppData.isInternationalLocation(cityValue.toString())) {
+        _selectedCity = cityValue.toString();
+        _selectedQuarter = data['selectedQuarter']?.toString();
+        _isCustomQuarter = false;
+        _availableQuarters = [];
       } else {
         // City doesn't exist in AppData - reset location
         _selectedCity = null;
@@ -1068,7 +1081,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
         // Location - validate city exists in AppData.cities
         final cityValue = data['city'];
-        if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+        if (cityValue != null && AppData.isCameroonCity(cityValue.toString())) {
           _selectedCity = cityValue;
           _availableQuarters = AppData.cities[cityValue] ?? [];
           
@@ -1086,6 +1099,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             _selectedQuarter = null;
             _isCustomQuarter = false;
           }
+        } else if (cityValue != null &&
+            AppData.isInternationalLocation(cityValue.toString())) {
+          _selectedCity = cityValue.toString();
+          _selectedQuarter = data['quarter']?.toString();
+          _isCustomQuarter = false;
+          _availableQuarters = [];
         } else {
           // City doesn't exist in AppData - reset location
           _selectedCity = null;
@@ -2057,51 +2076,34 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             hasRequiredFields: true,
           ),
           const SizedBox(height: 30),
-          _buildDropdownField(
-            label: 'City',
-            value: _selectedCity,
-            items: AppData.cities.keys.toList(),
-            onChanged: (value) {
+          OnboardingLocationFields(
+            initialCity: _selectedCity,
+            initialQuarter:
+                _isCustomQuarter ? _customQuarter : _selectedQuarter,
+            initialIsCustomQuarter: _isCustomQuarter,
+            onChanged: ({
+              required String? city,
+              required String? quarter,
+              required bool isCustomQuarter,
+            }) {
               safeSetState(() {
-                _selectedCity = value;
-                _selectedQuarter = null;
-                _customQuarter = null;
-                _isCustomQuarter = false;
-                _availableQuarters = value != null
-                    ? AppData.cities[value] ?? []
+                _selectedCity = city;
+                _isCustomQuarter = isCustomQuarter;
+                if (isCustomQuarter) {
+                  _customQuarter = quarter;
+                  _customQuarterController.text = quarter ?? '';
+                  _selectedQuarter = null;
+                } else {
+                  _selectedQuarter = quarter;
+                  _customQuarter = null;
+                  _customQuarterController.clear();
+                }
+                _availableQuarters = AppData.isCameroonCity(city)
+                    ? (AppData.cities[city] ?? [])
                     : [];
               });
             },
-            isRequired: true,
           ),
-          const SizedBox(height: 20),
-          _buildDropdownField(
-            label: 'Quarter/Neighborhood',
-            value: _isCustomQuarter ? 'Other' : _selectedQuarter,
-            items: [..._availableQuarters, 'Other'],
-            onChanged: (value) {
-              safeSetState(() {
-                if (value == 'Other') {
-                  _isCustomQuarter = true;
-                  _selectedQuarter = null;
-                } else {
-                  _isCustomQuarter = false;
-                  _selectedQuarter = value;
-                  _customQuarter = null;
-                }
-              });
-            },
-            isRequired: true,
-          ),
-          if (_isCustomQuarter) ...[
-            const SizedBox(height: 20),
-            _buildInputField(
-              label: 'Enter Quarter/Neighborhood',
-              hint: 'Type your quarter or neighborhood',
-              controller: _customQuarterController,
-              icon: Icons.location_on,
-            ),
-          ],
         ],
       ),
     );

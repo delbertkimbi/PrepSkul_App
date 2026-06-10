@@ -47,17 +47,22 @@ class ResponsiveHelper {
     }
   }
 
-  /// Responsive horizontal padding
+  /// Horizontal page gutter — tighter on phones so cards reach nearer the edges.
   static double responsiveHorizontalPadding(BuildContext context) {
     final size = getScreenSize(context);
     switch (size) {
       case ScreenSize.mobile:
-        return 16;
+        return 8;
       case ScreenSize.tablet:
-        return 24;
+        return 20;
       case ScreenSize.desktop:
-        return 32;
+        return 28;
     }
+  }
+
+  /// Content padding inside cards (slightly less than page gutter).
+  static double cardInnerPadding(BuildContext context) {
+    return isMobile(context) ? 14.0 : 18.0;
   }
 
   /// Responsive vertical padding

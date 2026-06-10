@@ -1,41 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/discovery/utils/schedule_time_utils.dart';
+import 'package:prepskul/features/discovery/widgets/tutor_schedule_day_section.dart';
 
-/// Tutor Schedule Screen
-/// 
-/// Displays the full availability schedule for a tutor
+/// Full tutor availability — vertical day sections with readable time chips.
 class TutorScheduleScreen extends StatelessWidget {
   final Map<String, dynamic> tutor;
   final Map<String, dynamic>? availability;
 
   const TutorScheduleScreen({
-    Key? key,
+    super.key,
     required this.tutor,
     this.availability,
-  }) : super(key: key);
+  });
+
+  String get _tutorName {
+    final profile = tutor['profiles'] as Map<String, dynamic>?;
+    return (profile?['full_name'] as String?) ??
+        (tutor['full_name'] as String?) ??
+        (tutor['name'] as String?) ??
+        'Tutor';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final tutorName = tutor['full_name'] ?? tutor['profiles']?['full_name'] ?? 'Tutor';
-    final schedule = availability ?? tutor['combined_availability'] as Map<String, dynamic>?;
+    final schedule =
+        availability ?? tutor['combined_availability'] as Map<String, dynamic>?;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           'Available Schedule',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-          ),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        surfaceTintColor: Colors.white,
+        foregroundColor: AppTheme.textDark,
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.softBackground,
       body: schedule == null || schedule.isEmpty
           ? _buildEmptyState()
           : _buildScheduleList(schedule),
@@ -66,10 +70,7 @@ class TutorScheduleScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'This tutor has not set their availability yet.',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
               textAlign: TextAlign.center,
             ),
           ],
@@ -79,101 +80,59 @@ class TutorScheduleScreen extends StatelessWidget {
   }
 
   Widget _buildScheduleList(Map<String, dynamic> schedule) {
-    final daysOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    
-    // Sort days by order
-    final sortedDays = schedule.keys.toList()
-      ..sort((a, b) {
-        final aIndex = daysOrder.indexOf(a);
-        final bIndex = daysOrder.indexOf(b);
-        if (aIndex == -1 && bIndex == -1) return a.compareTo(b);
-        if (aIndex == -1) return 1;
-        if (bIndex == -1) return -1;
-        return aIndex.compareTo(bIndex);
-      });
+    final days = ScheduleTimeUtils.orderedDays(schedule);
+    if (days.isEmpty) return _buildEmptyState();
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: sortedDays.length,
-      itemBuilder: (context, index) {
-        final day = sortedDays[index];
-        final times = schedule[day];
-        
-        if (times == null) return const SizedBox.shrink();
-        
-        final timesList = times is List ? times : [times];
-        if (timesList.isEmpty) return const SizedBox.shrink();
+    final totalSlots = days.fold<int>(0, (sum, day) {
+      final raw = schedule[day];
+      final list = raw is List ? raw : [raw];
+      return sum + list.length;
+    });
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.grey[50],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!, width: 1),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.softBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.calendar_today,
-                    size: 18,
-                    color: AppTheme.primaryColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    day,
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                ],
+              Text(
+                _tutorName,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
               ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: timesList.map((time) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: AppTheme.primaryColor.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.access_time,
-                          size: 14,
-                          color: AppTheme.primaryColor,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          time.toString(),
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+              const SizedBox(height: 4),
+              Text(
+                'Weekly availability · $totalSlots open ${totalSlots == 1 ? 'slot' : 'slots'}',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Times shown in your local timezone',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppTheme.textMedium,
+                ),
               ),
             ],
           ),
-        );
-      },
+        ),
+        const SizedBox(height: 16),
+        ...buildTutorScheduleDaySections(schedule),
+      ],
     );
   }
 }

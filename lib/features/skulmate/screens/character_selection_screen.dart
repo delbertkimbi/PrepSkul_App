@@ -12,8 +12,13 @@ import 'skulmate_upload_screen.dart';
 /// Screen for selecting skulMate character
 class CharacterSelectionScreen extends StatefulWidget {
   final bool isFirstTime;
+  final bool popWhenDone;
 
-  const CharacterSelectionScreen({super.key, this.isFirstTime = false});
+  const CharacterSelectionScreen({
+    super.key,
+    this.isFirstTime = false,
+    this.popWhenDone = false,
+  });
 
   @override
   State<CharacterSelectionScreen> createState() =>
@@ -38,7 +43,22 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
     });
   }
 
+  void _finishFirstTimeFlow() {
+    if (widget.popWhenDone) {
+      Navigator.pop(context, true);
+      return;
+    }
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const SkulMateUploadScreen()),
+    );
+  }
+
   void _skipToUpload() {
+    if (widget.isFirstTime) {
+      _finishFirstTimeFlow();
+      return;
+    }
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const SkulMateUploadScreen()),
@@ -63,10 +83,7 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
     await CharacterSelectionService.selectCharacter(_selectedCharacter!);
     if (!mounted) return;
     if (widget.isFirstTime) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const SkulMateUploadScreen()),
-      );
+      _finishFirstTimeFlow();
     } else {
       Navigator.pop(context);
     }

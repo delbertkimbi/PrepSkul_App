@@ -8,6 +8,10 @@ import 'package:prepskul/core/config/app_config.dart';
 import 'push_notification_service.dart';
 import 'email_rate_limit_service.dart';
 import 'notification_helper_service.dart';
+import 'profile_bootstrap_service.dart';
+import 'package:prepskul/features/dashboard/utils/home_stats_prefs.dart';
+import 'package:prepskul/features/skulmate/services/skulmate_onboarding_service.dart';
+import 'package:prepskul/features/skulmate/services/skulmate_streak_reminder_service.dart';
 // #region agent log
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -218,21 +222,20 @@ class AuthService {
       );
       LogService.success('Push notifications initialized after login');
 
-      // Request permission after login if onboarding is completed
-      // Delay the request slightly to ensure user sees the app first
-      final hasCompletedOnboarding =
-          prefs.getBool('onboarding_completed') ?? false;
-      if (hasCompletedOnboarding) {
-        Future.delayed(const Duration(seconds: 2), () async {
-          try {
-            await PushNotificationService().requestPermission();
-          } catch (e) {
-            LogService.debug(
-              '⚠️ Error requesting notification permission after login: $e',
-            );
-          }
-        });
-      }
+      // Schedule SkulMate daily streak reminder (local) after push layer is up.
+      SkulMateStreakReminderService.rescheduleIfNeeded();
+
+      // Request permission after login (always — not gated on onboarding flag).
+      Future.delayed(const Duration(seconds: 2), () async {
+        try {
+          await PushNotificationService().requestPermission();
+          await SkulMateStreakReminderService.rescheduleIfNeeded();
+        } catch (e) {
+          LogService.debug(
+            '⚠️ Error requesting notification permission after login: $e',
+          );
+        }
+      });
     } catch (e) {
       LogService.warning('Error initializing push notifications after login: $e');
       // Don't fail login if push notifications fail
@@ -256,11 +259,12 @@ class AuthService {
         LogService.warning('Error deactivating push notification tokens: $e');
       }
 
-      // Sign out from Supabase
-      await SupabaseService.signOut();
-
       // Clear local session and ALL user-related cached data
       final prefs = await SharedPreferences.getInstance();
+      final loggingOutUserId = prefs.getString(_keyUserId) ?? '';
+
+      // Sign out from Supabase
+      await SupabaseService.signOut();
       await prefs.remove(_keyIsLoggedIn);
       await prefs.remove(_keyUserRole);
       await prefs.remove(_keyUserId);
@@ -274,8 +278,13 @@ class AuthService {
       await prefs.remove('signup_full_name');
       await prefs.remove('pending_deep_link');
       // Clear SkulMate onboarding so new/first-time users see onboarding + character selection
+      if (loggingOutUserId.isNotEmpty) {
+        await SkulMateOnboardingService.clearForUser(loggingOutUserId);
+        await HomeStatsPrefs.clearForUser(prefs, loggingOutUserId);
+      }
+      await HomeStatsPrefs.clearLegacy(prefs);
       await prefs.remove('skulmate_onboarding_completed');
-      
+
       // Keep remember_me for convenience
       LogService.success('User logged out successfully - all cached data cleared');
     } catch (e) {
@@ -381,13 +390,16 @@ class AuthService {
           }
         } catch (e) {
           LogService.error('Error syncing session: $e');
-          // Fallback to Supabase user data
           return {
             'userId': supabaseUserId,
-            'userRole': supabaseUser.userMetadata?['user_type'] as String? ?? 'student',
-            'phone': supabaseUser.phone ?? '',
-            'fullName': supabaseUser.email ?? 'User',
-            'surveyCompleted': false,
+            'userRole': prefs.getString(_keyUserRole) ??
+                supabaseUser.userMetadata?['user_type'] as String? ??
+                'student',
+            'phone': prefs.getString(_keyUserPhone) ?? supabaseUser.phone ?? '',
+            'fullName': prefs.getString(_keyUserName) ??
+                supabaseUser.email ??
+                'User',
+            'surveyCompleted': prefs.getBool(_keySurveyCompleted) ?? false,
           };
         }
       }
@@ -402,7 +414,18 @@ class AuthService {
       };
     } catch (e) {
       LogService.error('Error getting current user: $e');
-      // Return empty on error
+      final supabaseUser = SupabaseService.currentUser;
+      if (supabaseUser != null) {
+        final prefs = await SharedPreferences.getInstance();
+        return {
+          'userId': supabaseUser.id,
+          'userRole': prefs.getString(_keyUserRole) ?? 'student',
+          'phone': prefs.getString(_keyUserPhone) ?? supabaseUser.phone ?? '',
+          'fullName':
+              prefs.getString(_keyUserName) ?? supabaseUser.email ?? 'User',
+          'surveyCompleted': prefs.getBool(_keySurveyCompleted) ?? false,
+        };
+      }
       return {
         'userId': null,
         'userRole': null,
@@ -745,28 +768,26 @@ class AuthService {
         return;
       }
 
-      final role = pendingRole ?? 
-                  user.userMetadata?['user_type']?.toString() ?? 
-                  'student';
+      final role = pendingRole ??
+          user.userMetadata?['user_type']?.toString();
       final email = pendingEmail ?? user.email ?? '';
       final fullName =
           pendingName ??
           user.userMetadata?['full_name']?.toString() ??
           (email.isNotEmpty ? email : 'PrepSkul User');
 
-      await SupabaseService.client.from('profiles').upsert({
-        'id': user.id,
-        'email': email,
-        'full_name': fullName,
-        'phone_number': null,
-        'user_type': role,
-        'survey_completed': false,
-        'is_admin': false,
-      }, onConflict: 'id');
+      await ProfileBootstrapService.upsertProfile(
+        userId: user.id,
+        fullName: fullName,
+        email: email,
+        phoneNumber: null,
+        userType: role,
+        surveyCompleted: false,
+      );
 
       await saveSession(
         userId: user.id,
-        userRole: role,
+        userRole: role ?? '',
         phone: '',
         fullName: fullName,
         surveyCompleted: false,
@@ -781,12 +802,14 @@ class AuthService {
       // await prefs.remove('signup_full_name');
       // await prefs.remove('signup_email');
 
-      await NotificationHelperService.notifyAdminsAboutNewUserSignup(
-        userEmail: email,
-        userId: user.id,
-        userName: fullName,
-        userType: role,
-      );
+      if (role != null && role.trim().isNotEmpty) {
+        await NotificationHelperService.notifyAdminsAboutNewUserSignup(
+          userEmail: email,
+          userId: user.id,
+          userName: fullName,
+          userType: role,
+        );
+      }
     } catch (e) {
       LogService.warning('Error completing email verification: $e');
       rethrow;
@@ -950,23 +973,31 @@ class AuthService {
     }
     
     // Handle PostgrestException (database errors from Supabase)
-    if (error.toString().contains('PostgrestException') || 
+    if (error is PostgrestException ||
+        error.toString().contains('PostgrestException') ||
         error.runtimeType.toString().contains('Postgrest')) {
-      LogService.error('[ERROR] PostgrestException detected: $errorStr');
-      
-      // Check for specific database errors
-      if (errorStr.contains('permission denied') || 
-          errorStr.contains('row-level security') ||
-          errorStr.contains('rls')) {
+      final pgMessage = error is PostgrestException
+          ? error.message.toLowerCase()
+          : errorStr;
+      LogService.error('[ERROR] PostgrestException detected: $pgMessage');
+
+      if (pgMessage.contains('permission denied') ||
+          pgMessage.contains('row-level security') ||
+          pgMessage.contains('rls') ||
+          (error is PostgrestException && error.code == '42501')) {
         return 'Access denied. Please contact support if this persists.';
       }
-      
-      if (errorStr.contains('relation') && errorStr.contains('does not exist')) {
+
+      if (pgMessage.contains('relation') && pgMessage.contains('does not exist')) {
         return 'Database error. Please contact support.';
       }
-      
-      if (errorStr.contains('network') || errorStr.contains('connection')) {
+
+      if (pgMessage.contains('network') || pgMessage.contains('connection')) {
         return 'Connection error. Please check your internet connection.';
+      }
+
+      if (error is PostgrestException && error.message.isNotEmpty) {
+        return 'Could not complete this action. Please try again.';
       }
     }
     
@@ -1082,57 +1113,37 @@ class AuthService {
     String errorCode = '';
     String statusCode = '';
 
-    // Handle AuthApiException format: AuthApiException(message: ..., statusCode: ..., code: ...)
     final originalErrorString = error.toString();
     LogService.debug('[DEBUG] Original error string: $originalErrorString');
 
-    if (originalErrorString.contains('AuthApiException')) {
-      LogService.debug('[DEBUG] Detected AuthApiException format');
+    if (error is AuthException) {
+      errorMessage = error.message;
+      errorCode = error.code ?? '';
+      statusCode = error.statusCode ?? '';
+      LogService.debug('[DEBUG] Typed AuthException: $errorMessage / $errorCode');
+    } else if (originalErrorString.contains('AuthApiException') ||
+        originalErrorString.contains('AuthException')) {
+      LogService.debug('[DEBUG] Parsing AuthException from toString');
 
-      // Extract message from the original error string
       final messageMatch = RegExp(
         r'message:\s*([^,]+)',
       ).firstMatch(originalErrorString);
       if (messageMatch != null) {
         errorMessage = messageMatch.group(1)?.trim() ?? errorMessage;
-        LogService.debug('[DEBUG] Extracted message: $errorMessage');
-      } else {
-        LogService.debug('[DEBUG] No message match found');
       }
 
-      // Extract code from the original error string
       final codeMatch = RegExp(
-        r'code:\s*([^\s,)]+)',
+        r'(?:errorCode|code):\s*([^\s,)]+)',
       ).firstMatch(originalErrorString);
       if (codeMatch != null) {
         errorCode = codeMatch.group(1)?.trim() ?? '';
-        LogService.debug('[DEBUG] Extracted code: $errorCode');
-      } else {
-        LogService.debug('[DEBUG] No code match found');
       }
 
-      // Extract statusCode from the original error string
       final statusMatch = RegExp(
         r'statusCode:\s*([^,]+)',
       ).firstMatch(originalErrorString);
       if (statusMatch != null) {
         statusCode = statusMatch.group(1)?.trim() ?? '';
-        LogService.debug('[DEBUG] Extracted statusCode: $statusCode');
-      } else {
-        LogService.debug('[DEBUG] No statusCode match found');
-      }
-    }
-    // Handle AuthException format (legacy)
-    else if (errorMessage.contains('AuthException')) {
-      final match = RegExp(
-        r'AuthException\([^,]+,\s*([^)]+)\)',
-      ).firstMatch(errorMessage);
-      if (match != null) {
-        errorMessage = match.group(1)?.replaceAll("'", "") ?? errorMessage;
-      }
-      final codeMatch = RegExp(r'code:\s*([^,}]+)').firstMatch(errorMessage);
-      if (codeMatch != null) {
-        errorCode = codeMatch.group(1)?.trim().replaceAll("'", "") ?? '';
       }
     }
 
@@ -1159,6 +1170,10 @@ class AuthService {
 
     if (errorString.contains('email not confirmed') ||
         errorString.contains('email not verified')) {
+      // Phone-alias accounts should never surface inbox messaging.
+      if (errorCode == 'email_not_confirmed') {
+        return 'Your account is still activating. Please try again in a moment.';
+      }
       return 'Please verify your email first. Check your inbox for the confirmation link.';
     }
 
@@ -1230,6 +1245,24 @@ class AuthService {
     if (errorString.contains('expired') ||
         errorString.contains('otp_expired')) {
       return 'Verification link has expired. Please request a new one.';
+    }
+
+    // Last-resort pattern match on the full error string
+    if (errorStr.contains('invalid_credentials') ||
+        errorStr.contains('invalid login credentials')) {
+      return 'The phone number or password is incorrect. If you don\'t have an account, please sign up first.';
+    }
+    if (errorStr.contains('no profile is linked') ||
+        errorStr.contains('please sign up first')) {
+      return errorStr.contains('phone')
+          ? 'No account found with this phone number. Please sign up first.'
+          : 'No account found. Please sign up first.';
+    }
+    if (errorStr.contains('could not activate phone account')) {
+      return 'Could not activate your phone account. Please try again in a moment.';
+    }
+    if (errorStr.contains('already linked to another account')) {
+      return 'This phone number is already linked to another account. Please log in instead.';
     }
 
     // Default fallback - always return a friendly, generic message

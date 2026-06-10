@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
+import 'package:prepskul/features/booking/utils/session_live_utils.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/config/live_session_test_config.dart';
@@ -20,6 +21,9 @@ import 'session_feedback_flow_screen.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/sessions/screens/session_summary_screen.dart';
 import 'package:prepskul/features/sessions/widgets/session_location_map.dart';
+import 'package:prepskul/features/sessions/widgets/session_card_map_preview.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
+import 'package:prepskul/features/sessions/widgets/session_start_countdown_ring.dart';
 import 'package:prepskul/features/sessions/widgets/location_tracking_widget.dart';
 import 'package:prepskul/features/sessions/widgets/session_mode_statistics_widget.dart';
 import 'package:prepskul/core/services/auth_service.dart';
@@ -105,6 +109,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   
   // Timer for countdown updates
   Timer? _countdownTimer;
+  String _mainNavRoute = '/student-nav';
   // View mode: list | by_day | calendar
   String _viewMode = 'list';
   DateTime? _calendarFocusedDay;
@@ -141,7 +146,25 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkCalendarConnection();
       _startCountdownTimer();
+      _loadMainNavRoute();
     });
+  }
+
+  Future<void> _loadMainNavRoute() async {
+    try {
+      final profile = await AuthService.getUserProfile();
+      final type = profile?['user_type'] as String?;
+      if (!mounted) return;
+      setState(() {
+        if (type == 'parent') {
+          _mainNavRoute = '/parent-nav';
+        } else if (type == 'tutor') {
+          _mainNavRoute = '/tutor-nav';
+        } else {
+          _mainNavRoute = '/student-nav';
+        }
+      });
+    } catch (_) {}
   }
 
   /// Initialize connectivity monitoring
@@ -215,7 +238,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   
   /// Start countdown timer to update session countdowns every minute
   void _startCountdownTimer() {
-    _countdownTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         safeSetState(() {
           // Trigger rebuild to update countdowns
@@ -1539,10 +1562,21 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final scheduledDate = session['scheduled_date'] as String;
     final scheduledTime = session['scheduled_time'] as String;
     final location = session['location'] as String? ?? 'online';
-    final onsiteAddress = (session['onsite_address'] as String?) ?? (session['address'] as String?);
+    final onsiteAddressRaw = (session['onsite_address'] as String?) ??
+        (session['address'] as String?);
+    final onsiteAddress = onsiteAddressRaw != null
+        ? GeocodingHelper.stripEmbeddedCoords(onsiteAddressRaw)
+        : null;
+    final onsiteCoordinates = SessionCardMapPreview.coordinatesFromSession(session);
+    final locationDescription = session['location_description'] as String?;
     final durationMinutes = session['duration_minutes'] as int? ?? 60;
     final meetLink = session['meeting_link'] as String?;
     final sessionId = session['id'] as String;
+    final sessionStart = SessionDateUtils.parseScheduledStart(scheduledDate, scheduledTime);
+    final bookingWindow = SessionStartCountdownRing.bookingWindowFromRecurring(
+      recurringData,
+      sessionStart ?? DateTime.now(),
+    );
     final isCompleted = status == 'completed';
     final hasFeedback = _feedbackSubmitted[sessionId] ?? false;
     final isExpired = status == 'expired';
@@ -1763,72 +1797,43 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
-              // Session in Progress indicator (only show if session time has actually arrived)
-              // Don't show if session was started early but scheduled time hasn't arrived yet
-              if (status == 'in_progress') ...[
-                Builder(
-                  builder: (context) {
-                    // Check if session time has actually arrived
-                    try {
-                      final dateParts = scheduledDate.split('T')[0].split('-');
-                      final timeParts = scheduledTime.split(':');
-                      final year = int.parse(dateParts[0]);
-                      final month = int.parse(dateParts[1]);
-                      final day = int.parse(dateParts[2]);
-                      final hour = int.tryParse(timeParts[0]) ?? 0;
-                      final minute = timeParts.length > 1 
-                          ? (int.tryParse(timeParts[1].split(' ')[0]) ?? 0) 
-                          : 0;
-                      
-                      final sessionDateTime = DateTime(year, month, day, hour, minute);
-                      final now = DateTime.now();
-                      final hasStarted = now.isAfter(sessionDateTime) || now.isAtSameMomentAs(sessionDateTime);
-                      
-                      // Only show "in progress" if the scheduled time has actually arrived
-                      if (!hasStarted) {
-                        return const SizedBox.shrink();
-                      }
-                    } catch (e) {
-                      // If we can't parse the date/time, show the indicator anyway
-                    }
-                    
-                    return Column(
-                      children: [
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accentGreen.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppTheme.accentGreen.withOpacity(0.2),
-                              width: 1,
+              // Session in Progress indicator — only when genuinely live
+              if (SessionLiveUtils.showsLiveUi(session)) ...[
+                Column(
+                  children: [
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentGreen.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppTheme.accentGreen.withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            PhosphorIcons.playCircle(),
+                            color: AppTheme.accentGreen,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Session is currently in progress',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.accentGreen,
+                              ),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                PhosphorIcons.playCircle(),
-                                color: AppTheme.accentGreen,
-                                size: 18,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Session is currently in progress',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppTheme.accentGreen,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
               const SizedBox(height: 8),
@@ -1841,38 +1846,60 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 ),
                 child: Column(
                   children: [
-              // Date and time
+              // Date and time + countdown ring
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(PhosphorIcons.calendar(), size: 14, color: Colors.grey[600]),
-                  const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                    _formatDateTime(scheduledDate, scheduledTime),
-                    style: GoogleFonts.poppins(
-                              fontSize: 12,
-                      color: Colors.grey[700],
-                              fontWeight: FontWeight.w500,
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Row(
-                children: [
-                  Icon(PhosphorIcons.clock(), size: 14, color: Colors.grey[600]),
-                  const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
-                      _formatStartEndTime(scheduledDate, scheduledTime, durationMinutes),
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.grey[700],
-                        fontWeight: FontWeight.w500,
-                      ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(PhosphorIcons.calendar(), size: 14, color: Colors.grey[600]),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _formatDateTime(scheduledDate, scheduledTime),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            Icon(PhosphorIcons.clock(), size: 14, color: Colors.grey[600]),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _formatStartEndTime(scheduledDate, scheduledTime, durationMinutes),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
+                  if (isUpcoming &&
+                      (status == 'scheduled' || status == 'in_progress') &&
+                      sessionStart != null) ...[
+                    const SizedBox(width: 8),
+                    SessionStartCountdownRing(
+                      sessionStart: sessionStart,
+                      bookingWindowStart: bookingWindow.windowStart,
+                      bookingWindowEnd: bookingWindow.windowEnd,
+                      size: 72,
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 5),
@@ -1912,53 +1939,21 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           fontSize: 11,
                           color: Colors.grey[600],
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
+                if (onsiteAddress?.trim().isNotEmpty == true) ...[
+                  const SizedBox(height: 8),
+                  SessionCardMapPreview(
+                    address: onsiteAddress!,
+                    coordinates: onsiteCoordinates,
+                    locationDescription: locationDescription,
+                  ),
+                ],
               ],
-                    // Countdown timer for upcoming sessions - improved design
-                    if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              AppTheme.primaryColor.withOpacity(0.15),
-                              AppTheme.primaryColor.withOpacity(0.08),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppTheme.primaryColor.withOpacity(0.3),
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Icon(
-                                PhosphorIcons.timer(),
-                                size: 20,
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildCountdownWidget(scheduledDate, scheduledTime),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                     if (location != 'online' && (status == 'scheduled' || status == 'in_progress')) ...[
                       const SizedBox(height: 8),
                       Row(
@@ -2072,7 +2067,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.accentGreen,
+                              backgroundColor: AppTheme.primaryColor,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
@@ -2458,7 +2453,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 const SizedBox(height: 16),
                 SessionLocationMap(
                   address: onsiteAddress,
-                  coordinates: null, // Could be extracted from address if available
+                  coordinates: SessionCardMapPreview.coordinatesFromSession(session),
                   locationDescription: locationDescription,
                   sessionId: sessionId,
                   currentUserId: currentUserId,
@@ -2539,7 +2534,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                 ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: canJoin
-                                      ? (status == 'in_progress' ? AppTheme.accentGreen : AppTheme.primaryColor)
+                                      ? AppTheme.primaryColor
                                       : Colors.grey[400],
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -2676,17 +2671,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 },
               );
             } else {
-              // Can't pop - navigate to appropriate dashboard
+              // Can't pop — replace with the correct main shell (never wipe auth stack).
               return IconButton(
                 icon: Icon(PhosphorIcons.arrowLeft()),
                 color: Colors.white,
                 onPressed: () {
-                  // Keep back-navigation deterministic and avoid network/auth calls.
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/student-nav',
-                    (route) => false,
-                  );
+                  Navigator.of(context).pushReplacementNamed(_mainNavRoute);
                 },
               );
             }

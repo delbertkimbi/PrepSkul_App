@@ -215,6 +215,12 @@ abstract class AppLocalizations {
   /// **'Find Tutors'**
   String get navFindTutors;
 
+  /// No description provided for @navSkulMate.
+  ///
+  /// In en, this message translates to:
+  /// **'SkulMate'**
+  String get navSkulMate;
+
   /// No description provided for @navRequests.
   ///
   /// In en, this message translates to:

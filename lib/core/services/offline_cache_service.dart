@@ -276,11 +276,36 @@ class OfflineCacheService {
     }
   }
 
-  /// Cache user profile
+  /// Cache user profile (merges with existing cache so partial updates keep user_type).
   static Future<void> cacheUserProfile(String userId, Map<String, dynamic> profile) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final json = jsonEncode(profile);
+      var merged = Map<String, dynamic>.from(profile);
+
+      final existingJson = prefs.getString('$_keyUserProfile$userId');
+      if (existingJson != null) {
+        try {
+          final existing = Map<String, dynamic>.from(jsonDecode(existingJson));
+          merged = {...existing, ...profile};
+          final newType = profile['user_type']?.toString().trim();
+          if (newType == null || newType.isEmpty) {
+            final existingType = existing['user_type']?.toString().trim();
+            if (existingType != null && existingType.isNotEmpty) {
+              merged['user_type'] = existingType;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (merged['user_type'] == null ||
+          merged['user_type'].toString().trim().isEmpty) {
+        final cachedRole = prefs.getString('user_role')?.trim();
+        if (cachedRole != null && cachedRole.isNotEmpty) {
+          merged['user_type'] = cachedRole;
+        }
+      }
+
+      final json = jsonEncode(merged);
       await prefs.setString('$_keyUserProfile$userId', json);
       await prefs.setInt('$_keyUserProfile$userId$_keyCacheTimestamp',
           DateTime.now().millisecondsSinceEpoch);

@@ -713,6 +713,23 @@ class SessionLifecycleService {
     bool isOnline = false,
   }) async {
     try {
+      final existing = await _supabase
+          .from('session_attendance')
+          .select('id')
+          .eq('session_id', sessionId)
+          .eq('user_id', userId)
+          .eq('user_type', userType)
+          .maybeSingle();
+
+      if (existing != null) {
+        // Onsite check-in wizard may have already created the row with GPS/selfie data.
+        await _supabase.from('session_attendance').update({
+          'attendance_status': 'present',
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', existing['id']);
+        return;
+      }
+
       final attendanceData = <String, dynamic>{
         'session_id': sessionId,
         'user_id': userId,
@@ -751,6 +768,19 @@ class SessionLifecycleService {
     bool isOnline = false,
   }) async {
     try {
+      // Preserve checkout wizard timestamps if already recorded.
+      if (!isOnline) {
+        final existing = await _supabase
+            .from('session_attendance')
+            .select('check_out_time, duration_minutes')
+            .eq('session_id', sessionId)
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (existing != null && existing['check_out_time'] != null) {
+          return;
+        }
+      }
+
       final updateData = <String, dynamic>{
         'left_at': leftAt.toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),

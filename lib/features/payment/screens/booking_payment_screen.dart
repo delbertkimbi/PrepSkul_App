@@ -9,6 +9,7 @@ import 'package:prepskul/core/services/whatsapp_support_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_webhook_service.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
+import 'package:prepskul/features/payment/widgets/payment_checkout_ui.dart';
 import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
 import 'package:prepskul/features/payment/widgets/animated_checkmark.dart';
 import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
@@ -21,6 +22,7 @@ import 'package:prepskul/features/booking/services/recurring_session_service.dar
 import 'package:prepskul/features/payment/screens/identity_verification_flow_screen.dart';
 import 'package:prepskul/features/payment/services/payment_gate_service.dart';
 import 'package:confetti/confetti.dart';
+import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
 import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
@@ -112,9 +114,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   Future<void> _loadPaymentRequest() async {
     try {
-      final request = await PaymentRequestService.getPaymentRequest(
+      var request = await PaymentRequestService.getPaymentRequest(
         widget.paymentRequestId,
       );
+      if (request != null) {
+        request = await _enrichPaymentRequest(request);
+      }
       if (request != null && mounted) {
         // `amount` is what this installment charges (weekly/bi-weekly/monthly slice).
         final installmentAmount = (request['amount'] as num).toDouble();
@@ -152,6 +157,136 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     if (raw == null) return null;
     if (raw is Map<String, dynamic>) return raw;
     if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  Future<Map<String, dynamic>> _enrichPaymentRequest(
+    Map<String, dynamic> request,
+  ) async {
+    final metadata = Map<String, dynamic>.from(
+      _parseMetadata(request['metadata']) ?? {},
+    );
+    final subject = metadata['subject'] as String?;
+    final storedName = metadata['tutor_name'] as String?;
+    var changed = false;
+
+    if (TutorDisplayNameUtils.isInvalidStoredName(storedName, subject: subject)) {
+      final resolved = await _resolveTutorNameForPayment(
+        tutorId: request['tutor_id'] as String?,
+        bookingRequestId: widget.bookingRequestId ??
+            request['booking_request_id'] as String?,
+      );
+      if (resolved != null && resolved.isNotEmpty) {
+        metadata['tutor_name'] = resolved;
+        changed = true;
+      }
+    }
+
+    final existingAvatar = metadata['tutor_avatar_url'] as String?;
+    if (existingAvatar == null || existingAvatar.trim().isEmpty) {
+      try {
+        final url = await _resolveTutorAvatarUrl(
+          tutorId: request['tutor_id'] as String?,
+          bookingRequestId: widget.bookingRequestId ??
+              request['booking_request_id'] as String?,
+        );
+        if (url != null) {
+          metadata['tutor_avatar_url'] = url;
+          changed = true;
+        }
+      } catch (e) {
+        LogService.warning('Could not load tutor avatar for checkout: $e');
+      }
+    }
+
+    if (!changed) return request;
+    return Map<String, dynamic>.from(request)..['metadata'] = metadata;
+  }
+
+  Future<String?> _resolveTutorNameForPayment({
+    String? tutorId,
+    String? bookingRequestId,
+  }) async {
+    if (bookingRequestId != null && bookingRequestId.isNotEmpty) {
+      final booking = await SupabaseService.client
+          .from('booking_requests')
+          .select('tutor_name')
+          .eq('id', bookingRequestId)
+          .maybeSingle();
+      final fromBooking = (booking?['tutor_name'] as String?)?.trim();
+      if (fromBooking != null &&
+          TutorDisplayNameUtils.looksLikePersonName(fromBooking)) {
+        return fromBooking;
+      }
+    }
+
+    if (tutorId == null || tutorId.isEmpty) return null;
+
+    final tutorRow = await SupabaseService.client
+        .from('tutor_profiles')
+        .select('user_id, personal_statement, subjects, specializations')
+        .eq('user_id', tutorId)
+        .maybeSingle();
+    if (tutorRow == null) return null;
+
+    Map<String, dynamic>? profile;
+    try {
+      final profileRow = await SupabaseService.client
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', tutorId)
+          .maybeSingle();
+      if (profileRow != null) {
+        profile = Map<String, dynamic>.from(profileRow);
+      }
+    } catch (_) {}
+
+    return TutorDisplayNameUtils.resolve(
+      Map<String, dynamic>.from(tutorRow),
+      profile,
+    );
+  }
+
+  /// Tutor photos often live on `tutor_profiles.profile_photo_url`, not `profiles`.
+  Future<String?> _resolveTutorAvatarUrl({
+    String? tutorId,
+    String? bookingRequestId,
+  }) async {
+    if (bookingRequestId != null && bookingRequestId.isNotEmpty) {
+      final booking = await SupabaseService.client
+          .from('booking_requests')
+          .select('tutor_avatar_url')
+          .eq('id', bookingRequestId)
+          .maybeSingle();
+      final fromBooking = (booking?['tutor_avatar_url'] as String?)?.trim();
+      if (fromBooking != null && fromBooking.isNotEmpty) {
+        return fromBooking;
+      }
+    }
+
+    if (tutorId == null || tutorId.isEmpty) return null;
+
+    final tutorProfile = await SupabaseService.client
+        .from('tutor_profiles')
+        .select('profile_photo_url')
+        .eq('user_id', tutorId)
+        .maybeSingle();
+    final tutorPhoto =
+        (tutorProfile?['profile_photo_url'] as String?)?.trim();
+    if (tutorPhoto != null && tutorPhoto.isNotEmpty) {
+      return tutorPhoto;
+    }
+
+    final profile = await SupabaseService.client
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', tutorId)
+        .maybeSingle();
+    final avatar = (profile?['avatar_url'] as String?)?.trim();
+    if (avatar != null && avatar.isNotEmpty) {
+      return avatar;
+    }
+
     return null;
   }
 
@@ -857,6 +992,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
@@ -876,508 +1012,63 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
+  String _compactOrderSubtitle(String paymentPlan, Map<String, dynamic>? metadata) {
+    final parts = <String>[PaymentCheckoutUi.planLabel(paymentPlan)];
+    final paymentIndex = metadata?['payment_number'] as int? ??
+        (metadata?['payment_number'] as num?)?.toInt();
+    final paymentTotal = metadata?['total_payments'] as int? ??
+        (metadata?['total_payments'] as num?)?.toInt();
+    final location = (metadata?['location'] as String?)?.trim().toLowerCase() ?? '';
+    final frequency = metadata?['frequency'] as int? ??
+        (metadata?['frequency'] as num?)?.toInt();
+
+    if (paymentIndex != null && paymentTotal != null) {
+      parts.add('Payment $paymentIndex of $paymentTotal');
+    }
+    if (location == 'onsite' || location == 'hybrid') {
+      parts.add(location.toUpperCase());
+    } else if (location == 'online') {
+      parts.add('Online');
+    }
+    if (frequency != null && frequency > 0) {
+      parts.add('$frequency× per week');
+    }
+    return parts.join(' · ');
+  }
+
   Widget _buildCombinedPaymentView(
     String tutorName,
     String? description,
     String paymentPlan,
   ) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildPaymentHeader(),
-          const SizedBox(height: 16),
-          _buildPaymentPlanSummary(tutorName, description, paymentPlan),
-          const SizedBox(height: 16),
-          _buildInlinePhoneInput(),
-          const SizedBox(height: 16),
-          _buildCompactPaymentBreakdown(),
-          const SizedBox(height: 16),
-          if (_errorMessage != null) ...[
-            _buildCompactErrorMessage(),
-            const SizedBox(height: 16),
-          ],
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _canInitiatePayment ? _initiatePayment : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 2,
-                shadowColor: AppTheme.primaryColor.withOpacity(0.3),
-              ),
-              child: _isProcessing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Text(
-                      'Pay ${PricingService.formatPrice(_total)}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-            ),
-          ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primaryColor,
-            AppTheme.primaryColor.withOpacity(0.85),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.lock_outline, color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Mobile Money',
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    _providerBadge('mtn'),
-                    const SizedBox(width: 8),
-                    _providerBadge('orange'),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _providerBadge(String provider) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.35)),
-      ),
-      child: Text(
-        PaymentProviderHelper.getProviderName(provider),
-        style: GoogleFonts.poppins(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
-
-  String _planLabel(String plan) {
-    switch (plan.toLowerCase()) {
-      case 'weekly':
-        return 'Weekly';
-      case 'biweekly':
-        return 'Bi-weekly';
-      case 'monthly':
-        return 'Monthly';
-      default:
-        return plan.isEmpty ? 'Installment' : plan;
-    }
-  }
-
-  Widget _buildPlanChip(IconData icon, String label, {Color? accent}) {
-    final color = accent ?? AppTheme.primaryColor;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.35)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentPlanSummary(
-    String tutorName,
-    String? description,
-    String paymentPlan,
-  ) {
     final metadata = _parseMetadata(_paymentRequest?['metadata']);
-    final location = (metadata?['location'] as String?)?.trim().toLowerCase() ?? '';
-    final frequency = metadata?['frequency'] as int? ??
-        (metadata?['frequency'] as num?)?.toInt();
-    final paymentIndex = metadata?['payment_number'] as int? ??
-        (metadata?['payment_number'] as num?)?.toInt();
-    final paymentTotal = metadata?['total_payments'] as int? ??
-        (metadata?['total_payments'] as num?)?.toInt();
-    final planLabel = _planLabel(paymentPlan);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.25)),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+    return PaymentCheckoutUi.checkoutShell(
+      context: context,
+      order: PaymentCheckoutOrder(
+        title: tutorName,
+        subtitle: _compactOrderSubtitle(paymentPlan, metadata),
+        paymentPlan: paymentPlan,
+        description: description,
+        metadata: metadata,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.receipt_long, color: AppTheme.primaryColor, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'What you\'re paying for',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            tutorName,
-            style: GoogleFonts.poppins(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildPlanChip(Icons.calendar_month, planLabel),
-              if (paymentIndex != null && paymentTotal != null)
-                _buildPlanChip(
-                  Icons.payments_outlined,
-                  'Payment $paymentIndex of $paymentTotal',
-                ),
-              if (location == 'onsite' || location == 'hybrid')
-                _buildPlanChip(
-                  Icons.location_on_outlined,
-                  location.toUpperCase(),
-                  accent: Colors.orange.shade700,
-                ),
-              if (frequency != null && frequency > 0)
-                _buildPlanChip(Icons.event_repeat, '$frequency× per week'),
-            ],
-          ),
-          if (description != null && description.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              description,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppTheme.textMedium,
-                height: 1.45,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.info_outline, size: 16, color: AppTheme.primaryColor),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'After payment, sessions for this $planLabel period are scheduled. '
-                    'You\'ll be prompted for the next installment when it\'s due.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: AppTheme.textDark,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      subtotal: _subtotal,
+      charges: _charges,
+      total: _total,
+      phoneField: PaymentMobileMoneyPhoneField(
+        controller: _phoneController,
+        detectedProvider: _detectedProvider,
+        validationHint: _detectedProvider == null &&
+                _phoneController.text.trim().isNotEmpty
+            ? 'Enter a valid MTN or Orange number'
+            : null,
       ),
-    );
-  }
-
-  // Inline Phone Input with Provider Badge
-  Widget _buildInlinePhoneInput() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Phone Number',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-              // Provider badge inline
-              if (_detectedProvider != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: PaymentProviderHelper.getProviderColor(
-                      _detectedProvider,
-                    ).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: PaymentProviderHelper.getProviderColor(
-                        _detectedProvider,
-                      ).withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        PaymentProviderHelper.getProviderIcon(
-                          _detectedProvider,
-                        ),
-                        size: 14,
-                        color: PaymentProviderHelper.getProviderColor(
-                          _detectedProvider,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        PaymentProviderHelper.getProviderName(
-                          _detectedProvider,
-                        ),
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: PaymentProviderHelper.getProviderColor(
-                            _detectedProvider,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            decoration: InputDecoration(
-              hintText: '67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
-              prefixIcon: Icon(
-                Icons.phone,
-                color: AppTheme.primaryColor,
-                size: 20,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.softBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-            ),
-          ),
-          if (_detectedProvider == null &&
-              _phoneController.text.trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Please enter a valid MTN or Orange number',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppTheme.accentOrange,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // Compact Payment Breakdown
-  Widget _buildCompactPaymentBreakdown() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Subtotal
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Subtotal',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.textMedium,
-                ),
-              ),
-              Text(
-                PricingService.formatPrice(_subtotal),
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Charges
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Payment Charges (2%)',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.textMedium,
-                ),
-              ),
-              Text(
-                PricingService.formatPrice(_charges),
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textMedium,
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 20, color: AppTheme.softBorder),
-          // Total
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Total Amount',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textDark,
-                ),
-              ),
-              Text(
-                PricingService.formatPrice(_total),
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      errorBanner:
+          _errorMessage != null ? _buildCompactErrorMessage() : null,
+      payEnabled: _canInitiatePayment,
+      isProcessing: _isProcessing,
+      payLabel: 'Pay ${PricingService.formatPrice(_total)}',
+      onPay: _initiatePayment,
     );
   }
 
@@ -1576,9 +1267,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     return Stack(
       children: [
         SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 20),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Payment Instructions (centered card)
               if (_paymentStatus == 'pending' || _isPolling)

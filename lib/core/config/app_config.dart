@@ -34,7 +34,7 @@ class AppConfig {
   // ============================================
   // 🚀 v1 launch defaults (see docs/LAUNCH_SCOPE.md)
   // ============================================
-  // - enableGroupClasses: false unless GROUP_CLASSES_ENABLED=true in .env / window.env
+  // - enableGroupClasses: true in sandbox/dev; production uses GROUP_CLASSES_ENABLED env
   // - enableSkulMate: true in code; set false for launch if SkulMate is out of UAT scope
   // - Group classes: online-only when enabled; deferred for v1 marketplace launch
   
@@ -59,6 +59,11 @@ class AppConfig {
   /// Initial state is OFF. Flip to `true` when OTP provider is ready.
   /// This is intentionally code-controlled to avoid accidental env overrides.
   static const bool enablePhoneOtpVerification = false;
+
+  /// Enable/disable Supabase email verification flows (confirmation screen + resend).
+  ///
+  /// Must stay `true` while Supabase requires email confirmation on sign-up.
+  static const bool enableEmailVerification = true;
   
   /// Enable/disable SkulMate feature (game generation and library).
   ///
@@ -558,16 +563,18 @@ class AppConfig {
 
   /// Enable group classes flows (online group sessions; post-v1 rollout).
   ///
-  /// v1 launch default: **false**. Set env `GROUP_CLASSES_ENABLED=true` to enable.
+  /// v1 launch default: **false** in production. Enabled in sandbox/dev for QA.
+  /// Set env `GROUP_CLASSES_ENABLED=false` to disable in dev if needed.
   /// UI entry points (tutor home, find tutors, deep links) must check this flag.
   static bool get enableGroupClasses {
+    if (!isProduction) return true;
     return _safeEnvBool('GROUP_CLASSES_ENABLED', false);
   }
 
   /// Dev-only QA account quick switch panel on login screen.
   static bool get enableQaQuickSwitch {
     if (!kDebugMode || isProd) return false;
-    return _safeEnvBool('QA_QUICK_SWITCH_ENABLED', true);
+    return _safeEnvBool('QA_QUICK_SWITCH_ENABLED', false);
   }
 
   static String get qaTutorPhone => _safeEnv('QA_TUTOR_PHONE', '');

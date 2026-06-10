@@ -6,7 +6,9 @@ import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/profile_bootstrap_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -18,6 +20,38 @@ class RoleSelectionScreen extends StatefulWidget {
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   String? _selectedRole;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _redirectReturningUserIfNeeded();
+  }
+
+  /// Returning users can land here after an offline nav glitch — send them back.
+  Future<void> _redirectReturningUserIfNeeded() async {
+    try {
+      if (!SupabaseService.isAuthenticated) return;
+      final role = await AuthService.getUserRole();
+      if (role == null || role.trim().isEmpty) return;
+
+      final navService = NavigationService();
+      if (!navService.isReady) return;
+
+      final result = await navService.determineInitialRoute();
+      if (result.route == '/role-selection' || !mounted) return;
+
+      LogService.info(
+        '[ROLE_SELECTION] Existing role ($role) — routing to ${result.route}',
+      );
+      await navService.navigateToRoute(
+        result.route,
+        arguments: result.arguments,
+        clearStack: true,
+      );
+    } catch (e) {
+      LogService.debug('[ROLE_SELECTION] Skip auto-redirect: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,49 +279,62 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
     try {
       final user = SupabaseService.currentUser;
-      if (user != null) {
-        // Update profile with selected role
-        await SupabaseService.client.from('profiles').upsert({
-          'id': user.id,
-          'user_type': _selectedRole,
-          'updated_at': DateTime.now().toIso8601String(),
-        }, onConflict: 'id');
+      if (user == null) {
+        throw Exception('Your session expired. Please sign in again.');
+      }
 
-        // Update local session
-        await AuthService.saveSession(
-          userId: user.id,
-          userRole: _selectedRole!,
-          phone: '', // Retain existing or empty
-          fullName: user.userMetadata?['full_name']?.toString() ?? 'User',
-          surveyCompleted: false,
-        );
+      final prefs = await SharedPreferences.getInstance();
+      final fullName = prefs.getString('signup_full_name') ??
+          user.userMetadata?['full_name']?.toString() ??
+          'User';
+      final email = user.email ?? prefs.getString('signup_email') ?? '';
 
-        if (mounted) {
-          // Navigate to profile setup (which will show the correct survey based on role)
-          final navService = NavigationService();
-          if (navService.isReady) {
-            // Check if intro seen
-            if (_selectedRole == 'tutor') {
-               navService.navigateToRoute(
-                '/tutor-onboarding-choice', // Or direct to onboarding
-                replace: true,
-              );
-            } else {
-               navService.navigateToRoute(
-                '/survey-intro',
-                arguments: {'userType': _selectedRole},
-                replace: true,
-              );
-            }
+      await ProfileBootstrapService.upsertProfile(
+        userId: user.id,
+        fullName: fullName,
+        email: email,
+        phoneNumber: null,
+        userType: _selectedRole,
+        surveyCompleted: false,
+      );
+
+      await AuthService.saveSession(
+        userId: user.id,
+        userRole: _selectedRole!,
+        phone: '',
+        fullName: fullName,
+        surveyCompleted: false,
+      );
+
+      if (mounted) {
+        final navService = NavigationService();
+        if (navService.isReady) {
+          if (_selectedRole == 'tutor') {
+            await navService.navigateToRoute(
+              '/tutor-onboarding-choice',
+              replace: true,
+            );
+          } else {
+            await navService.navigateToRoute(
+              '/survey-intro',
+              arguments: {'userType': _selectedRole},
+              replace: true,
+            );
           }
         }
       }
     } catch (e) {
-      LogService.debug('Error updating role: $e');
+      LogService.error('Error updating role: $e');
       if (mounted) {
+        final message = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update role. Please try again.'),
+            content: Text(
+              message.contains('incorrect') || message.contains('session')
+                  ? message
+                  : 'Failed to update role. Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
             backgroundColor: Colors.red,
           ),
         );

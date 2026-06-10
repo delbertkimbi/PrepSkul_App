@@ -23,6 +23,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:prepskul/core/config/app_config.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
 
@@ -51,6 +52,8 @@ class PushNotificationService {
   bool _initialized = false;
   String? _currentToken;
   Function(dynamic)? _onNotificationTap;
+  Future<void>? _localNotificationsInitFuture;
+  bool _timezoneReady = false;
 
   static const String _pendingTokenKey = 'pending_fcm_token';
   static String get _apiBaseUrl {
@@ -135,8 +138,8 @@ class PushNotificationService {
       }
 
       // Initialize local notifications immediately (without requesting permission)
-      // Do this first so it's ready when permission is granted
-      _initializeLocalNotifications().catchError((error) {
+      _localNotificationsInitFuture ??= _initializeLocalNotifications();
+      _localNotificationsInitFuture!.catchError((error) {
         LogService.warning('Error initializing local notifications: $error');
       });
 
@@ -456,6 +459,33 @@ class PushNotificationService {
     } catch (e) {
       LogService.warning('Error completing mobile initialization: $e');
       // Don't throw - app should continue
+    }
+  }
+
+  /// Wait until [FlutterLocalNotificationsPlugin] is initialized (required before zonedSchedule).
+  Future<void> ensureLocalNotificationsReady() async {
+    if (kIsWeb) return;
+    _localNotificationsInitFuture ??= _initializeLocalNotifications();
+    try {
+      await _localNotificationsInitFuture;
+    } catch (e) {
+      LogService.warning('Local notifications not ready: $e');
+    }
+  }
+
+  Future<void> _ensureLocalTimezone() async {
+    if (_timezoneReady) return;
+    try {
+      tz_data.initializeTimeZones();
+      final timeZoneName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timeZoneName));
+      _timezoneReady = true;
+      LogService.debug('Local timezone set for reminders: $timeZoneName');
+    } catch (e) {
+      LogService.warning('Could not set local timezone (using default): $e');
+      try {
+        tz_data.initializeTimeZones();
+      } catch (_) {}
     }
   }
 
@@ -866,29 +896,47 @@ class PushNotificationService {
     required int hour,
     required int minute,
     int streakCount = 0,
+    bool startFromTomorrow = false,
   }) async {
     if (kIsWeb) return;
     try {
-      try {
-        tz_data.initializeTimeZones();
-      } catch (_) {}
+      await ensureLocalNotificationsReady();
+      await _ensureLocalTimezone();
+
+      if (!kIsWeb && Platform.isAndroid) {
+        final androidImpl = _localNotifications
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+        try {
+          await androidImpl?.requestExactAlarmsPermission();
+        } catch (e) {
+          LogService.debug('Exact alarm permission request skipped: $e');
+        }
+      }
+
       final local = tz.local;
+      final now = tz.TZDateTime.now(local);
       var scheduled = tz.TZDateTime(
-        tz.local,
-        DateTime.now().year,
-        DateTime.now().month,
-        DateTime.now().day,
+        local,
+        now.year,
+        now.month,
+        now.day,
         hour,
         minute,
       );
-      if (scheduled.isBefore(tz.TZDateTime.now(local))) {
+      if (startFromTomorrow) {
+        scheduled = scheduled.add(const Duration(days: 1));
+      } else if (scheduled.isBefore(now)) {
         scheduled = scheduled.add(const Duration(days: 1));
       }
+
       const androidDetails = AndroidNotificationDetails(
         'prepskul_notifications',
         'PrepSkul Notifications',
         channelDescription: 'PrepSkul notifications',
-        importance: Importance.defaultImportance,
+        importance: Importance.high,
+        priority: Priority.high,
       );
       const iosDetails = DarwinNotificationDetails();
       await _localNotifications.zonedSchedule(
@@ -902,10 +950,14 @@ class PushNotificationService {
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: jsonEncode(<String, dynamic>{
+          'type': 'daily_challenge_reminder',
+          'actionUrl': '/skulmate',
+        }),
       );
       LogService.info(
-        'Scheduled skulMate streak reminder at $hour:${minute.toString().padLeft(2, '0')}',
+        'Scheduled skulMate streak reminder at ${scheduled.hour}:${scheduled.minute.toString().padLeft(2, '0')} (local)',
       );
     } catch (e) {
       LogService.warning('Could not schedule streak reminder: $e');

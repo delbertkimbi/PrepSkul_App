@@ -5,6 +5,7 @@ import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/notifications/screens/notification_list_screen.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:prepskul/core/widgets/icon_badge_pulse.dart';
 
 /// Notification Bell Widget
 /// 
@@ -12,8 +13,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 /// Tappable to open notification list
 class NotificationBell extends StatefulWidget {
   final Color? iconColor;
-  
-  const NotificationBell({super.key, this.iconColor});
+  final bool outlined;
+
+  const NotificationBell({super.key, this.iconColor, this.outlined = false});
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -58,74 +60,79 @@ class _NotificationBellState extends State<NotificationBell> {
     super.dispose();
   }
 
+  void _openNotifications() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const NotificationListScreen(),
+      ),
+    ).then((_) => _loadUnreadCount());
+  }
+
   @override
   Widget build(BuildContext context) {
+    final icon = PhosphorIcon(
+      PhosphorIcons.bell(),
+      color: widget.iconColor ?? AppTheme.textDark,
+      size: 22,
+    );
+
+    final useOutlined = widget.outlined || widget.iconColor == null;
+
+    if (useOutlined) {
+      return IconBadgePulse(
+        count: _unreadCount,
+        icon: icon,
+        onTap: _openNotifications,
+      );
+    }
+
     return GestureDetector(
-      onTap: () {
-        // Use root navigator to avoid nested navigation issues
-        final rootNavigator = Navigator.of(context, rootNavigator: false);
-        rootNavigator.push(
-          MaterialPageRoute(
-            builder: (context) => const NotificationListScreen(),
-          ),
-        ).then((_) {
-          // Reload count when returning from notification list
-          _loadUnreadCount();
-        });
-      },
+      onTap: _openNotifications,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              // Match MessageIconBadge behavior:
-              // - On dark headers (iconColor provided): subtle white tint background
-              // - On white pages (iconColor null): transparent background
               color: widget.iconColor != null
-                  ? Colors.white.withOpacity(0.2)
+                  ? Colors.white.withValues(alpha: 0.2)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
+              border: widget.iconColor != null
+                  ? Border.all(color: Colors.white.withValues(alpha: 0.35))
+                  : null,
             ),
-            child: PhosphorIcon(
-              PhosphorIcons.bell(),
-              color: widget.iconColor ?? AppTheme.textDark,
-              size: 24,
-            ),
+            child: icon,
           ),
-          if (_unreadCount > 0)
-            Positioned(
-              right: -4,
-              top: -4,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  // Keep badge consistent with message badge (brand primary).
-                  color: AppTheme.primaryColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 2,
-                  ),
-                ),
-                constraints: const BoxConstraints(
-                  minWidth: 16,
-                  minHeight: 16,
-                ),
-                child: Center(
-                  child: Text(
-                    _unreadCount > 99 ? '99+' : '$_unreadCount',
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ),
+          if (_unreadCount > 0) _legacyBadge(_unreadCount),
         ],
+      ),
+    );
+  }
+
+  Widget _legacyBadge(int count) {
+    return Positioned(
+      right: -4,
+      top: -4,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+        ),
+        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+        child: Center(
+          child: Text(
+            count > 99 ? '99+' : '$count',
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
       ),
     );
   }

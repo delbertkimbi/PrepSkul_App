@@ -7,9 +7,13 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/sessions/services/location_checkin_service.dart';
 import 'package:prepskul/features/sessions/services/session_safety_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/features/sessions/domain/onsite_session_phase.dart';
 import 'package:prepskul/features/sessions/widgets/embedded_map_widget.dart';
 
 /// Session Location Map Widget
+///
+/// **Deprecated:** Use [OnsitePresenceWizardScreen] for check-in/check-out and
+/// [OnsiteLocationCard] for pre-session map preview. Kept for reference only.
 ///
 /// Displays session location on a map (using native maps app)
 /// Shows address, distance, and provides directions
@@ -23,6 +27,7 @@ class SessionLocationMap extends StatefulWidget {
   final bool showCheckIn; // Whether to show check-in button
   final DateTime? scheduledDateTime; // For punctuality calculation
   final String? locationType; // 'online' or 'onsite' (hybrid is a preference only)
+  final String? sessionStatus; // scheduled, in_progress, completed, …
   /// Optional: when tutor is checked in but has no photo, tap triggers this (opens camera)
   final VoidCallback? onAddPhotoPressed;
 
@@ -37,6 +42,7 @@ class SessionLocationMap extends StatefulWidget {
     this.showCheckIn = false,
     this.scheduledDateTime,
     this.locationType,
+    this.sessionStatus,
     this.onAddPhotoPressed,
   }) : super(key: key);
 
@@ -303,8 +309,35 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
     }
   }
 
+  OnsiteSessionPhase get _phase {
+    final hasCheckedIn = _checkInStatus?['has_checked_in'] == true;
+    final hasCheckedOut = _attendanceRecord?['check_out_time'] != null;
+    return OnsiteSessionPhaseResolver.resolve(
+      sessionStatus: widget.sessionStatus ?? 'scheduled',
+      scheduledStart: widget.scheduledDateTime,
+      hasCheckedIn: hasCheckedIn,
+      hasCheckedOut: hasCheckedOut,
+    );
+  }
+
+  bool get _hasSelfie {
+    final url = _attendanceRecord?['check_in_photo_url'];
+    return url != null && url.toString().trim().isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final phase = _phase;
+    final showCheckInCta = widget.showCheckIn &&
+        widget.currentUserId != null &&
+        widget.userType != null &&
+        phase == OnsiteSessionPhase.readyToCheckIn;
+    final showCheckOutCta = widget.showCheckIn &&
+        widget.currentUserId != null &&
+        widget.userType != null &&
+        phase == OnsiteSessionPhase.onSite &&
+        _attendanceRecord?['check_out_time'] == null;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -531,56 +564,43 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
                         ),
                       ],
                     ],
-                    // Optional: Add photo hint when checked in, no photo yet (Uber-style, one line)
-                    if (widget.onAddPhotoPressed != null &&
-                        _attendanceRecord?['check_out_time'] == null &&
-                        (_attendanceRecord?['check_in_photo_url'] == null ||
-                            (_attendanceRecord!['check_in_photo_url'] as String?).toString().trim().isEmpty)) ...[
-                      const SizedBox(height: 10),
-                      InkWell(
-                        onTap: widget.onAddPhotoPressed,
-                        borderRadius: BorderRadius.circular(6),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            children: [
-                              Icon(Icons.camera_alt_outlined, size: 14, color: AppTheme.primaryColor),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Add a photo of you and the learner(s) for your records',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: AppTheme.primaryColor,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
                             ],
                           ),
                         ),
                       ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
             const SizedBox(height: 16),
           ],
 
-          // Action buttons
+          // Phase hint when check-in is not yet available
+          if (widget.showCheckIn && phase == OnsiteSessionPhase.upcoming) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                OnsiteSessionPhaseResolver.tutorNextStepLabel(
+                  phase: phase,
+                  scheduledStart: widget.scheduledDateTime,
+                  hasSelfie: _hasSelfie,
+                ),
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // One primary action + compact secondary row
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Check-in button (if enabled)
-                if (widget.showCheckIn && 
-                    widget.currentUserId != null && 
-                    widget.userType != null &&
-                    (_checkInStatus == null || _checkInStatus!['has_checked_in'] != true)) ...[
-                  Expanded(
-                    child: ElevatedButton.icon(
+                if (showCheckInCta)
+                  ElevatedButton.icon(
                       onPressed: _isLoading ? null : _handleCheckIn,
                       icon: _isLoading
-                          ? SizedBox(
+                        ? const SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
@@ -588,45 +608,33 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
                                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : Icon(Icons.location_on, size: 18),
+                        : const Icon(Icons.location_on, size: 18),
                       label: Text(
-                        _isLoading ? 'Checking in...' : 'Check In',
-                        style: GoogleFonts.poppins(fontSize: 13),
+                      _isLoading ? 'Checking in...' : 'Check In at Location',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-                
-                // Check-out button (if checked in but not checked out)
-                if (widget.showCheckIn && 
-                    widget.currentUserId != null && 
-                    widget.userType != null &&
-                    _checkInStatus != null && 
-                    _checkInStatus!['has_checked_in'] == true &&
-                    _attendanceRecord != null &&
-                    _attendanceRecord!['check_out_time'] == null) ...[
-                  Expanded(
-                    child: OutlinedButton.icon(
+                if (showCheckOutCta) ...[
+                  OutlinedButton.icon(
                       onPressed: _isCheckingOut ? null : _handleCheckOut,
                       icon: _isCheckingOut
-                          ? SizedBox(
+                        ? const SizedBox(
                               width: 18,
                               height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-                              ),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Icon(Icons.logout, size: 18),
+                        : const Icon(Icons.logout, size: 18),
                       label: Text(
                         _isCheckingOut ? 'Checking out...' : 'Check Out',
                         style: GoogleFonts.poppins(fontSize: 13),
@@ -635,167 +643,119 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
                         foregroundColor: AppTheme.primaryColor,
                         side: BorderSide(color: AppTheme.primaryColor),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
                 ],
-                
-                // View on Map button
+                if (phase == OnsiteSessionPhase.onSite &&
+                    widget.onAddPhotoPressed != null &&
+                    !_hasSelfie &&
+                    _attendanceRecord?['check_out_time'] == null) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: widget.onAddPhotoPressed,
+                    icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                    label: Text(
+                      'Add attendance selfie',
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _openInMaps,
-                    icon: Icon(Icons.map, size: 18),
+                        onPressed: _getDirections,
+                        icon: const Icon(Icons.directions, size: 16),
                     label: Text(
-                      'View Map',
-                      style: GoogleFonts.poppins(fontSize: 13),
+                          'Navigate there',
+                          style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
-                      side: BorderSide(color: AppTheme.primaryColor),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
                   ),
-                ),
-                
-                const SizedBox(width: 12),
-                
-                // Get Directions button
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _getDirections,
-                    icon: Icon(Icons.directions, size: 18),
-                    label: Text(
-                      'Directions',
-                      style: GoogleFonts.poppins(fontSize: 13),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
-                      side: BorderSide(color: AppTheme.primaryColor),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: _openInMaps,
+                      child: Text(
+                        'Open pin',
+                        style: GoogleFonts.poppins(fontSize: 12),
                       ),
                     ),
-                  ),
+                    if (widget.showCheckIn &&
+                        widget.locationType == 'onsite' &&
+                        phase != OnsiteSessionPhase.upcoming &&
+                        phase != OnsiteSessionPhase.done) ...[
+                      const SizedBox(width: 4),
+                      IconButton(
+                        tooltip: 'Safety options',
+                        onPressed: () => _showSafetySheet(context),
+                        icon: Icon(Icons.shield_outlined, color: Colors.red.shade700),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
           ),
 
-          // Safety Features (for onsite sessions)
-          if (widget.showCheckIn && 
-              widget.currentUserId != null &&
-              widget.userType != null &&
-              widget.locationType == 'onsite') ...[
             const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red.shade200),
-              ),
+        ],
+      ),
+    );
+  }
+
+  void _showSafetySheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.security, color: Colors.red.shade700, size: 20),
-                      const SizedBox(width: 8),
                       Text(
-                        'Safety Features',
+                'Safety',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.red.shade900,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      // Share with Emergency Contact
-                      Expanded(
-                        child: OutlinedButton.icon(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Only use these if you need help during an on-site session.',
+                style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
                           onPressed: _isSharingWithEmergencyContact
                               ? null
-                              : _handleShareWithEmergencyContact,
-                          icon: _isSharingWithEmergencyContact
-                              ? SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.blue,
-                                    ),
-                                  ),
-                                )
-                              : Icon(Icons.share_location, size: 16),
-                          label: Text(
-                            'Share Location',
-                            style: GoogleFonts.poppins(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.blue.shade700,
-                            side: BorderSide(color: Colors.blue.shade300!),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Panic Button
-                      Expanded(
-                        child: ElevatedButton.icon(
+                    : () {
+                        Navigator.pop(ctx);
+                        _handleShareWithEmergencyContact();
+                      },
+                icon: const Icon(Icons.share_location),
+                label: const Text('Share location with emergency contact'),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
                           onPressed: _isPanicButtonTriggered
                               ? null
-                              : _handlePanicButton,
-                          icon: Icon(
-                            Icons.warning,
-                            size: 16,
-                            color: _isPanicButtonTriggered
-                                ? Colors.grey
-                                : Colors.white,
-                          ),
-                          label: Text(
-                            'Panic Button',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isPanicButtonTriggered
-                                ? Colors.grey.shade400
-                                : Colors.red.shade600,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
+                    : () {
+                        Navigator.pop(ctx);
+                        _handlePanicButton();
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+                icon: const Icon(Icons.warning_amber_rounded),
+                label: const Text('Panic button'),
                       ),
                     ],
                   ),
-                ],
               ),
-            ),
-          ],
-
-          const SizedBox(height: 16),
-        ],
       ),
     );
   }

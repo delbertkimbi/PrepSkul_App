@@ -30,6 +30,7 @@ import 'package:prepskul/features/payment/screens/payment_history_screen.dart';
 import 'package:prepskul/features/booking/screens/my_sessions_screen.dart';
 import 'package:prepskul/features/booking/screens/session_feedback_flow_screen.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/profile_bootstrap_service.dart';
 import 'package:prepskul/core/widgets/language_switcher.dart';
 import 'package:prepskul/core/navigation/main_navigation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -50,12 +51,14 @@ import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 import 'package:prepskul/features/skulmate/screens/game_library_screen.dart';
 import 'package:prepskul/features/skulmate/screens/character_selection_screen.dart';
+import 'package:prepskul/features/skulmate/screens/skulmate_onboarding_screen.dart';
 import 'package:prepskul/features/skulmate/screens/leaderboard_screen.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/features/group_classes/services/group_class_api_service.dart';
 import 'package:prepskul/features/group_classes/screens/group_classes_discovery_screen.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
+import 'package:prepskul/features/sessions/widgets/live_session_floating_bar.dart';
 import 'dart:async';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
@@ -288,15 +291,16 @@ Future<void> _initializePushNotifications() async {
       Future.delayed(const Duration(seconds: 2), () async {
         try {
           await PushNotificationService().requestPermission();
+          await SkulMateStreakReminderService.rescheduleIfNeeded();
         } catch (e) {
           LogService.debug('⚠️ Debug push permission request failed: $e');
         }
       });
     }
 
-    // Ensure daily streak reminder is scheduled app-wide, even if user
-    // doesn't open the SkulMate library screen in this app session.
-    SkulMateStreakReminderService.rescheduleIfNeeded();
+    // Ensure daily streak reminder is scheduled after local notifications init.
+    await PushNotificationService().ensureLocalNotificationsReady();
+    await SkulMateStreakReminderService.rescheduleIfNeeded();
     // Ensure payment due reminders are also scheduled locally for pending requests.
     PaymentLocalReminderService.reschedulePendingForCurrentUser();
   } catch (e) {
@@ -331,17 +335,17 @@ Future<void> handleEmailConfirmation() async {
   if (existingProfile == null) {
     LogService.debug('📝 Profile not found - creating from stored signup data');
     try {
-      // Create profile using stored signup data
-      await SupabaseService.client.from('profiles').upsert({
-        'id': user.id,
-        'email': storedEmail ?? user.email ?? '',
-        'full_name': storedName ?? 'User',
-        'phone_number': null,
-        'user_type': storedRole ?? 'student',
-        'avatar_url': null,
-        'survey_completed': false,
-        'is_admin': false,
-      }, onConflict: 'id');
+      // Create profile using stored signup data (role chosen on role-selection screen).
+      await ProfileBootstrapService.upsertProfile(
+        userId: user.id,
+        fullName: storedName ?? 'User',
+        email: storedEmail ?? user.email ?? '',
+        phoneNumber: null,
+        userType: storedRole != null && storedRole.trim().isNotEmpty
+            ? storedRole
+            : null,
+        surveyCompleted: false,
+      );
 
       // Fetch the created profile
       existingProfile = await SupabaseService.client
@@ -448,8 +452,11 @@ Future<void> handleEmailConfirmation() async {
     }
   }
 
-  // Get user role from profile or stored data
-  final userRole = existingProfile?['user_type'] ?? storedRole ?? 'student';
+  // Get user role from profile or stored data (empty → role selection).
+  final userRoleRaw = existingProfile?['user_type']?.toString().trim() ?? '';
+  final storedRoleTrimmed = storedRole?.trim() ?? '';
+  final userRole =
+      userRoleRaw.isNotEmpty ? userRoleRaw : storedRoleTrimmed;
   final hasCompletedSurvey = existingProfile?['survey_completed'] ?? false;
 
   // Get name with proper priority - avoid 'User' or 'Student' defaults
@@ -514,6 +521,12 @@ Future<void> handleEmailConfirmation() async {
   // Navigate using NavigationService - redirect to role-specific route
   final navService = NavigationService();
   if (navService.isReady) {
+    if (userRole.isEmpty) {
+      LogService.info('[EMAIL_CONFIRM] No role yet — routing to role selection');
+      await navService.navigateToRoute('/role-selection', replace: true);
+      return;
+    }
+
     // Use determineInitialRoute to handle all logic (intro screen, onboarding, etc.)
     final routeResult = await navService.determineInitialRoute();
     LogService.success(
@@ -1417,7 +1430,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
               () => EmailConfirmationScreen(
                 email: confirmArgs?['email'] as String? ?? '',
                 fullName: confirmArgs?['fullName'] as String? ?? 'User',
-                userRole: confirmArgs?['userRole'] as String? ?? 'student',
+                userRole: confirmArgs?['userRole'] as String?,
                 linkExpiredError: linkExpired == true || linkExpired == 'true',
               ),
             );
@@ -1462,6 +1475,21 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
           case '/skulmate/leaderboard':
             if (AppConfig.enableSkulMate) {
               return _createFadeRoute(() => const LeaderboardScreen());
+            } else {
+              return _createFadeRoute(
+                () => Scaffold(
+                  appBar: AppBar(title: const Text('SkulMate')),
+                  body: const Center(
+                    child: Text(
+                      'SkulMate is currently unavailable. Please check back later.',
+                    ),
+                  ),
+                ),
+              );
+            }
+          case '/skulmate/onboarding':
+            if (AppConfig.enableSkulMate) {
+              return _createFadeRoute(() => const SkulMateOnboardingScreen());
             } else {
               return _createFadeRoute(
                 () => Scaffold(
@@ -1750,6 +1778,15 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
           // Fallback to English if LanguageService module fails to load
           return const Locale('en');
         }
+      },
+      builder: (context, child) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (child != null) child,
+            const LiveSessionFloatingBarOverlay(),
+          ],
+        );
       },
     );
   }

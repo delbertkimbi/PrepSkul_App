@@ -20,13 +20,13 @@ import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
   final String fullName;
-  final String userRole;
+  final String? userRole;
 
   const OTPVerificationScreen({
     Key? key,
     required this.phoneNumber,
     required this.fullName,
-    required this.userRole,
+    this.userRole,
   }) : super(key: key);
 
   @override
@@ -47,6 +47,17 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   @override
   void initState() {
     super.initState();
+    if (!AppConfig.enablePhoneOtpVerification) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/auth-method-selection',
+          (route) => false,
+        );
+      });
+      return;
+    }
     _startCountdown();
     // Add focus listeners to update UI when focus changes
     for (var focusNode in _focusNodes) {
@@ -128,41 +139,45 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
         if (isNewUser) {
           // Save user data to profiles table (signup flow)
+          final profileData = <String, dynamic>{
+            'id': response.user!.id,
+            'email': response.user!.email,
+            'full_name': widget.fullName,
+            'phone_number': widget.phoneNumber,
+            'avatar_url': null,
+          };
+          final role = widget.userRole?.trim();
+          if (role != null && role.isNotEmpty) {
+            profileData['user_type'] = role;
+          }
+
           await SupabaseService.insertData(
             table: 'profiles',
-            data: {
-              'id': response.user!.id,
-              'email': response.user!.email, // Optional - can be null
-              'full_name': widget.fullName,
-              'phone_number': widget.phoneNumber,
-              'avatar_url': null, // Optional - can be added later
-              'user_type': widget.userRole,
-              // survey_completed, is_admin, last_seen have defaults in DB
-            },
+            data: profileData,
           );
 
-          // Notify admins about new user signup (async, don't block)
-          NotificationHelperService.notifyAdminsAboutNewUserSignup(
-            userId: response.user!.id,
-            userType: widget.userRole,
-            userName: widget.fullName,
-            userEmail:
-                response.user!.email ??
-                widget.phoneNumber, // Use phone if email is null
-          ).catchError((e) {
-            LogService.warning('Error notifying admins about new user signup: $e');
-            // Don't block signup if notification fails
-          });
+          if (role != null && role.isNotEmpty) {
+            NotificationHelperService.notifyAdminsAboutNewUserSignup(
+              userId: response.user!.id,
+              userType: role,
+              userName: widget.fullName,
+              userEmail: response.user!.email ?? widget.phoneNumber,
+            ).catchError((e) {
+              LogService.warning(
+                'Error notifying admins about new user signup: $e',
+              );
+            });
+          }
         }
 
         // For existing users, get actual survey completion status and user role from database
         bool surveyCompleted = false;
-        String userRole = widget.userRole; // Default to widget value (for new users)
+        String userRole = widget.userRole ?? '';
         
         if (!isNewUser && userProfile.isNotEmpty) {
           // Existing user - get actual values from profile in database
           surveyCompleted = userProfile[0]['survey_completed'] ?? false;
-          userRole = userProfile[0]['user_type'] ?? widget.userRole; // Get actual role from DB
+          userRole = userProfile[0]['user_type'] ?? widget.userRole ?? '';
           LogService.debug('📋 Existing user - survey_completed from DB: $surveyCompleted');
           LogService.debug('👤 Existing user - user_type from DB: $userRole');
         }
@@ -209,8 +224,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             // Fallback if nav service isn't ready yet.
             Navigator.pushReplacementNamed(
               context,
-              '/profile-setup',
-              arguments: {'userRole': userRole},
+              userRole.isEmpty ? '/role-selection' : '/profile-setup',
+              arguments: userRole.isEmpty ? null : {'userRole': userRole},
             );
           }
         }

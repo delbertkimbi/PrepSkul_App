@@ -26,7 +26,7 @@ import 'game_setup_flow_screen.dart';
 import '../services/skulmate_service.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_companion_banner.dart';
-import '../widgets/skulmate_surface_styles.dart';
+import 'package:prepskul/core/widgets/premium_promo_card_shell.dart';
 
 /// Screen for uploading notes/documents to create games
 class SkulMateUploadScreen extends StatefulWidget {
@@ -883,12 +883,12 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         title: 'SkulMate',
         actions: [
           IconButton(
-            icon: const Icon(Icons.workspace_premium_outlined, size: 20),
+            icon: const Icon(Icons.workspace_premium_outlined, size: 22),
             onPressed: _openPlansScreen,
             tooltip: 'SkulMate plans',
           ),
           IconButton(
-            icon: const Icon(Icons.dashboard_rounded, size: 20),
+            icon: const Icon(Icons.dashboard_rounded, size: 22),
             onPressed: () {
               Navigator.push(
                 context,
@@ -900,7 +900,6 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             },
             tooltip: 'Game Dashboard',
           ),
-          const SizedBox(width: 2),
         ],
       ),
       body: SingleChildScrollView(
@@ -908,77 +907,72 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Hero gradient card (same language as weekly leaderboard / dashboard highlights)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-              decoration: SkulMateSurfaceStyles.heroGradient(radius: 22),
+            PremiumPromoCardShell(
+              height: _gameStats != null && _gameStats!.currentStreak > 0 ? 132 : 100,
+              radius: 22,
+              accent: AppTheme.skyBlue,
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         if (_gameStats != null && _gameStats!.currentStreak > 0)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.22),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.35,
-                                      ),
-                                      width: 1,
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.22),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('🔥', style: TextStyle(fontSize: 14)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_gameStats!.currentStreak} day streak',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
                                     ),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Text(
-                                        '🔥',
-                                        style: TextStyle(fontSize: 14),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${_gameStats!.currentStreak} day streak',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         Text(
                           'Turn Your Notes Into Games',
                           style: GoogleFonts.poppins(
-                            fontSize: 17,
+                            fontSize: 15,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                             height: 1.2,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 3),
                         Text(
                           'Upload notes or photos to generate interactive games.',
                           style: GoogleFonts.poppins(
-                            fontSize: 12.5,
+                            fontSize: 11.5,
                             color: Colors.white.withValues(alpha: 0.92),
-                            height: 1.4,
+                            height: 1.25,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -987,7 +981,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                   PhosphorIcon(
                     PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
                     color: Colors.white,
-                    size: 40,
+                    size: 34,
                   ),
                 ],
               ),

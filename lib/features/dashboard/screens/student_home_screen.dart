@@ -19,12 +19,19 @@ import '../../../core/widgets/offline_indicator.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
 import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
-import '../../../features/skulmate/screens/game_library_screen.dart';
-import '../../../features/skulmate/screens/skulmate_upload_screen.dart';
-import '../../../features/skulmate/screens/skulmate_onboarding_screen.dart';
 import '../../../features/skulmate/services/skulmate_service.dart';
-import '../../../features/skulmate/services/skulmate_onboarding_service.dart';
+import '../../../features/skulmate/models/game_model.dart';
+import '../../../features/skulmate/utils/skulmate_game_launcher.dart';
+import '../../../features/dashboard/widgets/student_home_promo_carousel.dart';
+import '../../../features/dashboard/models/wallet_snapshot.dart';
+import '../../../features/payment/services/session_points_service.dart';
+import '../../../features/skulmate/screens/skulmate_plans_screen.dart';
+import '../../../features/booking/models/upcoming_session_item.dart';
+import '../../../features/booking/models/trial_session_model.dart';
+import '../../../features/booking/screens/session_detail_screen.dart';
+import '../../../features/dashboard/utils/home_stats_prefs.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
 import '../../../features/booking/services/individual_session_service.dart';
@@ -53,6 +60,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   int _activeTutorsCount = 0;
   int _allTimeSessionsCount = 0;
   int _upcomingSessionsCount = 0;
+  List<UpcomingSessionItem> _upcomingSessions = [];
+  List<GameModel> _skulMateGames = [];
+  bool _skulMateGamesLoaded = false;
+  bool _statsReady = false;
+  bool _carouselReady = false;
+  WalletSnapshot? _walletSnapshot;
   final ConnectivityService _connectivity = ConnectivityService();
   /// Incremented on pull-to-refresh so NotificationBell (and other keyed widgets) reload
   int _homeRefreshKey = 0;
@@ -62,6 +75,36 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     super.initState();
     _initializeConnectivity();
     _loadUserData();
+    _loadSkulMateGamesEarly();
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      if (_isLoading || !_carouselReady || !_statsReady) {
+        safeSetState(() {
+          _isLoading = false;
+          _carouselReady = true;
+          _statsReady = true;
+        });
+      }
+    });
+  }
+
+  Future<void> _loadSkulMateGamesEarly() async {
+    if (!AppConfig.enableSkulMate) {
+      if (mounted) safeSetState(() => _skulMateGamesLoaded = true);
+      return;
+    }
+    try {
+      final result = await SkulMateService.getGamesPaginated(limit: 20)
+          .timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      safeSetState(() {
+        _skulMateGames = (result['games'] as List).cast<GameModel>();
+        _skulMateGamesLoaded = true;
+      });
+    } catch (e) {
+      LogService.debug('Student home early SkulMate load: $e');
+      if (mounted) safeSetState(() => _skulMateGamesLoaded = true);
+    }
   }
 
   /// Initialize connectivity monitoring
@@ -126,9 +169,70 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       final cachedUserRole = prefs.getString('user_role');
       final cachedSurveyCompleted = prefs.getBool('survey_completed') ?? false;
       final hasVisitedHome = prefs.getBool('has_visited_home') ?? false;
-      final cachedActiveTutors = prefs.getInt('home_active_tutors_count') ?? 0;
-      final cachedAllTimeSessions = prefs.getInt('home_all_time_sessions_count') ?? 0;
-      final cachedUpcomingSessions = prefs.getInt('home_upcoming_sessions_count') ?? 0;
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      final cachedStats = await HomeStatsPrefs.read(prefs, userId);
+      final cachedActiveTutors = cachedStats.activeTutors;
+      final cachedAllTimeSessions = cachedStats.allTimeSessions;
+      final cachedUpcomingSessions = cachedStats.upcomingSessions;
+      WalletSnapshot? cachedWallet;
+      if (userId != null && userId.isNotEmpty) {
+        cachedWallet = WalletSnapshot(
+          sessionCredits: prefs.getInt('home_wallet_session_credits_$userId') ?? 0,
+          skulMateCredits: prefs.getInt('home_wallet_skulmate_credits_$userId') ?? 0,
+          paidSessionsAhead:
+              prefs.getInt('home_wallet_paid_sessions_$userId') ?? 0,
+        );
+      }
+
+      List<UpcomingSessionItem> cachedUpcomingItems = const [];
+      if (userId != null && userId.isNotEmpty) {
+        final cachedUpcoming = await OfflineCacheService
+                .getCachedIndividualSessions('${userId}_upcoming') ??
+            const <Map<String, dynamic>>[];
+        final cachedTrials =
+            await OfflineCacheService.getCachedTrialSessions(userId) ??
+                const <Map<String, dynamic>>[];
+        final trialModels = cachedTrials
+            .map((t) {
+              try {
+                return TrialSession.fromJson(t);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<TrialSession>()
+            .toList();
+        cachedUpcomingItems = UpcomingSessionItem.mergeAndSort(
+          individual: cachedUpcoming,
+          trials: trialModels,
+        );
+      }
+
+      var fastActiveTutors = cachedActiveTutors;
+      var fastAllTimeSessions = cachedAllTimeSessions;
+      var fastUpcomingSessions = cachedUpcomingSessions;
+      if (cachedUpcomingItems.isNotEmpty) {
+        fastUpcomingSessions = cachedUpcomingItems.length;
+        final tutorIds = <String>{};
+        for (final item in cachedUpcomingItems) {
+          final recurring =
+              item.sessionMap['recurring_sessions'] as Map<String, dynamic>?;
+          final tid = (recurring?['tutor_id'] as String?) ??
+              (item.sessionMap['tutor_id'] as String?);
+          if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+        }
+        if (tutorIds.isNotEmpty) fastActiveTutors = tutorIds.length;
+        if (fastAllTimeSessions < fastUpcomingSessions) {
+          fastAllTimeSessions = fastUpcomingSessions;
+        }
+      }
+
+      final hasCachedHomeData = cachedUpcomingItems.isNotEmpty ||
+          fastActiveTutors > 0 ||
+          fastAllTimeSessions > 0 ||
+          (cachedWallet != null &&
+              (cachedWallet.sessionCredits > 0 ||
+                  cachedWallet.paidSessionsAhead > 0));
 
       if (mounted) {
         safeSetState(() {
@@ -136,19 +240,59 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           _userType = cachedUserRole == 'parent' ? 'parent' : 'student';
           _surveyCompleted = cachedSurveyCompleted;
           _isFirstVisit = !hasVisitedHome;
-          _activeTutorsCount = cachedActiveTutors;
-          _allTimeSessionsCount = cachedAllTimeSessions;
-          _upcomingSessionsCount = cachedUpcomingSessions;
-          _isLoading = false;
+          _activeTutorsCount = fastActiveTutors;
+          _allTimeSessionsCount = fastAllTimeSessions;
+          _upcomingSessionsCount = fastUpcomingSessions;
+          if (cachedUpcomingItems.isNotEmpty) {
+            _upcomingSessions = cachedUpcomingItems;
+          }
+          _walletSnapshot = cachedWallet;
+          _carouselReady = cachedUpcomingItems.isNotEmpty || cachedWallet != null;
+          _statsReady = hasCachedHomeData;
+          _isLoading = !hasCachedHomeData;
         });
       }
 
-      // If offline, keep cached UI and skip remote roundtrips.
+      // If offline, hydrate list from cache then skip remote roundtrips.
       final isOnline = await _connectivity
           .checkConnectivity()
           .timeout(const Duration(milliseconds: 900), onTimeout: () => false);
       if (!isOnline) {
         LogService.info('🌐 [HOME] Offline startup: using cached home data');
+        if (userId != null && userId.isNotEmpty) {
+          final cachedUpcoming = await OfflineCacheService
+                  .getCachedIndividualSessions('${userId}_upcoming') ??
+              const <Map<String, dynamic>>[];
+          final cachedTrials =
+              await OfflineCacheService.getCachedTrialSessions(userId) ??
+                  const <Map<String, dynamic>>[];
+          final trialModels = cachedTrials
+              .map((t) {
+                try {
+                  return TrialSession.fromJson(t);
+                } catch (_) {
+                  return null;
+                }
+              })
+              .whereType<TrialSession>()
+              .toList();
+          final upcomingItems = UpcomingSessionItem.mergeAndSort(
+            individual: cachedUpcoming,
+            trials: trialModels,
+          );
+          if (mounted) {
+            safeSetState(() {
+              _upcomingSessions = upcomingItems;
+              if (upcomingItems.isNotEmpty) {
+                _upcomingSessionsCount = upcomingItems.length;
+                _carouselReady = true;
+                _statsReady = true;
+              }
+              _skulMateGamesLoaded = true;
+              _isLoading = false;
+            });
+          }
+        }
         return;
       }
 
@@ -177,9 +321,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       int allTimeSessions = _allTimeSessionsCount;
       int upcomingSessions = _upcomingSessionsCount;
       var statsSource = 'previous_cached';
+      List<Map<String, dynamic>>? loadedIndUpcoming;
+      List<TrialSession>? loadedTrialUpcoming;
+      var hasFreshStatsData = false;
       try {
-        bool hasFreshStatsData = false;
-
         List<Map<String, dynamic>>? indUpcoming;
         try {
           indUpcoming = await IndividualSessionService
@@ -191,6 +336,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         final tutorIds = <String>{};
         if (indUpcoming != null) {
           hasFreshStatsData = true;
+          loadedIndUpcoming = indUpcoming;
+          final userId = SupabaseService.client.auth.currentUser?.id;
+          if (userId != null &&
+              userId.isNotEmpty &&
+              indUpcoming.isNotEmpty) {
+            await OfflineCacheService.cacheIndividualSessions(
+              '${userId}_upcoming',
+              indUpcoming,
+            );
+          }
           for (final s in indUpcoming) {
             final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
             final tid = (recurring?['tutor_id'] as String?) ??
@@ -221,7 +376,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           }
         }
 
-        List<dynamic /* TrialSession */ >? trials;
+        List<TrialSession>? trials;
         try {
           trials = await TrialSessionService.getStudentTrialSessions()
               .timeout(const Duration(seconds: 6));
@@ -230,6 +385,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         }
         if (trials != null) {
           hasFreshStatsData = true;
+          loadedTrialUpcoming = trials;
           for (final t in trials) {
             final status = t.status.toLowerCase();
             final paymentStatus = t.paymentStatus.toLowerCase();
@@ -270,18 +426,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             }
           }
 
-          // Never regress to zero if this device already has known non-zero history.
-          if (allTimeSessions == 0 && _allTimeSessionsCount > 0) {
-            allTimeSessions = _allTimeSessionsCount;
-            if (activeTutors == 0 && _activeTutorsCount > 0) {
-              activeTutors = _activeTutorsCount;
-            }
-            statsSource = 'preserved_previous_non_zero';
-            LogService.warning(
-              'Student home stats would regress to zero; preserving previous known counts '
-              '(sessions=$allTimeSessions tutors=$activeTutors).',
-            );
-          }
         } else {
           // If live queries fail (e.g. transient DNS/offline), compute from local caches.
           final userId = SupabaseService.client.auth.currentUser?.id;
@@ -341,22 +485,34 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               allTimeSessions = cachedAllTime;
               upcomingSessions = cachedUpcomingCount;
               activeTutors = cachedTutorIds.length;
+              loadedIndUpcoming = cachedUpcoming;
+              loadedTrialUpcoming = cachedTrials
+                  .map((t) {
+                    try {
+                      return TrialSession.fromJson(t);
+                    } catch (_) {
+                      return null;
+                    }
+                  })
+                  .whereType<TrialSession>()
+                  .toList();
               statsSource = 'offline_cache_fallback';
               LogService.info(
                 'Student home stats loaded from local cache fallback: '
                 'sessions=$allTimeSessions upcoming=$upcomingSessions tutors=$activeTutors',
               );
             } else {
-              statsSource = 'cache_empty_preserve_previous';
-              LogService.warning(
-                'Student home stats refresh unavailable and cache empty; preserving previous counts.',
-              );
+              final scoped = await HomeStatsPrefs.read(prefs, userId);
+              allTimeSessions = scoped.allTimeSessions;
+              activeTutors = scoped.activeTutors;
+              upcomingSessions = scoped.upcomingSessions;
+              statsSource = 'scoped_prefs_fallback';
             }
           } else {
-            statsSource = 'no_user_cache_lookup_preserve_previous';
-            LogService.warning(
-              'Student home stats refresh unavailable and no user id for cache lookup.',
-            );
+            allTimeSessions = 0;
+            activeTutors = 0;
+            upcomingSessions = 0;
+            statsSource = 'no_user_zero';
           }
         }
       } catch (e) {
@@ -378,9 +534,120 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       }
 
       await prefs.setString('user_name', userName);
-      await prefs.setInt('home_active_tutors_count', activeTutors);
-      await prefs.setInt('home_all_time_sessions_count', allTimeSessions);
-      await prefs.setInt('home_upcoming_sessions_count', upcomingSessions);
+      final persistUserId = SupabaseService.client.auth.currentUser?.id;
+      if (persistUserId != null && persistUserId.isNotEmpty) {
+        await HomeStatsPrefs.write(
+          prefs,
+          persistUserId,
+          activeTutors: activeTutors,
+          allTimeSessions: allTimeSessions,
+          upcomingSessions: upcomingSessions,
+        );
+      }
+
+      List<UpcomingSessionItem> upcomingItems = _upcomingSessions;
+      try {
+        upcomingItems = await IndividualSessionService
+            .getStudentUpcomingItemsForHome(limit: 50)
+            .timeout(const Duration(seconds: 8));
+        upcomingSessions = upcomingItems.length;
+        if (mounted && upcomingItems.isNotEmpty) {
+          safeSetState(() {
+            _upcomingSessions = upcomingItems;
+            _upcomingSessionsCount = upcomingSessions;
+            _carouselReady = true;
+          });
+        }
+        final userId = SupabaseService.client.auth.currentUser?.id;
+        if (userId != null &&
+            userId.isNotEmpty &&
+            upcomingItems.isNotEmpty) {
+          final rawMaps = upcomingItems
+              .where((item) => !item.isTrial)
+              .map((item) => item.sessionMap)
+              .toList();
+          if (rawMaps.isNotEmpty) {
+            await OfflineCacheService.cacheIndividualSessions(
+              '${userId}_upcoming',
+              rawMaps,
+            );
+          }
+        }
+      } catch (e) {
+        LogService.debug('Student home upcoming carousel load: $e');
+        if (upcomingItems.isEmpty && upcomingSessions > 0) {
+          final userId = SupabaseService.client.auth.currentUser?.id;
+          if (userId != null && userId.isNotEmpty) {
+            final cachedUpcoming = await OfflineCacheService
+                    .getCachedIndividualSessions('${userId}_upcoming') ??
+                const <Map<String, dynamic>>[];
+            if (cachedUpcoming.isNotEmpty) {
+              upcomingItems = await UpcomingSessionItem.enrichWithTutorProfiles(
+                UpcomingSessionItem.mergeAndSort(
+                  individual: cachedUpcoming,
+                  trials: const [],
+                ),
+              );
+              upcomingSessions = upcomingItems.length;
+            }
+          }
+        }
+      }
+
+      WalletSnapshot? walletSnapshot = _walletSnapshot;
+      try {
+        final walletUserId = SupabaseService.client.auth.currentUser?.id;
+        if (walletUserId != null && walletUserId.isNotEmpty) {
+          final sessionCredits =
+              await SessionPointsService.getAvailableSessionPoints();
+          final paidSessions =
+              await SessionPointsService.getPaidUpcomingSessionsCount();
+          var skulMateCredits = _walletSnapshot?.skulMateCredits ?? 0;
+          try {
+            final row = await SupabaseService.client
+                .from('user_credits')
+                .select('balance')
+                .eq('user_id', walletUserId)
+                .maybeSingle()
+                .timeout(const Duration(seconds: 4));
+            skulMateCredits = (row?['balance'] as num?)?.toInt() ?? 0;
+          } catch (_) {}
+
+          walletSnapshot = WalletSnapshot(
+            sessionCredits: sessionCredits,
+            skulMateCredits: skulMateCredits,
+            paidSessionsAhead: paidSessions,
+          );
+          await prefs.setInt(
+            'home_wallet_session_credits_$walletUserId',
+            sessionCredits,
+          );
+          await prefs.setInt(
+            'home_wallet_skulmate_credits_$walletUserId',
+            skulMateCredits,
+          );
+          await prefs.setInt(
+            'home_wallet_paid_sessions_$walletUserId',
+            paidSessions,
+          );
+        }
+      } catch (e) {
+        LogService.debug('Student home wallet load: $e');
+      }
+
+      List<GameModel> skulMateGames = _skulMateGames;
+      var skulMateGamesLoaded = !AppConfig.enableSkulMate;
+      if (AppConfig.enableSkulMate) {
+        try {
+          final result = await SkulMateService.getGamesPaginated(limit: 50)
+              .timeout(const Duration(seconds: 6));
+          skulMateGames = (result['games'] as List).cast<GameModel>();
+        } catch (e) {
+          LogService.debug('SkulMate games load for home teaser: $e');
+        } finally {
+          skulMateGamesLoaded = true;
+        }
+      }
 
       if (mounted) {
         safeSetState(() {
@@ -388,6 +655,17 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           _activeTutorsCount = activeTutors;
           _allTimeSessionsCount = allTimeSessions;
           _upcomingSessionsCount = upcomingSessions;
+          _upcomingSessions = upcomingItems;
+          if (skulMateGames.isNotEmpty || _skulMateGames.isEmpty) {
+            _skulMateGames = skulMateGames;
+          }
+          _skulMateGamesLoaded = skulMateGamesLoaded || _skulMateGamesLoaded;
+          _carouselReady = true;
+          _statsReady = true;
+          _isLoading = false;
+          if (walletSnapshot != null) {
+            _walletSnapshot = walletSnapshot;
+          }
         });
         LogService.info(
           'Student home progress counters updated: '
@@ -421,6 +699,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       LogService.debug('Error loading user data: $e');
       if (!mounted) return;
       safeSetState(() {
+        _carouselReady = true;
+        _statsReady = true;
+        _isLoading = false;
         _userName = _userName.isEmpty ? 'Student' : _userName;
         _isLoading = false;
       });
@@ -543,108 +824,44 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       return const StudentHomeSkeleton();
     }
 
-    // Get greeting based on time
-    final hour = DateTime.now().hour;
-    String greeting = AppLocalizations.of(context)!.goodMorning;
-    String greetingEmoji = '☀️';
-    if (hour >= 12 && hour < 17) {
-      greeting = AppLocalizations.of(context)!.goodAfternoon;
-      greetingEmoji = '👋';
-    } else if (hour >= 17) {
-      greeting = AppLocalizations.of(context)!.goodEvening;
-      greetingEmoji = '🌙';
-    }
-
     // Extract city for quick actions (only actionable data)
     final city = _surveyData?['city'];
 
-    return StatusBarUtils.withDarkStatusBar(
+    final nextSession = _upcomingSessions.isNotEmpty ? _upcomingSessions.first : null;
+    final skulMateTabIndex = AppConfig.enableSkulMate ? 2 : -1;
+
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: Colors.white,
-        // SkulMate controlled by AppConfig feature flag
-        floatingActionButton: AppConfig.enableSkulMate ? FloatingActionButton.extended(
-        onPressed: () async {
-          try {
-            // Check onboarding status first
-            final shouldShowOnboarding = await SkulMateOnboardingService.shouldShowOnboarding();
-            
-            if (shouldShowOnboarding) {
-              // First time - show onboarding
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SkulMateOnboardingScreen(),
-                ),
-              );
-              return;
-            }
-
-            final isOnline = await _connectivity.checkConnectivity();
-            if (!isOnline) {
-              // Offline: avoid remote game existence checks that can hang.
-              if (!mounted) return;
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const GameLibraryScreen(initialTab: 1),
-                ),
-              );
-              return;
-            }
-
-            // Check if user has any games
-            final result = await SkulMateService.getGamesPaginated(limit: 1);
-            final games = result['games'] as List;
-            
-            if (games.isEmpty) {
-              // No games yet, navigate to create game screen
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SkulMateUploadScreen(),
-                ),
-              );
-            } else {
-              // Has games, navigate to game library (My Games tab by default)
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const GameLibraryScreen(initialTab: 1),
-                ),
-              );
-            }
-          } catch (e) {
-            // On error, check onboarding first, then default to upload screen
-            final hasCompletedOnboarding = await SkulMateOnboardingService.hasCompletedOnboarding();
-            if (!hasCompletedOnboarding) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SkulMateOnboardingScreen(),
-                ),
-              );
-            } else {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SkulMateUploadScreen(),
-                ),
-              );
-            }
-          }
-        },
-        backgroundColor: AppTheme.primaryColor,
-        label: Text(
-          'skulMate',
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          backgroundColor: Colors.white,
+          elevation: 0,
+          surfaceTintColor: Colors.white,
+          centerTitle: false,
+          title: Text(
+            'Hi, $_userName',
+            style: GoogleFonts.poppins(
+              fontSize: ResponsiveHelper.responsiveHeadingSize(context),
+              fontWeight: FontWeight.w700,
+              color: AppTheme.primaryColor,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
+          actions: [
+            const MessageIconBadge(),
+            Padding(
+              padding: EdgeInsets.only(
+                right: ResponsiveHelper.responsiveHorizontalPadding(context),
+              ),
+              child: NotificationBell(
+                key: ValueKey('bell_$_homeRefreshKey'),
+              ),
+            ),
+          ],
         ),
-        icon: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Colors.white),
-      ) : null,
-      body: RefreshIndicator(
+        body: RefreshIndicator(
         onRefresh: () async {
           await _loadUserData();
           if (mounted) {
@@ -656,60 +873,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Hero Header - soft top-to-bottom gradient (matches theme-color deep blue)
-            Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                gradient: AppTheme.headerGradient,
-              ),
-              padding: EdgeInsets.fromLTRB(
-                ResponsiveHelper.responsiveHorizontalPadding(context),
-                MediaQuery.of(context).padding.top + ResponsiveHelper.responsiveVerticalPadding(context),
-                ResponsiveHelper.responsiveHorizontalPadding(context),
-                ResponsiveHelper.responsiveVerticalPadding(context) + 8,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$greeting $greetingEmoji',
-                              style: GoogleFonts.poppins(
-                                fontSize: ResponsiveHelper.responsiveBodySize(context),
-                                color: Colors.white.withOpacity(0.9),
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 2 : 4),
-                            Text(
-                              _userName,
-                              style: GoogleFonts.poppins(
-                                fontSize: ResponsiveHelper.responsiveHeadingSize(context) + 6,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const MessageIconBadge(iconColor: Colors.white),
-                      SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 12, desktop: 16)),
-                      NotificationBell(key: ValueKey('bell_$_homeRefreshKey'), iconColor: Colors.white),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // Responsive content padding
             Padding(
               padding: ResponsiveHelper.responsivePadding(context),
               child: Column(
@@ -720,7 +883,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     SurveyReminderCard(
                       userType: _userType,
                       onTap: () {
-                        // Navigate to profile-setup with userRole argument
                         Navigator.pushNamed(
                           context,
                           '/profile-setup',
@@ -729,30 +891,74 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       },
                     ),
 
-                  // Quick Stats - Responsive
+                  if (_showReminderCard && !_surveyCompleted)
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+
+                  StudentHomePromoCarousel(
+                    isReady: _carouselReady,
+                    skulMateGames: _skulMateGames,
+                    nextSession: nextSession,
+                    upcomingSessionsCount: _upcomingSessionsCount,
+                    wallet: _walletSnapshot,
+                    userType: _userType,
+                    onFindTutors: () => _switchStudentTab(1),
+                    onOpenSession: _openSession,
+                    onPlayGame: (game, {isDailyChallenge = false}) {
+                      SkulMateGameLauncher.open(
+                        context,
+                        game,
+                        isDailyChallenge: isDailyChallenge,
+                      );
+                    },
+                    onOpenSkulMate: skulMateTabIndex >= 0
+                        ? () => _switchStudentTab(skulMateTabIndex)
+                        : null,
+                    onCreateGame: skulMateTabIndex >= 0
+                        ? () => _switchStudentTab(skulMateTabIndex)
+                        : null,
+                    onOpenWallet: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SkulmatePlansScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18)),
+
                   _buildSectionTitle(AppLocalizations.of(context)!.yourProgress),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          icon: PhosphorIcons.graduationCap(),
-                          label: AppLocalizations.of(context)!.activeTutors,
-                          value: '$_activeTutorsCount',
-                          color: AppTheme.primaryColor,
-                        ),
-                      ),
-                      SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
-                      Expanded(
-                        child: _buildStatCard(
-                          icon: PhosphorIcons.calendar(),
-                          label: AppLocalizations.of(context)!.sessions,
-                          value: '$_allTimeSessionsCount',
-                          color: AppTheme.primaryColor,
-                        ),
-                      ),
-                    ],
-                  ),
+                  _statsReady
+                      ? Row(
+                          children: [
+                            Expanded(
+                              child: _buildStatCard(
+                                icon: PhosphorIcons.graduationCap(),
+                                label: AppLocalizations.of(context)!.activeTutors,
+                                value: '$_activeTutorsCount',
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                            SizedBox(
+                              width: ResponsiveHelper.responsiveSpacing(
+                                context,
+                                mobile: 12,
+                                tablet: 16,
+                                desktop: 20,
+                              ),
+                            ),
+                            Expanded(
+                              child: _buildStatCard(
+                                icon: PhosphorIcons.calendar(),
+                                label: AppLocalizations.of(context)!.sessions,
+                                value: '$_allTimeSessionsCount',
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                          ],
+                        )
+                      : _buildStatsShimmer(),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 24, tablet: 28, desktop: 32)),
 
                   // Quick Actions — one Sessions card with upcoming count; Requests has its own tab
@@ -900,8 +1106,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     ),
                   ],
 
-                  // Removed "Your Goals" section - personal info belongs in profile
-                  // This data is used behind the scenes for tutor matching, not for display
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 24, tablet: 32, desktop: 40)),
                 ],
               ),
@@ -914,6 +1118,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
+  void _openSession(UpcomingSessionItem item) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SessionDetailScreen(session: item.sessionMap),
+      ),
+    );
+  }
+
+  void _switchStudentTab(int index) {
+    Navigator.pushReplacementNamed(
+      context,
+      _userType == 'parent' ? '/parent-nav' : '/student-nav',
+      arguments: {'initialTab': index},
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
@@ -921,6 +1142,38 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
         fontWeight: FontWeight.w700,
         color: AppTheme.textDark,
+      ),
+    );
+  }
+
+  Widget _buildStatsShimmer() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.neutral200,
+      highlightColor: Colors.white,
+      child: Row(
+        children: [
+          Expanded(child: _statShimmerTile()),
+          SizedBox(
+            width: ResponsiveHelper.responsiveSpacing(
+              context,
+              mobile: 12,
+              tablet: 16,
+              desktop: 20,
+            ),
+          ),
+          Expanded(child: _statShimmerTile()),
+        ],
+      ),
+    );
+  }
+
+  Widget _statShimmerTile() {
+    return Container(
+      height: 108,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.softBorder),
       ),
     );
   }

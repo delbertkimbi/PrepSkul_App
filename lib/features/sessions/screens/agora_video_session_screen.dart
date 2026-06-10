@@ -1077,7 +1077,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       LogService.warning('[WORKSPACE] Transport issue — reconnecting channel');
       _showSnackBar('Teaching workspace sync had a hiccup. Reconnecting…');
       unawaited(_workspaceRealtime!.reconnectChannel());
-    });
+        });
     _lastWorkspacePacketAt = DateTime.now();
     if (mounted) safeSetState(() {});
   }
@@ -1160,7 +1160,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         _recoveryUnstableObservedAt ??= now;
         if (now.difference(_recoveryUnstableObservedAt!) >=
             const Duration(seconds: 40)) {
-          reason = 'Connection is unstable.';
+        reason = 'Connection is unstable.';
         }
       } else {
         _recoveryUnstableObservedAt = null;
@@ -1303,7 +1303,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     _cancelLessonPingCooldownTicker();
     if (_lastLessonWaitingPingAt == null) return;
     _lessonPingCooldownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
+    if (!mounted) return;
       if (_lessonPingClientCooldownRemaining == null) {
         _cancelLessonPingCooldownTicker();
       }
@@ -1829,8 +1829,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     _emitAudioOnlyFallbackQoe(
       'audio_only_fallback_prompt_shown',
       <String, dynamic>{
-        'role': widget.userRole,
-        'grace_seconds': _kAudioOnlyFallbackGrace.inSeconds,
+      'role': widget.userRole,
+      'grace_seconds': _kAudioOnlyFallbackGrace.inSeconds,
       },
     );
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -1970,8 +1970,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                 Icons.close_rounded,
                 size: 20,
                 color: Colors.white.withOpacity(0.72),
-              ),
             ),
+          ),
           if (isTutor) ...[
             IconButton(
               visualDensity: VisualDensity.compact,
@@ -2046,10 +2046,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _workspaceSurfaceIcon(surface),
-                      size: 20,
-                      color: Colors.white.withOpacity(selected ? 0.95 : 0.72),
-                    ),
+                  _workspaceSurfaceIcon(surface),
+                  size: 20,
+                  color: Colors.white.withOpacity(selected ? 0.95 : 0.72),
+                ),
                     if (showLabel) ...[
                       const SizedBox(width: 6),
                       Text(
@@ -2098,75 +2098,75 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             final showPdfPagingControls =
                 data.surface == WorkspaceSurface.pdfDocument;
             return Row(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: _workspaceSurfacesForTabBar
                           .map(
                             (s) => surfaceButton(s, showLabel: showToolLabels),
                           )
                           .toList(),
-                    ),
-                  ),
                 ),
+              ),
+            ),
                 if (showPdfPagingControls) ...[
-                  const SizedBox(width: 10),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Previous page',
-                    onPressed: () {
-                      sync.publishPacket(
+            const SizedBox(width: 10),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Previous page',
+              onPressed: () {
+                sync.publishPacket(
                         SlideIndexPacket(index: max(0, data.pdfPageIndex - 1)),
-                      );
-                    },
-                    icon: Icon(
-                      Icons.chevron_left,
-                      color: Colors.white.withOpacity(0.9),
-                      size: 24,
-                    ),
-                  ),
-                  Text(
+                );
+              },
+              icon: Icon(
+                Icons.chevron_left,
+                color: Colors.white.withOpacity(0.9),
+                size: 24,
+              ),
+            ),
+            Text(
                     'Page ${data.pdfPageIndex + 1}',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white.withOpacity(0.88),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Next page',
-                    onPressed: () {
-                      sync.publishPacket(
-                        SlideIndexPacket(index: data.pdfPageIndex + 1),
-                      );
-                    },
-                    icon: Icon(
-                      Icons.chevron_right,
-                      color: Colors.white.withOpacity(0.9),
-                      size: 24,
-                    ),
-                  ),
+              style: GoogleFonts.poppins(
+                color: Colors.white.withOpacity(0.88),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Next page',
+              onPressed: () {
+                sync.publishPacket(
+                  SlideIndexPacket(index: data.pdfPageIndex + 1),
+                );
+              },
+              icon: Icon(
+                Icons.chevron_right,
+                color: Colors.white.withOpacity(0.9),
+                size: 24,
+              ),
+            ),
                 ],
-                if (data.surface == WorkspaceSurface.whiteboard) ...[
-                  const SizedBox(width: 4),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Clear board',
-                    onPressed: () {
-                      sync.publishPacket(const ClearWhiteboardPacket());
-                    },
-                    icon: Icon(
-                      Icons.delete_outline_rounded,
-                      color: Colors.white.withOpacity(0.88),
-                      size: 22,
-                    ),
-                  ),
-                ],
-              ],
+            if (data.surface == WorkspaceSurface.whiteboard) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Clear board',
+                onPressed: () {
+                  sync.publishPacket(const ClearWhiteboardPacket());
+                },
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  color: Colors.white.withOpacity(0.88),
+                  size: 22,
+                ),
+              ),
+            ],
+          ],
             );
           },
         ),
@@ -2321,7 +2321,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
               peerLabel: _chatPeerLabel(),
               railMode: true,
               onClose: _closeIncallChatPanel,
-            ),
+      ),
     );
   }
 
@@ -2374,15 +2374,15 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         );
         if (teachingLaneVisibleWide && widget.userRole == 'tutor') {
           if (_inCallChatOpen && shellActive) {
-            return Row(
+          return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(flex: 12, child: videoLaneWidget),
-                      Expanded(flex: 10, child: workspace),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 12, child: videoLaneWidget),
+              Expanded(flex: 10, child: workspace),
                     ],
                   ),
                 ),
@@ -2390,9 +2390,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                   width: _kLearnerIncallChatRailWidth,
                   child: _buildEmbeddedIncallChatRailPanel(),
                 ),
-              ],
-            );
-          }
+            ],
+          );
+        }
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -2456,11 +2456,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             workspaceDividerFromVideo: false,
           );
           final sharedContentIsScreenShare = _anyScreenShareActive;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
               if (sharedContentIsScreenShare) ...[
-                Expanded(flex: 13, child: videoLaneWidget),
+            Expanded(flex: 13, child: videoLaneWidget),
                 Expanded(flex: 7, child: workspacePanel),
               ] else ...[
                 // Narrow: show shared content (board/materials) above, then
@@ -2558,7 +2558,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         final bool needFullReset =
             forceWebRtcFullReset || _agoraService.isInChannel;
         if (needFullReset) {
-          await _agoraService.prepareFreshJoinState();
+        await _agoraService.prepareFreshJoinState();
         } else if (_agoraService.engine != null) {
           LogService.info(
             '[SESSION] Web join: reusing preview engine (skipped full teardown)',
@@ -2601,11 +2601,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       await Future.wait<void>([
         _startSessionHeartbeat(user.id),
         _agoraService.joinChannel(
-          sessionId: widget.sessionId,
-          userId: user.id,
-          userRole: widget.userRole,
+        sessionId: widget.sessionId,
+        userId: user.id,
+        userRole: widget.userRole,
           initialCameraEnabled: sessionCameraEnabled,
-          initialMicEnabled: widget.initialMicEnabled,
+        initialMicEnabled: widget.initialMicEnabled,
         ),
       ]);
 
@@ -2950,9 +2950,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     _localCameraPublishingSubscription = _agoraService
         .localCameraPublishingSignalStream
         .listen((_) {
-          _audioOnlyFallbackTimer?.cancel();
-          _audioOnlyFallbackTimer = null;
-        });
+      _audioOnlyFallbackTimer?.cancel();
+      _audioOnlyFallbackTimer = null;
+    });
 
     _stateSubscription = _agoraService.stateStream.listen((state) {
       if (state == AgoraSessionState.reconnecting) {
@@ -3032,7 +3032,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         if (remoteCount != _lastAppliedRemoteCountForLayout) {
           _lastAppliedRemoteCountForLayout = remoteCount;
           if (remoteCount >= 2) {
-            _layout = VideoLayout.gallery;
+          _layout = VideoLayout.gallery;
           } else if (remoteCount == 1) {
             // Spotlight keeps a single remote in the video lane; workspace shell
             // can show teaching tools beside video (sideBySide hid the panel).
@@ -3146,31 +3146,31 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     _remoteVideoFrameSubscription = _agoraService.remoteVideoFrameStream.listen((
       data,
     ) {
-      final uid = data['uid'] as int;
-      final ready = data['ready'] as bool? ?? false;
-      if (uid == _remoteUID) {
-        final prevReady = _participants[uid]?.videoReady ?? false;
-        // Agora can emit overlapping decode/start events; skip redundant ready bursts.
-        if (prevReady && ready) {
-          return;
-        }
-        if (ready) {
-          _videoStateDebounceTimer?.cancel();
-          _lastRemoteVideoReadyAt = DateTime.now();
-        }
-        _scheduleUiUpdate(() {
-          _upsertParticipant(
-            uid,
-            videoReady: ready,
-            videoMuted: ready ? false : null,
-            lastActivityAt: DateTime.now(),
-          );
-          if (ready) {
-            _upsertParticipant(uid, videoMuted: false);
+        final uid = data['uid'] as int;
+        final ready = data['ready'] as bool? ?? false;
+        if (uid == _remoteUID) {
+          final prevReady = _participants[uid]?.videoReady ?? false;
+          // Agora can emit overlapping decode/start events; skip redundant ready bursts.
+          if (prevReady && ready) {
+            return;
           }
-          _syncLegacyRemoteStateFromRegistry();
-        });
-      }
+          if (ready) {
+            _videoStateDebounceTimer?.cancel();
+            _lastRemoteVideoReadyAt = DateTime.now();
+          }
+          _scheduleUiUpdate(() {
+            _upsertParticipant(
+              uid,
+              videoReady: ready,
+              videoMuted: ready ? false : null,
+              lastActivityAt: DateTime.now(),
+            );
+            if (ready) {
+              _upsertParticipant(uid, videoMuted: false);
+            }
+            _syncLegacyRemoteStateFromRegistry();
+          });
+        }
     });
 
     // Remote audio muted state
@@ -3201,14 +3201,14 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       final ownerUid = data['ownerUid'] as int?;
       final myUid = _agoraService.currentUID;
 
-      _scheduleUiUpdate(() {
-        _screenShareOwnerUid = ownerUid;
+        _scheduleUiUpdate(() {
+          _screenShareOwnerUid = ownerUid;
 
         if (ownerUid == null) {
           for (final id in _participants.keys.toList()) {
             _upsertParticipant(id, screenSharing: false);
           }
-          _isScreenSharing = false;
+            _isScreenSharing = false;
           _remoteIsScreenSharing = false;
         } else {
           for (final id in _participants.keys.toList()) {
@@ -3226,8 +3226,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           }
           _isScreenSharing = myUid != null && ownerUid == myUid;
           _remoteIsScreenSharing = myUid != null && ownerUid == _remoteUID;
-        }
-        _syncLegacyRemoteStateFromRegistry();
+          }
+          _syncLegacyRemoteStateFromRegistry();
 
         if (sharing &&
             myUid != null &&
@@ -3245,9 +3245,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             if (kIsWeb) {
               await _agoraService.rebindLocalScreenSharePreview();
               if (mounted) safeSetState(() {});
-            }
-          });
-        }
+          }
+        });
+      }
       });
     });
 
@@ -4688,9 +4688,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                       : true,
                   child: TooltipVisibility(
                     visible: !_isTearingDownUi,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
                         // Keep video + workspace above the bottom control bar (layout + web platform-view z-order).
                         Padding(
                           padding: EdgeInsets.only(
@@ -4703,7 +4703,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                           ),
                           child: _buildSessionBody(),
                         ),
-                        _buildConnectionOverlay(),
+                      _buildConnectionOverlay(),
                         if (_inCallOfflineCardOpen)
                           _buildCallTransitionSurface(
                             title: 'Reconnecting…',
@@ -4712,7 +4712,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                             icon: Icons.wifi_off_rounded,
                             accentColor: Colors.orangeAccent,
                           ),
-                        _buildWorkspaceTeachingRail(),
+                      _buildWorkspaceTeachingRail(),
                         if (_shouldShowDraggableParticipantStrip(
                               MediaQuery.of(context),
                             ) &&
@@ -4720,18 +4720,18 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                           _buildDraggableParticipantStrip(),
                         // In narrow overlay-chat mode, keep the stage clear:
                         // participant strip + PiP are hidden to avoid covering composer/CTAs.
-                        ..._reactionAnimations,
-                        // Status/control bar: on mobile web render IN the Stack so they stay visible.
-                        // Listener with opaque ensures this overlay is in the hit-test path on web (platform view
-                        // can steal focus otherwise; opaque makes overlay receive taps so buttons work).
-                        Positioned.fill(
-                          child: RepaintBoundary(
-                            child: Stack(
-                              fit: StackFit.expand,
+                      ..._reactionAnimations,
+                      // Status/control bar: on mobile web render IN the Stack so they stay visible.
+                      // Listener with opaque ensures this overlay is in the hit-test path on web (platform view
+                      // can steal focus otherwise; opaque makes overlay receive taps so buttons work).
+                      Positioned.fill(
+                        child: RepaintBoundary(
+                                child: Stack(
+                                  fit: StackFit.expand,
                               children: [_buildStatusBar(), _buildControlBar()],
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
                         // In-call chat must sit ABOVE web PointerInterceptor so Send / composer receive taps.
                         if (_inCallChatOpen &&
                             !_embeddedIncallChatRailVisible(
@@ -4800,15 +4800,15 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                                   ),
                                 );
                               },
-                            ),
-                          ),
-                        // Keep global blocking overlays ABOVE status/control layer so
-                        // their buttons (e.g. Retry) always receive taps.
-                        if (_errorMessage != null) _buildErrorOverlay(),
-                        if (_sessionState == AgoraSessionState.joining)
-                          _buildLoadingOverlay(),
-                        if (_showReactionsPanel) _buildReactionsPanel(),
-                      ],
+                        ),
+                      ),
+                      // Keep global blocking overlays ABOVE status/control layer so
+                      // their buttons (e.g. Retry) always receive taps.
+                      if (_errorMessage != null) _buildErrorOverlay(),
+                      if (_sessionState == AgoraSessionState.joining)
+                        _buildLoadingOverlay(),
+                      if (_showReactionsPanel) _buildReactionsPanel(),
+                    ],
                     ),
                   ),
                 ),
@@ -4872,13 +4872,13 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       }
       // Keep a neutral bridging placeholder while share flags are active but owner
       // is still settling; avoid camera fallback that can look zoomed/cropped.
-      LogService.warning(
+        LogService.warning(
         '⚠️ [ScreenShare] Active but unresolved publisher UID: '
         '_isScreenSharing=$_isScreenSharing _remoteIsScreenSharing=$_remoteIsScreenSharing '
         '_anyShare=$_anyScreenShareActive owner=$_screenShareOwnerUid '
         'remoteUID=$_remoteUID currentUID=${_agoraService.currentUID} remoteLeft=$_remoteUserLeft',
-      );
-      return SizedBox.expand(
+        );
+        return SizedBox.expand(
         child: _buildScreenShareBridgingPlaceholder(
           localIsPresenter: _localScreenShareCapturing,
         ),
@@ -5842,7 +5842,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
-              decoration: BoxDecoration(
+      decoration: BoxDecoration(
                 borderRadius: radius,
                 border: Border.all(
                   color: accent.withOpacity(0.55),
@@ -6098,13 +6098,13 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         '_anyShare=$_anyScreenShareActive owner=$_screenShareOwnerUid '
         'remoteUID=$_remoteUID currentUID=${_agoraService.currentUID}',
       );
-      return RepaintBoundary(
-        child: SizedBox.expand(
+        return RepaintBoundary(
+          child: SizedBox.expand(
           child: _buildScreenShareBridgingPlaceholder(
             localIsPresenter: _localScreenShareCapturing,
+            ),
           ),
-        ),
-      );
+        );
     }
     if (_remoteUID != null && !_remoteUserLeft) {
       final connection = _agoraService.currentConnection;
@@ -6344,10 +6344,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           key: ValueKey<int>(uid),
           child: SizedBox(
             height: tileHeight,
-            child: _buildGalleryTile(
-              engine: engine,
-              uid: uid,
-              isLocal: isLocal,
+          child: _buildGalleryTile(
+            engine: engine,
+            uid: uid,
+            isLocal: isLocal,
             ),
           ),
         );
@@ -6659,7 +6659,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                       color: Colors.white70,
                       fontSize: 12,
                     ),
-                  ),
+                        ),
                 ),
               ),
             Positioned(
@@ -6895,46 +6895,46 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             accent: roleColor,
             size: 120,
             child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: roleColor.withOpacity(0.2),
-                border: Border.all(color: roleColor.withOpacity(0.5), width: 2),
-              ),
-              child: hasAvatar
-                  ? ClipOval(
-                      child: CachedNetworkImage(
-                        imageUrl: avatarUrl,
-                        fit: BoxFit.cover,
-                        width: 120,
-                        height: 120,
-                        placeholder: (_, __) => Center(
-                          child: CircularProgressIndicator(color: roleColor),
-                        ),
-                        errorWidget: (_, __, ___) => Center(
-                          child: Text(
-                            initials,
-                            style: GoogleFonts.poppins(
-                              fontSize: 40,
-                              fontWeight: FontWeight.bold,
-                              color: roleColor,
-                            ),
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: roleColor.withOpacity(0.2),
+              border: Border.all(color: roleColor.withOpacity(0.5), width: 2),
+            ),
+            child: hasAvatar
+                ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: avatarUrl,
+                      fit: BoxFit.cover,
+                      width: 120,
+                      height: 120,
+                      placeholder: (_, __) => Center(
+                        child: CircularProgressIndicator(color: roleColor),
+                      ),
+                      errorWidget: (_, __, ___) => Center(
+                        child: Text(
+                          initials,
+                          style: GoogleFonts.poppins(
+                            fontSize: 40,
+                            fontWeight: FontWeight.bold,
+                            color: roleColor,
                           ),
                         ),
                       ),
-                    )
-                  : Center(
-                      child: Text(
-                        initials,
-                        style: GoogleFonts.poppins(
-                          fontSize: 40,
-                          fontWeight: FontWeight.bold,
-                          color: roleColor,
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      initials,
+                      style: GoogleFonts.poppins(
+                        fontSize: 40,
+                        fontWeight: FontWeight.bold,
+                        color: roleColor,
                         ),
                       ),
                     ),
-            ),
+                  ),
           ),
           const SizedBox(height: 20),
           Text(
@@ -6959,22 +6959,22 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       builder: (_, __) {
         final snap = _agoraService.talkTimeSnapshot;
         if (snap.samples < 12 || snap.totalMs < 12000) {
-          return const SizedBox.shrink();
-        }
+    return const SizedBox.shrink();
+  }
         final youPct = (snap.localShare * 100).round().clamp(0, 100);
         final themPct = (snap.remoteShare * 100).round().clamp(0, 100);
         return Material(
-          color: Colors.transparent,
-          child: Container(
+                color: Colors.transparent,
+                child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
+                  decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.4),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.white24),
-            ),
-            child: Row(
+                  ),
+                  child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: [
+                    children: [
                 Icon(
                   Icons.mic_rounded,
                   size: 15,
@@ -6983,12 +6983,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                 const SizedBox(width: 6),
                 Text(
                   'Talk · You $youPct% · Them $themPct%',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
               ],
             ),
           ),
@@ -7067,15 +7067,15 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
               height: d,
               color: Colors.white12,
               alignment: Alignment.center,
-              child: Text(
+                        child: Text(
                 initials,
-                style: GoogleFonts.poppins(
+                          style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
           ),
         );
       }
@@ -7087,13 +7087,13 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           color: Color(0x44FFFFFF),
         ),
         alignment: Alignment.center,
-        child: Text(
+                          child: Text(
           initials,
-          style: GoogleFonts.poppins(
+                            style: GoogleFonts.poppins(
             color: Colors.white,
             fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
+                              fontWeight: FontWeight.w700,
+                            ),
         ),
       );
     }
@@ -7148,11 +7148,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                     ),
                   ),
                 ],
-              ],
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -7181,50 +7181,50 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     Widget? headerTrailing;
     if (connected && (shareHeader || canShowLayoutToggle)) {
       headerTrailing = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+                mainAxisSize: MainAxisSize.min,
+                children: [
           if (shareHeader) _shareLayoutPresetMenuIcon(),
           if (shareHeader && canShowLayoutToggle) const SizedBox(width: 8),
-          if (canShowLayoutToggle)
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  final before = _layout;
-                  setState(() {
-                    if (_layout == VideoLayout.spotlight) {
-                      _layout = VideoLayout.sideBySide;
-                    } else if (_layout == VideoLayout.sideBySide) {
-                      _layout = VideoLayout.gallery;
-                    } else {
-                      _layout = VideoLayout.spotlight;
-                    }
-                  });
-                  _syncDualStreamPinWithLayout();
-                  _applyGalleryPagingOnLayoutChanged(before, _layout);
-                  _previousLayoutForPaging = _layout;
-                },
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _kGlassFill,
-                    borderRadius: BorderRadius.circular(20),
+                  if (canShowLayoutToggle)
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          final before = _layout;
+                          setState(() {
+                            if (_layout == VideoLayout.spotlight) {
+                              _layout = VideoLayout.sideBySide;
+                            } else if (_layout == VideoLayout.sideBySide) {
+                              _layout = VideoLayout.gallery;
+                            } else {
+                              _layout = VideoLayout.spotlight;
+                            }
+                          });
+                          _syncDualStreamPinWithLayout();
+                          _applyGalleryPagingOnLayoutChanged(before, _layout);
+                          _previousLayoutForPaging = _layout;
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _kGlassFill,
+                            borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: _kGlassBorder.withOpacity(0.7)),
-                  ),
-                  child: Icon(
-                    _layout == VideoLayout.spotlight
-                        ? Icons.view_sidebar
-                        : _layout == VideoLayout.sideBySide
-                        ? Icons.grid_view
-                        : Icons.filter_1,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ),
-              ),
-            ),
-        ],
+                          ),
+                          child: Icon(
+                            _layout == VideoLayout.spotlight
+                                ? Icons.view_sidebar
+                                : _layout == VideoLayout.sideBySide
+                                ? Icons.grid_view
+                                : Icons.filter_1,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
       );
     }
 
@@ -7326,7 +7326,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                   ),
                 ),
             ],
-          ),
+            ),
         ],
       ),
     );
@@ -7669,74 +7669,74 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     final teachingLaneOpen =
         _workspaceRealtime?.workspace.state.teachingLaneOpen ?? false;
 
-    Widget sheetRow({
-      required IconData icon,
-      required String title,
-      String? subtitle,
-      required bool enabled,
+        Widget sheetRow({
+          required IconData icon,
+          required String title,
+          String? subtitle,
+          required bool enabled,
       bool selected = false,
-      VoidCallback? onTap,
-    }) {
-      return Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: enabled && onTap != null
-              ? () {
+          VoidCallback? onTap,
+        }) {
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: enabled && onTap != null
+                  ? () {
                   Navigator.of(navigatorContext).pop();
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!mounted) return;
-                    onTap();
-                  });
-                }
-              : null,
-          child: Padding(
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        onTap();
+                      });
+                    }
+                  : null,
+              child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 26,
-                  color: enabled ? Colors.white70 : Colors.white38,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.poppins(
-                          color: enabled ? Colors.white : Colors.white54,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (subtitle != null)
-                        Text(
-                          subtitle,
-                          style: GoogleFonts.poppins(
+                child: Row(
+                  children: [
+                    Icon(
+                      icon,
+                      size: 26,
+                      color: enabled ? Colors.white70 : Colors.white38,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: GoogleFonts.poppins(
+                              color: enabled ? Colors.white : Colors.white54,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (subtitle != null)
+                            Text(
+                              subtitle,
+                              style: GoogleFonts.poppins(
                             color: Colors.white.withOpacity(
                               enabled ? 0.42 : 0.34,
                             ),
-                            fontSize: 13,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                                fontSize: 13,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                 if (selected)
                   Icon(
                     Icons.check_circle_rounded,
                     color: Colors.white.withOpacity(0.92),
                   )
                 else if (enabled)
-                  Icon(Icons.chevron_right, color: Colors.white24),
-              ],
+                      Icon(Icons.chevron_right, color: Colors.white24),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
-      );
-    }
+          );
+        }
 
     return [
       sheetRow(
@@ -7810,19 +7810,19 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         ),
       ),
       const Divider(height: 20, color: Colors.white12),
-      if (showTeachingToolsInMore)
-        sheetRow(
-          icon: Icons.grid_view_rounded,
-          title: 'Teaching tools',
-          subtitle: 'Board, PDF & notes',
-          enabled: true,
+                if (showTeachingToolsInMore)
+                  sheetRow(
+                    icon: Icons.grid_view_rounded,
+                    title: 'Teaching tools',
+                    subtitle: 'Board, PDF & notes',
+                    enabled: true,
           selected: teachingLaneOpen,
-          onTap: () => _applyInCallMoreMenuAction(
-            _kInCallMoreTeachingTools,
-            includeScreenShare: includeScreenShare,
-            connectionHelpEnabled: connectionHelpEnabled,
-          ),
-        ),
+                    onTap: () => _applyInCallMoreMenuAction(
+                      _kInCallMoreTeachingTools,
+                      includeScreenShare: includeScreenShare,
+                      connectionHelpEnabled: connectionHelpEnabled,
+                    ),
+                  ),
       if (showLearnerWorkspaceInMore)
         sheetRow(
           icon: Icons.grid_view_rounded,
@@ -7837,17 +7837,17 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           ),
         ),
       if (showReactionsInMore && !compactMobile)
-        sheetRow(
-          icon: Icons.emoji_emotions_outlined,
-          title: 'Reactions',
-          enabled: _controlsEnabled,
+                sheetRow(
+                  icon: Icons.emoji_emotions_outlined,
+                  title: 'Reactions',
+                  enabled: _controlsEnabled,
           selected: _showReactionsPanel,
-          onTap: () => _applyInCallMoreMenuAction(
-            _kInCallMoreReactions,
-            includeScreenShare: includeScreenShare,
-            connectionHelpEnabled: connectionHelpEnabled,
-          ),
-        ),
+                  onTap: () => _applyInCallMoreMenuAction(
+                    _kInCallMoreReactions,
+                    includeScreenShare: includeScreenShare,
+                    connectionHelpEnabled: connectionHelpEnabled,
+                  ),
+                ),
       if (showHandRaiseInMore && !compactMobile)
         sheetRow(
           icon: Icons.pan_tool_alt_outlined,
@@ -7860,33 +7860,33 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           onTap: _toggleHandRaise,
         ),
       if (includeScreenShare && !compactMobile)
-        sheetRow(
-          icon: screenShareIcon,
-          title: screenShareLabel,
-          enabled: _controlsEnabled,
+                  sheetRow(
+                    icon: screenShareIcon,
+                    title: screenShareLabel,
+                    enabled: _controlsEnabled,
           selected: _localScreenShareCapturing,
-          onTap: () => _applyInCallMoreMenuAction(
-            _kInCallMoreScreenShare,
-            includeScreenShare: true,
-            connectionHelpEnabled: connectionHelpEnabled,
-          ),
-        ),
-      sheetRow(
-        icon: Icons.wifi_tethering,
-        title: 'Connection help',
-        subtitle: 'Audio, video & network tips',
-        enabled: connectionHelpEnabled,
-        onTap: () => _applyInCallMoreMenuAction(
-          _kInCallMoreConnectionHelp,
-          includeScreenShare: includeScreenShare,
-          connectionHelpEnabled: connectionHelpEnabled,
-        ),
-      ),
-      const Divider(height: 24, color: Colors.white12),
+                    onTap: () => _applyInCallMoreMenuAction(
+                      _kInCallMoreScreenShare,
+                      includeScreenShare: true,
+                      connectionHelpEnabled: connectionHelpEnabled,
+                    ),
+                  ),
+                sheetRow(
+                  icon: Icons.wifi_tethering,
+                  title: 'Connection help',
+                  subtitle: 'Audio, video & network tips',
+                  enabled: connectionHelpEnabled,
+                  onTap: () => _applyInCallMoreMenuAction(
+                    _kInCallMoreConnectionHelp,
+                    includeScreenShare: includeScreenShare,
+                    connectionHelpEnabled: connectionHelpEnabled,
+                  ),
+                ),
+                const Divider(height: 24, color: Colors.white12),
       if (showInCallMessagesInMore && !compactMobile)
-        sheetRow(
-          icon: Icons.chat_bubble_outline,
-          title: 'In-call messages',
+                sheetRow(
+                  icon: Icons.chat_bubble_outline,
+                  title: 'In-call messages',
           subtitle: 'Quick notes — not saved after this lesson',
           enabled: true,
           selected: _inCallChatOpen,
@@ -7933,12 +7933,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             width: 104,
             child: Opacity(
               opacity: enabled ? 1 : 0.5,
-              child: Material(
+        child: Material(
                 color: active
                     ? Colors.white.withOpacity(0.2)
                     : Colors.white.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(12),
-                child: InkWell(
+          child: InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: enabled
                       ? () {
@@ -7980,10 +7980,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                     ),
                   ),
                 ),
-              ),
-            ),
-          );
-        }
+          ),
+        ),
+      );
+    }
 
         return SizedBox(
           height: sheetMaxH,
@@ -8048,9 +8048,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                           active: _localScreenShareCapturing,
                           onTap: () => _applyInCallMoreMenuAction(
                             _kInCallMoreScreenShare,
-                            includeScreenShare: includeScreenShare,
-                            connectionHelpEnabled: connectionHelpEnabled,
-                          ),
+          includeScreenShare: includeScreenShare,
+          connectionHelpEnabled: connectionHelpEnabled,
+        ),
                         ),
                       quickAction(
                         icon: Icons.chat_bubble_outline,
@@ -8074,12 +8074,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                         quickAction(
                           icon: Icons.pan_tool_alt_outlined,
                           label: _localHandRaised ? 'Lower hand' : 'Raise hand',
-                          enabled: _controlsEnabled,
+            enabled: _controlsEnabled,
                           active: _localHandRaised,
                           onTap: _toggleHandRaise,
-                        ),
-                    ],
-                  ),
+                ),
+              ],
+            ),
                   const SizedBox(height: 10),
                   Expanded(
                     child: SingleChildScrollView(
@@ -8156,8 +8156,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                         bottom: false,
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 4, 10),
-                          child: Row(
-                            children: [
+            child: Row(
+              children: [
                               Expanded(
                                 child: Text(
                                   'More options',
@@ -8195,9 +8195,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                             showInCallMessagesInMore: showInCallMessagesInMore,
                             showHandRaiseInMore: showHandRaiseInMore,
                           ),
-                        ),
-                      ),
-                    ],
+            ),
+          ),
+        ],
                   ),
                 ),
               ),
@@ -8444,17 +8444,17 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                           _inCallMicWaveVisualLevel > (kIsWeb ? 0.035 : 0.05);
                       final amp = _inCallMicWaveVisualLevel;
                       return _buildControlButton(
-                        icon: _isAudioEnabled ? Icons.mic : Icons.mic_off,
-                        label: _isAudioEnabled ? 'Mute' : 'Unmute',
-                        onPressed: _controlsEnabled ? _toggleAudio : () {},
-                        isActive: _isAudioEnabled,
-                        showMutedIndicator: !_isAudioEnabled,
-                        useMediaToggleStyle: true,
+                            icon: _isAudioEnabled ? Icons.mic : Icons.mic_off,
+                            label: _isAudioEnabled ? 'Mute' : 'Unmute',
+                            onPressed: _controlsEnabled ? _toggleAudio : () {},
+                            isActive: _isAudioEnabled,
+                            showMutedIndicator: !_isAudioEnabled,
+                            useMediaToggleStyle: true,
                         showSpeakingWave: showWave,
                         speakingWaveAmplitude: showWave ? amp : 0,
-                        enabled: _controlsEnabled,
-                        buttonSize: buttonSize,
-                        iconSize: iconSize,
+                            enabled: _controlsEnabled,
+                            buttonSize: buttonSize,
+                            iconSize: iconSize,
                       );
                     },
                   );
@@ -8463,29 +8463,29 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                   if (AppConfig.enableSessionCameraPublishing) {
                     final cameraToggleEnabled = _controlsEnabled;
                     barTools.add(
-                      _buildControlButton(
-                        icon: _isVideoEnabled
-                            ? Icons.videocam
-                            : Icons.videocam_off,
-                        label: _isVideoEnabled
-                            ? 'Turn camera off'
-                            : 'Turn camera on',
+                          _buildControlButton(
+                            icon: _isVideoEnabled
+                                ? Icons.videocam
+                                : Icons.videocam_off,
+                            label: _isVideoEnabled
+                                ? 'Turn camera off'
+                                : 'Turn camera on',
                         onPressed: cameraToggleEnabled ? _toggleVideo : () {},
-                        isActive: _isVideoEnabled,
-                        showMutedIndicator: !_isVideoEnabled,
-                        useMediaToggleStyle: true,
+                            isActive: _isVideoEnabled,
+                            showMutedIndicator: !_isVideoEnabled,
+                            useMediaToggleStyle: true,
                         enabled: cameraToggleEnabled,
-                        buttonSize: buttonSize,
-                        iconSize: iconSize,
-                      ),
+                            buttonSize: buttonSize,
+                            iconSize: iconSize,
+                          ),
                     );
                   }
                   if (showScreenShareInline) {
                     barTools.add(
-                      _buildScreenShareButton(
-                        buttonSize: buttonSize,
-                        iconSize: iconSize,
-                      ),
+                            _buildScreenShareButton(
+                              buttonSize: buttonSize,
+                              iconSize: iconSize,
+                            ),
                     );
                   }
                   if (showTeachingToolsDockShortcut) {
@@ -8563,36 +8563,36 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                     );
                   }
                   barTools.add(
-                    _buildMoreOptionsMenuButton(
-                      buttonSize: buttonSize,
-                      iconSize: iconSize,
-                      connectionHelpEnabled: connectionHelpEnabled,
-                      includeScreenShare: includeScreenShareInMoreMenu,
-                      showTeachingToolsInMore: showTeachingToolsInMore,
+                          _buildMoreOptionsMenuButton(
+                            buttonSize: buttonSize,
+                            iconSize: iconSize,
+                            connectionHelpEnabled: connectionHelpEnabled,
+                            includeScreenShare: includeScreenShareInMoreMenu,
+                            showTeachingToolsInMore: showTeachingToolsInMore,
                       showLearnerWorkspaceInMore: showLearnerWorkspaceInMore,
                       showReactionsInMore: showReactionsInMore,
                       showInCallMessagesInMore: showMessagesInMore,
                       showHandRaiseInMore: showHandRaiseInMore,
-                    ),
+                          ),
                   );
                   barTools.add(
-                    Container(
-                      width: 1,
-                      height: buttonSize * 0.5,
-                      color: Colors.white.withOpacity(0.22),
-                    ),
+                          Container(
+                            width: 1,
+                            height: buttonSize * 0.5,
+                            color: Colors.white.withOpacity(0.22),
+                          ),
                   );
                   barTools.add(
-                    _buildControlButton(
-                      icon: Icons.call_end,
-                      label: 'Leave',
-                      onPressed: _endCall,
-                      isActive: false,
-                      isDanger: true,
-                      enabled: true,
-                      buttonSize: buttonSize,
-                      iconSize: iconSize,
-                    ),
+                          _buildControlButton(
+                            icon: Icons.call_end,
+                            label: 'Leave',
+                            onPressed: _endCall,
+                            isActive: false,
+                            isDanger: true,
+                            enabled: true,
+                            buttonSize: buttonSize,
+                            iconSize: iconSize,
+                          ),
                   );
 
                   final spacedTools = _interleaveControlBarGap(
@@ -8707,7 +8707,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       }
     } else {
       bgColor = isActive
-          ? Colors.white.withOpacity(0.18)
+                ? Colors.white.withOpacity(0.18)
           : Colors.white.withOpacity(0.08);
       circleBorder = Border.all(
         color: Colors.white.withOpacity(isActive ? 0.44 : 0.34),

@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
 
 /// BookingRequest Model
 ///
@@ -222,7 +223,15 @@ class BookingRequest {
       learnerSubjects: _parseLearnerSubjects(json['learner_subjects']),
       learnerAcceptanceStatus: null,
       // Tutor info
-      tutorName: tutorProfile?['full_name'] ?? 'Tutor',
+      tutorName: TutorDisplayNameUtils.resolve(
+        {
+          'user_id': json['tutor_id'],
+          'personal_statement': tutorProfile?['personal_statement'],
+          'subjects': tutorProfile?['subjects'],
+          'specializations': tutorProfile?['specializations'],
+        },
+        tutorProfile,
+      ),
       tutorAvatarUrl: tutorProfile?['avatar_url'] ?? tutorProfile?['profile_photo_url'],
       tutorRating: 0.0, 
       tutorIsVerified: false,
