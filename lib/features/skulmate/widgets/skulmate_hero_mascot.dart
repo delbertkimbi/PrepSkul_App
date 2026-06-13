@@ -42,8 +42,8 @@ class _SkulMateHeroMascotState extends State<SkulMateHeroMascot>
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 120,
-      height: 132,
+      width: 132,
+      height: 144,
       child: AnimatedBuilder(
         animation: _float,
         builder: (context, child) {
@@ -83,8 +83,8 @@ class _SkulMateHeroMascotState extends State<SkulMateHeroMascot>
           );
         },
         child: SizedBox(
-          width: 120,
-          height: 120,
+          width: 132,
+          height: 132,
           child: SkulMateMascotMediaWidget(
             state: widget.state,
             showFrame: false,

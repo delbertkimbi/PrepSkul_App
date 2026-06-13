@@ -52,7 +52,7 @@ class _SkulMateStudyIntentCardState extends State<SkulMateStudyIntentCard> {
 
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 112),
+      constraints: const BoxConstraints(minHeight: 120),
       decoration: SkulMateSurfaceStyles.homeCard(
         radius: SkulMateSurfaceStyles.intentCardRadius,
         compact: true,
@@ -83,9 +83,9 @@ class _SkulMateStudyIntentCardState extends State<SkulMateStudyIntentCard> {
                   isCollapsed: true,
                   contentPadding: EdgeInsets.zero,
                   hintStyle: GoogleFonts.poppins(
-                    fontSize: 15,
+                    fontSize: 16,
                     fontWeight: FontWeight.w400,
-                    color: AppTheme.textMedium.withValues(alpha: 0.65),
+                    color: AppTheme.textMedium.withValues(alpha: 0.55),
                     height: 1.35,
                   ),
                 ),

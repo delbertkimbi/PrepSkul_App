@@ -53,7 +53,7 @@ class SkulMateHomeTopBar extends StatelessWidget {
               ),
             ],
             child: _PillButton(
-              icon: Icons.more_horiz_rounded,
+              icon: Icons.keyboard_arrow_down_rounded,
               label: copy.more,
               onTap: null,
             ),
@@ -111,7 +111,7 @@ class _PillButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final child = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
       decoration: SkulMateSurfaceStyles.chipCard(),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -11,6 +11,7 @@ import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
+import 'package:prepskul/core/utils/profile_display_utils.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import '../models/social_models.dart';
 import '../services/social_service.dart';
@@ -37,6 +38,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   dynamic _myCharacter;
   String? _myAvatarUrl;
   String? _myDisplayName;
+  Map<String, String> _resolvedAvatarUrls = {};
   bool _isLoading = true;
   bool _friendsLoaded = false;
   bool _loadingFriends = false;
@@ -69,7 +71,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       final profileFuture = myId != null
           ? SupabaseService.client
               .from('profiles')
-              .select('full_name, avatar_url')
+              .select('full_name, email, avatar_url')
               .eq('id', myId)
               .maybeSingle()
           : Future<Map<String, dynamic>?>.value(null);
@@ -85,12 +87,32 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       ]);
 
       final profile = results[3] as Map<String, dynamic>?;
+      final entries = results[0] as List<LeaderboardEntry>;
+      final resolvedMyAvatar = await ProfileDisplayUtils.resolveAvatarUrl(
+        profile?['avatar_url'] as String?,
+        userId: myId,
+      );
+      final avatarInputs = <String, String?>{};
+      for (final entry in entries) {
+        avatarInputs[entry.userId] = entry.userAvatarUrl;
+      }
+      if (myId != null && resolvedMyAvatar != null) {
+        avatarInputs[myId] = resolvedMyAvatar;
+      }
+      final resolvedAvatars =
+          await ProfileDisplayUtils.resolveAvatarUrlsForUsers(avatarInputs);
+
       safeSetState(() {
-        _allTimeGlobal = results[0] as List<LeaderboardEntry>;
+        _allTimeGlobal = entries;
         _myStats = results[1] as GameStats?;
         _myCharacter = results[2];
-        _myDisplayName = profile?['full_name'] as String?;
-        _myAvatarUrl = profile?['avatar_url'] as String?;
+        _myDisplayName = ProfileDisplayUtils.resolveDisplayName(
+          primary: profile?['full_name'] as String?,
+          profile: profile,
+          fallback: 'You',
+        );
+        _myAvatarUrl = resolvedMyAvatar ?? profile?['avatar_url'] as String?;
+        _resolvedAvatarUrls = resolvedAvatars;
         _isLoading = false;
       });
 
@@ -910,7 +932,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       if (entry.gamesPlayed > 0) '${entry.gamesPlayed} games',
       if (entry.perfectScores > 0) '${entry.perfectScores} perfect',
     ];
-    return parts.isEmpty ? 'All-time player' : parts.join(' · ');
+    return parts.isEmpty ? '${_formatXp(entry.totalXP)} XP' : parts.join(' · ');
   }
 
   String _suffix(int r) {
@@ -1063,7 +1085,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   Widget _buildMyAvatar({required double size}) {
     final name = _myDisplayName ?? 'You';
-    final avatarUrl = _myAvatarUrl;
+    final avatarUrl =
+        _resolvedAvatarUrls[_myUserId ?? ''] ?? _myAvatarUrl;
     if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
       return _profilePhotoAvatar(avatarUrl, name, size: size);
     }
@@ -1089,7 +1112,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   Widget _avatarForEntry(LeaderboardEntry entry, bool isMe, {required double size}) {
     final name = _displayName(entry);
-    final avatarUrl = isMe ? _myAvatarUrl : entry.userAvatarUrl;
+    final avatarUrl = _resolvedAvatarUrls[entry.userId] ??
+        (isMe ? _myAvatarUrl : entry.userAvatarUrl);
     if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
       return _profilePhotoAvatar(avatarUrl, name, size: size);
     }

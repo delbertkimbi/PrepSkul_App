@@ -34,7 +34,7 @@ class SkulMateImportActionGrid extends StatelessWidget {
       _ChipDef(copy.paste, Icons.content_paste_rounded, (ctx, _) => _paste(ctx)),
       _ChipDef(copy.youtube, Icons.play_circle_rounded, (ctx, _) => _youtube(ctx)),
       _ChipDef(copy.sessions, Icons.video_library_rounded, (ctx, _) => _fromClass(ctx)),
-      _ChipDef(copy.more, Icons.more_horiz_rounded, (ctx, box) => _more(ctx, box)),
+      _ChipDef(copy.more, Icons.keyboard_arrow_down_rounded, (ctx, box) => _more(ctx, box)),
     ];
 
     return GridView.builder(
