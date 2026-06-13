@@ -3,3 +3,4 @@ ALTER TABLE public.session_safety_records
   ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
   ADD COLUMN IF NOT EXISTS location_accuracy DOUBLE PRECISION,
   ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+-0

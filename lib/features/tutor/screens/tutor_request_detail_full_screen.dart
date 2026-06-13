@@ -37,7 +37,8 @@ class _TutorRequestDetailFullScreenState
   Widget build(BuildContext context) {
     final request = widget.request;
     final typeLower = request.studentType.toLowerCase();
-    final isStudent = typeLower == 'learner' || typeLower == 'student';
+    final isParent = typeLower == 'parent';
+    final isStudent = !isParent && (typeLower == 'learner' || typeLower == 'student');
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -122,9 +123,9 @@ class _TutorRequestDetailFullScreenState
                       ),
                     ),
                   ],
-                  // Learners Section (only when parent booked for 2+ children – hide for single-learner)
+                  // Learners Section (when parent booked for one or more children)
                   if (request.learnerLabels != null &&
-                      request.learnerLabels!.length > 1) ...[
+                      request.learnerLabels!.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     _buildSectionTitle('Learners'),
                     const SizedBox(height: 16),
@@ -272,8 +273,8 @@ class _TutorRequestDetailFullScreenState
             ),
           ],
         ),
-        // Multi-learner summary: show learner names in profile section
-        if (request.isMultiLearner && request.learnerLabels != null && request.learnerLabels!.isNotEmpty) ...[
+        // Learner / child names (parent bookings — including single child)
+        if (request.learnerLabels != null && request.learnerLabels!.isNotEmpty) ...[
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -282,7 +283,7 @@ class _TutorRequestDetailFullScreenState
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  'Learners: ${request.learnerLabels!.join(', ')}',
+                  '${request.learnerLabels!.length == 1 ? 'Child' : 'Learners'}: ${request.learnerLabels!.join(', ')}',
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,

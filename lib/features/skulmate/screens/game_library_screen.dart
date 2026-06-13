@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/navigation/main_nav_tabs.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
@@ -846,7 +847,14 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
             final navService = NavigationService();
             final route = role == 'parent' ? '/parent-nav' : '/student-nav';
             if (navService.isReady) {
-              await navService.navigateToRoute(route, replace: true);
+              await navService.navigateToRoute(
+                route,
+                arguments: MainNavTab.argsForTab(
+                  role == 'parent' ? 'parent' : 'student',
+                  MainNavTab.home,
+                ),
+                replace: true,
+              );
             } else if (context.mounted) {
               Navigator.of(context).pop();
             }

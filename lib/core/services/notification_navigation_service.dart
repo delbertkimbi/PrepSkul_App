@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/navigation/main_nav_tabs.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
@@ -29,6 +30,31 @@ import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/features/messaging/screens/conversations_list_screen.dart';
 
 class NotificationNavigationService {
+  static String _roleForUserType(String? userType) {
+    if (userType == 'tutor') return 'tutor';
+    if (userType == 'parent') return 'parent';
+    return 'student';
+  }
+
+  static String _rootRouteForUserType(String? userType) {
+    final role = _roleForUserType(userType);
+    if (role == 'tutor') return '/tutor-nav';
+    if (role == 'parent') return '/parent-nav';
+    return '/student-nav';
+  }
+
+  static Map<String, dynamic> _tabArgs(
+    String? userType,
+    String tabName, {
+    Map<String, dynamic>? extra,
+  }) {
+    return MainNavTab.argsForTab(
+      _roleForUserType(userType),
+      tabName,
+      extra: extra,
+    );
+  }
+
   /// Navigate to the appropriate screen based on notification action URL
   static Future<void> navigateToAction({
     required BuildContext? context,
@@ -195,12 +221,12 @@ class NotificationNavigationService {
     } catch (e) {
       LogService.error('[NOTIF_NAV] Error navigating to booking: $e');
       // Fallback: navigate to requests tab
-      final role = userType == 'parent' ? 'parent' : (userType == 'tutor' ? 'tutor' : 'student');
-      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-      final tab = role == 'tutor' ? 1 : 2;
       await navService.navigateToRoute(
-        route,
-        arguments: {'initialTab': tab},
+        _rootRouteForUserType(userType),
+        arguments: _tabArgs(
+          userType,
+          userType == 'tutor' ? MainNavTab.requests : MainNavTab.requests,
+        ),
         replace: true,
       );
     }
@@ -236,11 +262,16 @@ class NotificationNavigationService {
         // This will display the trial session in the tutor's context with approve/reject options
         await navService.navigateToRoute(
           '/tutor-nav',
-          arguments: {'initialTab': 1, 'trialId': trialId},
+          arguments: _tabArgs('tutor', MainNavTab.requests, extra: {'trialId': trialId}),
           replace: true,
         );
       } else {
-        // For students/parents, navigate to request detail screen (student view)
+        // Learners/parents: open Requests tab (not a fragile tab index)
+        await navService.navigateToRoute(
+          _rootRouteForUserType(userType),
+          arguments: _tabArgs(userType, MainNavTab.requests, extra: {'highlightTrialId': trialId}),
+          replace: true,
+        );
         await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => RequestDetailScreen(trialSession: trialSession),
@@ -250,13 +281,13 @@ class NotificationNavigationService {
     } catch (e) {
       LogService.error('[NOTIF_NAV] Error navigating to trial session: $e');
       // Fallback: navigate to requests tab
-      final role = userType == 'parent' ? 'parent' : (userType == 'tutor' ? 'tutor' : 'student');
-      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-      final tab = role == 'tutor' ? 1 : 2;
-      
       await navService.navigateToRoute(
-        route,
-        arguments: {'initialTab': tab, 'trialId': trialId},
+        _rootRouteForUserType(userType),
+        arguments: _tabArgs(
+          userType,
+          userType == 'tutor' ? MainNavTab.requests : MainNavTab.requests,
+          extra: {'trialId': trialId},
+        ),
         replace: true,
       );
     }
@@ -281,6 +312,18 @@ class NotificationNavigationService {
         return;
       }
 
+      if (userType != 'tutor') {
+        await navService.navigateToRoute(
+          _rootRouteForUserType(userType),
+          arguments: _tabArgs(
+            userType,
+            MainNavTab.requests,
+            extra: {'highlightTrialId': trialId},
+          ),
+          replace: true,
+        );
+      }
+
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => TrialPaymentScreen(trialSession: trial),
@@ -288,8 +331,12 @@ class NotificationNavigationService {
       );
     } catch (e) {
       LogService.error('[NOTIF_NAV] Error navigating to trial payment: $e');
-      // Fallback: navigate to trial sessions / requests tab
-      await _navigateToTrialSession(['trial-sessions', trialId], userType);
+      // Fallback: requests tab so learners never land on the wrong bottom-nav slot
+      await navService.navigateToRoute(
+        _rootRouteForUserType(userType),
+        arguments: _tabArgs(userType, MainNavTab.requests, extra: {'highlightTrialId': trialId}),
+        replace: true,
+      );
     }
   }
 
@@ -317,12 +364,9 @@ class NotificationNavigationService {
     }
 
     // Navigate to profile tab in main nav
-    final role = userType == 'tutor' ? 'tutor' : (userType == 'parent' ? 'parent' : 'student');
-    final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-    
     await navService.navigateToRoute(
-      route,
-      arguments: {'initialTab': 3}, // Profile tab
+      _rootRouteForUserType(userType),
+      arguments: _tabArgs(userType, MainNavTab.profile),
       replace: true,
     );
   }
@@ -382,20 +426,18 @@ class NotificationNavigationService {
     }
 
     if (section == 'requests' || section == 'bookings') {
-      // Navigate to requests tab (replace so back at root never reveals auth)
       if (userType == 'tutor') {
         await navService.navigateToRoute(
           '/tutor-nav',
-          arguments: {'initialTab': 1}, // Requests tab
+          arguments: _tabArgs('tutor', MainNavTab.requests),
           replace: true,
         );
       }
     } else if (section == 'sessions') {
-      // Navigate to sessions tab (replace so back at root never reveals auth)
       if (userType == 'tutor') {
         await navService.navigateToRoute(
           '/tutor-nav',
-          arguments: {'initialTab': 2}, // Sessions tab
+          arguments: _tabArgs('tutor', MainNavTab.sessions),
           replace: true,
         );
       }
@@ -425,7 +467,7 @@ class NotificationNavigationService {
         // Fallback: navigate to requests tab
         await navService.navigateToRoute(
           '/tutor-nav',
-          arguments: {'initialTab': 1, 'bookingId': bookingId},
+          arguments: _tabArgs('tutor', MainNavTab.requests, extra: {'bookingId': bookingId}),
           replace: true,
         );
       }
@@ -450,12 +492,9 @@ class NotificationNavigationService {
     final section = pathSegments[1];
 
     if (section == 'requests' || section == 'bookings') {
-      // Navigate to requests tab
-      final role = userType == 'parent' ? 'parent' : 'student';
-      final route = role == 'parent' ? '/parent-nav' : '/student-nav';
       await navService.navigateToRoute(
-        route,
-        arguments: {'initialTab': 2}, // Requests tab
+        _rootRouteForUserType(userType),
+        arguments: _tabArgs(userType, MainNavTab.requests),
         replace: false,
       );
     }
@@ -470,13 +509,12 @@ class NotificationNavigationService {
     
     if (pathSegments.length < 2) {
       // Navigate to sessions tab (learner and tutor)
-      final role = userType == 'tutor'
-          ? 'tutor'
-          : (userType == 'parent' ? 'parent' : 'student');
-      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
       await navService.navigateToRoute(
-        route,
-        arguments: {'initialTab': 2}, // Sessions tab
+        _rootRouteForUserType(userType),
+        arguments: _tabArgs(
+          userType,
+          userType == 'tutor' ? MainNavTab.sessions : MainNavTab.requests,
+        ),
         replace: false,
       );
       return;
@@ -495,25 +533,22 @@ class NotificationNavigationService {
       } catch (e) {
         LogService.error('[NOTIF_NAV] Error navigating to feedback screen: $e');
         // Fallback: navigate to sessions tab
-        final role = userType == 'tutor'
-            ? 'tutor'
-            : (userType == 'parent' ? 'parent' : 'student');
-        final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
         await navService.navigateToRoute(
-          route,
-          arguments: {'initialTab': 2}, // Sessions tab
+          _rootRouteForUserType(userType),
+          arguments: _tabArgs(
+            userType,
+            userType == 'tutor' ? MainNavTab.sessions : MainNavTab.requests,
+          ),
           replace: true,
         );
       }
     } else {
-      // Navigate to sessions tab (session details can be shown there)
-      final role = userType == 'tutor'
-          ? 'tutor'
-          : (userType == 'parent' ? 'parent' : 'student');
-      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
       await navService.navigateToRoute(
-        route,
-        arguments: {'initialTab': 2}, // Sessions tab
+        _rootRouteForUserType(userType),
+        arguments: _tabArgs(
+          userType,
+          userType == 'tutor' ? MainNavTab.sessions : MainNavTab.requests,
+        ),
         replace: true,
       );
     }
@@ -528,13 +563,9 @@ class NotificationNavigationService {
     
     if (pathSegments.length < 2) {
       // No payment ID, navigate to requests tab
-      final role = userType == 'tutor'
-          ? 'tutor'
-          : (userType == 'parent' ? 'parent' : 'student');
-      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
       await navService.navigateToRoute(
-        route,
-        arguments: {'initialTab': 2}, // Requests tab
+        _rootRouteForUserType(userType),
+        arguments: _tabArgs(userType, MainNavTab.requests),
         replace: true,
       );
       return;
@@ -576,29 +607,18 @@ class NotificationNavigationService {
             replace: false,
           );
         } else if (notificationType == 'booking_rejected') {
-          // For rejected bookings, navigate to Find Tutors tab (tab 1) for students/parents
-          // Tutors still go to requests tab
-          final role = userType == 'tutor'
-              ? 'tutor'
-              : (userType == 'parent' ? 'parent' : 'student');
-          final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-          // Students/parents go to Find Tutors tab (1), tutors go to Requests tab (1)
-          final tab = userType == 'tutor' ? 1 : 1; // Find Tutors tab for students/parents
           await navService.navigateToRoute(
-            route,
-            arguments: {'initialTab': tab},
+            _rootRouteForUserType(userType),
+            arguments: _tabArgs(
+              userType,
+              userType == 'tutor' ? MainNavTab.requests : MainNavTab.findTutors,
+            ),
             replace: true,
           );
         } else {
-          // Navigate to requests/bookings tab for other booking notifications
-          final role = userType == 'tutor'
-              ? 'tutor'
-              : (userType == 'parent' ? 'parent' : 'student');
-          final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-          final tab = userType == 'tutor' ? 1 : 2; // Requests tab
           await navService.navigateToRoute(
-            route,
-            arguments: {'initialTab': tab},
+            _rootRouteForUserType(userType),
+            arguments: _tabArgs(userType, MainNavTab.requests),
             replace: true,
           );
         }
@@ -614,13 +634,9 @@ class NotificationNavigationService {
           );
         } else {
           // Navigate to payments tab
-          final role = userType == 'tutor'
-              ? 'tutor'
-              : (userType == 'parent' ? 'parent' : 'student');
-          final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
           await navService.navigateToRoute(
-            route,
-            arguments: {'initialTab': 2}, // Requests/Payments tab
+            _rootRouteForUserType(userType),
+            arguments: _tabArgs(userType, MainNavTab.requests),
             replace: false,
           );
         }
@@ -629,15 +645,9 @@ class NotificationNavigationService {
       case 'trial_request':
       case 'trial_accepted':
       case 'trial_rejected':
-        // Navigate to requests tab (trial sessions shown there)
-        final role2 = userType == 'tutor'
-            ? 'tutor'
-            : (userType == 'parent' ? 'parent' : 'student');
-        final route2 = role2 == 'tutor' ? '/tutor-nav' : (role2 == 'parent' ? '/parent-nav' : '/student-nav');
-        final tab2 = userType == 'tutor' ? 1 : 2; // Requests tab
         await navService.navigateToRoute(
-          route2,
-          arguments: {'initialTab': tab2},
+          _rootRouteForUserType(userType),
+          arguments: _tabArgs(userType, MainNavTab.requests),
           replace: false,
         );
         break;
@@ -645,14 +655,9 @@ class NotificationNavigationService {
       case 'payment_received':
       case 'payment_successful':
       case 'payment_failed':
-        // Navigate to profile tab (wallet shown there for tutors)
-        final role3 = userType == 'tutor'
-            ? 'tutor'
-            : (userType == 'parent' ? 'parent' : 'student');
-        final route3 = role3 == 'tutor' ? '/tutor-nav' : (role3 == 'parent' ? '/parent-nav' : '/student-nav');
         await navService.navigateToRoute(
-          route3,
-          arguments: {'initialTab': 3}, // Profile tab
+          _rootRouteForUserType(userType),
+          arguments: _tabArgs(userType, MainNavTab.profile),
           replace: false,
         );
         break;
@@ -660,11 +665,10 @@ class NotificationNavigationService {
       case 'session_completed':
       case 'session_reminder':
       case 'session_starting_soon':
-        // Navigate to sessions tab (tutors only)
         if (userType == 'tutor') {
           await navService.navigateToRoute(
             '/tutor-nav',
-            arguments: {'initialTab': 2}, // Sessions tab
+            arguments: _tabArgs('tutor', MainNavTab.sessions),
             replace: false,
           );
         }
@@ -766,13 +770,12 @@ class NotificationNavigationService {
           await _navigateToRescheduleReview(['sessions', requestId, 'reschedule'], metadata);
         } else {
           // Fallback to sessions tab
-          final role = userType == 'tutor'
-              ? 'tutor'
-              : (userType == 'parent' ? 'parent' : 'student');
-          final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
           await navService.navigateToRoute(
-            route,
-            arguments: {'initialTab': 2}, // Sessions tab
+            _rootRouteForUserType(userType),
+            arguments: _tabArgs(
+              userType,
+              userType == 'tutor' ? MainNavTab.sessions : MainNavTab.requests,
+            ),
             replace: false,
           );
         }
@@ -786,11 +789,9 @@ class NotificationNavigationService {
             replace: false,
           );
         } else {
-          final role = userType == 'parent' ? 'parent' : 'student';
-          final route = role == 'parent' ? '/parent-nav' : '/student-nav';
           await navService.navigateToRoute(
-            route,
-            arguments: {'initialTab': 2},
+            _rootRouteForUserType(userType),
+            arguments: _tabArgs(userType, MainNavTab.requests),
             replace: true,
           );
         }
@@ -816,12 +817,9 @@ class NotificationNavigationService {
         break;
 
       case 'identity_verification_rejected':
-        final roleRejected = userType == 'parent' ? 'parent' : 'student';
-        final routeRejected =
-            roleRejected == 'parent' ? '/parent-nav' : '/student-nav';
         await navService.navigateToRoute(
-          routeRejected,
-          arguments: {'initialTab': 2},
+          _rootRouteForUserType(userType),
+          arguments: _tabArgs(userType, MainNavTab.requests),
           replace: true,
         );
         break;
@@ -882,13 +880,12 @@ class NotificationNavigationService {
             .eq('id', userId)
             .maybeSingle();
         final userType = profile?['user_type'] as String?;
-        final role = userType == 'tutor'
-            ? 'tutor'
-            : (userType == 'parent' ? 'parent' : 'student');
-        final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
         await navService.navigateToRoute(
-          route,
-          arguments: {'initialTab': 2}, // Sessions tab
+          _rootRouteForUserType(userType),
+          arguments: _tabArgs(
+            userType,
+            userType == 'tutor' ? MainNavTab.sessions : MainNavTab.requests,
+          ),
           replace: true,
         );
       }

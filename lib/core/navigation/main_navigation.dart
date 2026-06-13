@@ -18,6 +18,7 @@ import '../../core/services/auth_service.dart' hide LogService;
 import '../../core/services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../localization/app_localizations.dart';
+import 'main_nav_tabs.dart';
 import '../../features/skulmate/services/game_sound_service.dart';
 import '../utils/responsive_helper.dart';
 import '../../features/tutor/widgets/tutor_page_body.dart';
@@ -76,27 +77,34 @@ class _MainNavigationState extends State<MainNavigation>
     _stopGameMusicIfOnHomeTab();
   }
 
+  int _resolveInitialTabIndex(Map<String, dynamic>? routeArgs) {
+    final tabName = routeArgs?['initialTabName'] as String?;
+    if (tabName != null && tabName.isNotEmpty) {
+      final fromName = MainNavTab.indexForRole(widget.userRole, tabName);
+      if (fromName != null) return fromName;
+    }
+    final tabFromArgs = routeArgs?['initialTab'] as int?;
+    if (tabFromArgs != null) return tabFromArgs;
+    return widget.initialTab ?? 0;
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Now we can safely access inherited widgets like ModalRoute
-    // Try to get initialTab from route arguments first, then fall back to widget parameter
     final routeArgs =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    final tabFromArgs = routeArgs?['initialTab'] as int?;
+    final targetTab = _resolveInitialTabIndex(routeArgs);
 
-    // Use route arguments if available, otherwise use widget parameter
-    final targetTab = tabFromArgs ?? widget.initialTab ?? 0;
+    final hasExplicitTarget = routeArgs?['initialTabName'] != null ||
+        routeArgs?['initialTab'] != null ||
+        widget.initialTab != null;
 
-    // Only update tab if we have an explicit target from route args or widget parameter
-    // Don't update if both are null (which happens when modals open/close)
-    final hasExplicitTarget = tabFromArgs != null || widget.initialTab != null;
-
-    // Only update tab if we have a valid target tab AND it's different from current
-    // AND we have an explicit target (not just defaulting to 0)
     if (targetTab != _selectedIndex && targetTab >= 0 && hasExplicitTarget) {
       LogService.info(
-        '🔵 [MAIN_NAV] Setting tab index: $targetTab (from args: $tabFromArgs, from widget: ${widget.initialTab})',
+        '🔵 [MAIN_NAV] Setting tab index: $targetTab '
+        '(tabName: ${routeArgs?['initialTabName']}, '
+        'from args: ${routeArgs?['initialTab']}, '
+        'from widget: ${widget.initialTab})',
       );
       safeSetState(() {
         _selectedIndex = targetTab;

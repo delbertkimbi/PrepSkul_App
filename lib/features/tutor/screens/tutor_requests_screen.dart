@@ -384,7 +384,8 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
 
   Widget _buildRequestCard(BookingRequest request) {
     final typeLower = request.studentType.toLowerCase();
-    final isStudent = typeLower == 'learner' || typeLower == 'student';
+    final isParent = typeLower == 'parent';
+    final isStudent = !isParent && (typeLower == 'learner' || typeLower == 'student');
     final isPending = request.status.toLowerCase() == 'pending';
 
     return Container(

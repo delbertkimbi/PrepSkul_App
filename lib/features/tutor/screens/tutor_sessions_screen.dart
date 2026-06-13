@@ -16,6 +16,7 @@ import '../../../features/booking/services/session_lifecycle_service.dart';
 import '../../../features/booking/services/trial_session_service.dart';
 import '../../../features/booking/services/session_reschedule_service.dart';
 import '../../../features/booking/models/trial_session_model.dart';
+import '../../../features/booking/utils/trial_requester_display.dart';
 import '../../../features/booking/utils/session_date_utils.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/google_calendar_service.dart';
@@ -143,75 +144,14 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     TrialSession trial,
     Map<String, Map<String, dynamic>> profilesById,
   ) {
-    String studentName = 'Student';
-    String? studentAvatar;
-    String? requesterType;
-
-    void applyRequesterProfile(Map<String, dynamic>? prof) {
-      if (prof == null) return;
-      requesterType ??= prof['user_type'] as String?;
-      final fullName = prof['full_name'] as String?;
-      if (fullName != null &&
-          fullName.trim().isNotEmpty &&
-          fullName.toLowerCase() != 'user' &&
-          fullName.toLowerCase() != 'null' &&
-          fullName.toLowerCase() != 'student' &&
-          fullName.toLowerCase() != 'parent') {
-        studentName = fullName.trim();
-      } else {
-        final email = prof['email'] as String?;
-        if (email != null && email.trim().isNotEmpty) {
-          final emailName = email.split('@').first.trim();
-          if (emailName.isNotEmpty &&
-              emailName.toLowerCase() != 'user' &&
-              emailName.toLowerCase() != 'student' &&
-              emailName.toLowerCase() != 'parent') {
-            studentName =
-                emailName[0].toUpperCase() + emailName.substring(1);
-          }
-        }
-      }
-      studentAvatar ??= prof['avatar_url'] as String?;
-    }
-
-    final requesterId = trial.requesterId;
-    final learnerId = trial.learnerId;
-
-    if (requesterId.isNotEmpty) {
-      applyRequesterProfile(profilesById[requesterId]);
-    }
-
-    if (studentName == 'Student' && learnerId.isNotEmpty) {
-      final learnerProfile = profilesById[learnerId];
-      if (learnerProfile != null) {
-        requesterType ??= learnerProfile['user_type'] as String?;
-
-        final fullName = learnerProfile['full_name'] as String?;
-        if (fullName != null &&
-            fullName.trim().isNotEmpty &&
-            fullName.toLowerCase() != 'user' &&
-            fullName.toLowerCase() != 'null') {
-          studentName = fullName.trim();
-        } else {
-          final email = learnerProfile['email'] as String?;
-          if (email != null && email.trim().isNotEmpty) {
-            final emailName = email.split('@').first.trim();
-            if (emailName.isNotEmpty && emailName.toLowerCase() != 'user') {
-              studentName =
-                  emailName[0].toUpperCase() + emailName.substring(1);
-            }
-          }
-        }
-
-        studentAvatar ??= learnerProfile['avatar_url'] as String?;
-      }
-    }
-
-    return <String, Object?>{
-      'student_name': studentName,
-      'student_avatar_url': studentAvatar,
-      'requester_type': requesterType,
-    };
+    return TrialRequesterDisplay.resolveSessionCardFields(
+      {
+        'parent_id': trial.parentId,
+        'requester_id': trial.requesterId,
+        'learner_id': trial.learnerId,
+      },
+      profilesById,
+    );
   }
   
   @override
@@ -330,6 +270,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
             trialsToInclude.add(trial);
             if (trial.requesterId.isNotEmpty) {
               trialProfileIds.add(trial.requesterId);
+            }
+            if (trial.parentId != null && trial.parentId!.isNotEmpty) {
+              trialProfileIds.add(trial.parentId!);
             }
             if (trial.learnerId.isNotEmpty) {
               trialProfileIds.add(trial.learnerId);
@@ -1391,20 +1334,39 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                     ],
                   ),
                   // Status badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      _getDisplayStatusLabel(status, sessionDate, sessionTime),
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))),
-                      ),
-                    ),
+                  Builder(
+                    builder: (context) {
+                      final displayLabel = _getDisplayStatusLabel(
+                        status,
+                        sessionDate,
+                        sessionTime,
+                        paymentStatus: paymentStatus,
+                      );
+                      final displayColorHex = displayLabel == 'Pending payment'
+                          ? '#FF9800'
+                          : _getStatusColor(status);
+                      final displayColor = Color(
+                        int.parse(displayColorHex.replaceFirst('#', '0xFF')),
+                      );
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: displayColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          displayLabel,
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: displayColor,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -2179,8 +2141,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
   String _getDisplayStatusLabel(
     String status,
     DateTime? sessionDate,
-    String? sessionTime,
-  ) {
+    String? sessionTime, {
+    String? paymentStatus,
+  }) {
     if (status == 'in_progress' && sessionDate != null && sessionTime != null) {
       final start = _parseSessionDateTime(sessionDate, sessionTime);
       if (start != null && DateTime.now().isBefore(start)) {
@@ -2188,6 +2151,11 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       }
     }
     if (status == 'completed') return 'Ended';
+    if (status == 'approved' && paymentStatus != null) {
+      final normalized = paymentStatus.toLowerCase();
+      final isPaid = normalized == 'paid' || normalized == 'completed';
+      if (!isPaid) return 'Pending payment';
+    }
     return _getStatusLabel(status);
   }
 

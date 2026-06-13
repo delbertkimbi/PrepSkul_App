@@ -427,9 +427,8 @@ class _ParentSurveyState extends State<ParentSurvey> {
             );
             if (levelConfig != null) {
               _steps.add(
-                SurveyStep(
-                  title:
-                      'Which ${levelConfig.name.toLowerCase()} is your child in?',
+                const SurveyStep(
+                  title: 'What class is your child?',
                   subtitle: 'Select the specific class',
                 ),
               );

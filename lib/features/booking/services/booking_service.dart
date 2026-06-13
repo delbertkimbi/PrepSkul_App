@@ -1,6 +1,7 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/booking/utils/trial_requester_display.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
@@ -412,12 +413,26 @@ class BookingService {
       final bookingResponse = await bookingQuery.order('created_at', ascending: false);
       final bookingList = (bookingResponse as List).map((json) {
         try {
-          // Update student_avatar_url from joined profile if not already set
+          // Enrich denormalized student fields from joined profile when stale
           final studentProfile = json['student_profile'];
           if (studentProfile != null && studentProfile is Map) {
             final profileAvatarUrl = studentProfile['avatar_url'] as String?;
             if (profileAvatarUrl != null && profileAvatarUrl.isNotEmpty) {
               json['student_avatar_url'] = profileAvatarUrl;
+            }
+            final profileName = studentProfile['full_name'] as String?;
+            final storedName = (json['student_name'] as String?)?.trim() ?? '';
+            if (profileName != null &&
+                profileName.trim().isNotEmpty &&
+                (storedName.isEmpty ||
+                    storedName.toLowerCase() == 'student' ||
+                    storedName.toLowerCase() == 'user')) {
+              json['student_name'] = profileName.trim();
+            }
+            final profileType =
+                (studentProfile['user_type'] as String?)?.toLowerCase();
+            if (profileType == 'parent') {
+              json['student_type'] = 'parent';
             }
           }
           
@@ -524,31 +539,17 @@ class BookingService {
               }
             }
             
-            // CRITICAL FIX: For display purposes, show the REQUESTER (who made the booking)
-            // The requester is the one who actually created the request (could be parent or student)
-            // The learner is who will attend, but for the tutor's view, we want to see who made the request
-            Map<String, dynamic> requesterDisplayProfile;
-            if (requesterProfile != null && requesterProfile.isNotEmpty) {
-              // Use requester profile (who made the booking) - this is what tutors should see
-              requesterDisplayProfile = requesterProfile;
-              LogService.debug('✅ Using requester profile for display: ${requesterProfile['full_name']} (user_type: ${requesterProfile['user_type']})');
-            } else if (learnerProfile != null && learnerProfile.isNotEmpty) {
-              // Fallback to learner if requester not available
-              requesterDisplayProfile = learnerProfile;
-              LogService.debug('Using learner profile as fallback for display');
-            } else if (parentProfile != null && parentProfile.isNotEmpty) {
-              // Fallback to parent if available
-              requesterDisplayProfile = parentProfile;
-              LogService.debug('Using parent profile as fallback for display');
-            } else {
-              // If no profile found, use defaults
-              LogService.warning('⚠️ No valid profile found for trial session ${json['id']}, requester_id: ${json['requester_id']}');
-              requesterDisplayProfile = {
-                'user_type': 'learner', // Default to learner
-              };
-            }
-            
-            // Pass requester profile for display (who made the booking)
+            final requesterDisplayProfile = TrialRequesterDisplay.resolveDisplayProfile(
+              json,
+              requesterProfile: requesterProfile,
+              learnerProfile: learnerProfile,
+              parentProfile: parentProfile,
+            );
+            LogService.debug(
+              'Trial ${json['id']} display profile: '
+              '${requesterDisplayProfile['full_name'] ?? requesterDisplayProfile['user_type']}',
+            );
+
             return BookingRequest.fromTrialSession(json, requesterDisplayProfile, null);
           } catch (e) {
             LogService.error('Error parsing trial session: $e');
