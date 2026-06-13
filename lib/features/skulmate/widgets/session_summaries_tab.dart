@@ -14,7 +14,6 @@ import '../screens/quiz_game_screen.dart';
 import '../screens/flashcard_game_screen.dart';
 import '../screens/matching_game_screen.dart';
 import '../screens/fill_blank_game_screen.dart';
-import '../screens/word_guessing_game_screen.dart';
 import '../../discovery/screens/find_tutors_screen.dart';
 
 /// Tab showing completed sessions with summaries that can generate games
@@ -165,7 +164,7 @@ class _SessionSummariesTabState extends State<SessionSummariesTab> {
             gameScreen = MatchingGameScreen(game: game);
             break;
           case GameType.fillBlank:
-            gameScreen = WordGuessingGameScreen(game: game);
+            gameScreen = FillBlankGameScreen(game: game);
             break;
           default:
             gameScreen = QuizGameScreen(game: game);

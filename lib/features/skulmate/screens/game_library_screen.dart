@@ -37,7 +37,6 @@ import 'game_setup_flow_screen.dart';
 import 'leaderboard_screen.dart';
 import 'friends_screen.dart';
 import 'challenges_screen.dart';
-import 'activity_calendar_screen.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import '../widgets/session_summaries_tab.dart';

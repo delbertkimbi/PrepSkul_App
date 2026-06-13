@@ -280,32 +280,39 @@ class SocialService {
   }) async {
     try {
       final periodStart = _getPeriodStart(period, DateTime.now());
-      List<Map<String, dynamic>> rows;
+      List<Map<String, dynamic>> rows = [];
 
-      try {
-        final response = await SupabaseService.client
-            .rpc(
-              'get_skulmate_leaderboard',
-              params: {
-                'p_period': period.toString(),
-                'p_period_start': periodStart.toUtc().toIso8601String(),
-                'p_limit': limit,
-              },
-            )
-            .timeout(const Duration(seconds: 8));
-        rows = (response as List).cast<Map<String, dynamic>>();
-      } catch (rpcError) {
-        LogService.warning(
-          '🎮 [Social] Leaderboard RPC unavailable, using fallback: $rpcError',
-        );
-        rows = await _fetchLeaderboardRowsFallback(
-          period: period,
-          periodStart: periodStart,
-          limit: limit,
-        );
+      final periodStartsToTry = period == LeaderboardPeriod.allTime
+          ? <DateTime>[
+              DateTime.utc(2020, 1, 1),
+              DateTime(2020, 1, 1),
+              periodStart,
+            ]
+          : <DateTime>[periodStart];
+
+      for (final start in periodStartsToTry) {
+        try {
+          final response = await SupabaseService.client
+              .rpc(
+                'get_skulmate_leaderboard',
+                params: {
+                  'p_period': period.toString(),
+                  'p_period_start': start.toUtc().toIso8601String(),
+                  'p_limit': limit,
+                },
+              )
+              .timeout(const Duration(seconds: 8));
+          rows = (response as List).cast<Map<String, dynamic>>();
+          if (rows.isNotEmpty) break;
+        } catch (e) {
+          LogService.debug('Leaderboard RPC attempt failed ($start): $e');
+        }
       }
 
       if (rows.isEmpty) {
+        LogService.warning(
+          '🎮 [Social] Leaderboard RPC returned no rows, using table fallback',
+        );
         rows = await _fetchLeaderboardRowsFallback(
           period: period,
           periodStart: periodStart,
@@ -366,9 +373,60 @@ class SocialService {
     if (entries.isEmpty) return entries;
 
     final userIds = entries.map((e) => e.userId).toSet().toList();
-    final profilesById = <String, Map<String, dynamic>>{};
-    final tutorPhotoByUserId = <String, String>{};
+    final profilesById = await _fetchPublicProfiles(userIds);
 
+    return entries.map((entry) {
+      final profile = profilesById[entry.userId];
+      final avatar = (profile?['avatar_url'] as String?)?.trim();
+      final resolvedAvatar =
+          avatar != null && avatar.isNotEmpty ? avatar : entry.userAvatarUrl;
+      return LeaderboardEntry(
+        id: entry.id,
+        userId: entry.userId,
+        period: entry.period,
+        periodStart: entry.periodStart,
+        periodEnd: entry.periodEnd,
+        totalXP: entry.totalXP,
+        gamesPlayed: entry.gamesPlayed,
+        perfectScores: entry.perfectScores,
+        averageScore: entry.averageScore,
+        rank: entry.rank,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        userName: ProfileDisplayUtils.resolveDisplayName(
+          primary: entry.userName,
+          profile: profile,
+        ),
+        userAvatarUrl: resolvedAvatar,
+        userCharacterId: (profile?['skulmate_character_id'] as String?) ??
+            entry.userCharacterId,
+        userLevel: entry.userLevel,
+      );
+    }).toList();
+  }
+
+  static Future<Map<String, Map<String, dynamic>>> _fetchPublicProfiles(
+    List<String> userIds,
+  ) async {
+    if (userIds.isEmpty) return {};
+
+    try {
+      final response = await SupabaseService.client.rpc(
+        'get_skulmate_public_profiles',
+        params: {'p_user_ids': userIds},
+      );
+      final profilesById = <String, Map<String, dynamic>>{};
+      for (final row in (response as List).cast<Map<String, dynamic>>()) {
+        profilesById[row['id'] as String] = row;
+      }
+      return profilesById;
+    } catch (e) {
+      LogService.debug(
+        'Leaderboard public profiles RPC unavailable, trying direct query: $e',
+      );
+    }
+
+    final profilesById = <String, Map<String, dynamic>>{};
     try {
       final profiles = await SupabaseService.client
           .from('profiles')
@@ -387,44 +445,17 @@ class SocialService {
           .select('user_id, profile_photo_url')
           .inFilter('user_id', userIds);
       for (final row in (tutorProfiles as List).cast<Map<String, dynamic>>()) {
-        final photo = (row['profile_photo_url'] as String?)?.trim();
         final uid = row['user_id'] as String?;
-        if (uid != null && photo != null && photo.isNotEmpty) {
-          tutorPhotoByUserId[uid] = photo;
-        }
+        final photo = (row['profile_photo_url'] as String?)?.trim();
+        if (uid == null || photo == null || photo.isEmpty) continue;
+        profilesById.putIfAbsent(uid, () => {'id': uid});
+        profilesById[uid]!['avatar_url'] = photo;
       }
     } catch (e) {
       LogService.debug('Leaderboard tutor photo enrich skipped: $e');
     }
 
-    return entries.map((entry) {
-      final profile = profilesById[entry.userId];
-      final avatar = tutorPhotoByUserId[entry.userId] ??
-          (profile?['avatar_url'] as String?) ??
-          entry.userAvatarUrl;
-      return LeaderboardEntry(
-        id: entry.id,
-        userId: entry.userId,
-        period: entry.period,
-        periodStart: entry.periodStart,
-        periodEnd: entry.periodEnd,
-        totalXP: entry.totalXP,
-        gamesPlayed: entry.gamesPlayed,
-        perfectScores: entry.perfectScores,
-        averageScore: entry.averageScore,
-        rank: entry.rank,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
-        userName: ProfileDisplayUtils.resolveDisplayName(
-          primary: entry.userName,
-          profile: profile,
-        ),
-        userAvatarUrl: avatar,
-        userCharacterId: (profile?['skulmate_character_id'] as String?) ??
-            entry.userCharacterId,
-        userLevel: entry.userLevel,
-      );
-    }).toList();
+    return profilesById;
   }
 
   /// Update leaderboard entry (called after game completion)
@@ -455,7 +486,7 @@ class SocialService {
             .select()
             .eq('user_id', userId)
             .eq('period', period.toString())
-            .eq('period_start', periodStart.toIso8601String())
+            .eq('period_start', periodStart.toUtc().toIso8601String())
             .maybeSingle();
 
         if (existing != null) {
@@ -482,7 +513,7 @@ class SocialService {
               .insert({
                 'user_id': userId,
                 'period': period.toString(),
-                'period_start': periodStart.toIso8601String(),
+                'period_start': periodStart.toUtc().toIso8601String(),
                 'total_xp': xpEarned,
                 'games_played': gamesPlayed,
                 'perfect_scores': isPerfectScore ? 1 : 0,

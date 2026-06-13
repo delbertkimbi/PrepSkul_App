@@ -14,7 +14,6 @@ import '../widgets/skulmate_home_top_bar.dart';
 import '../widgets/skulmate_import_action_grid.dart';
 import '../widgets/skulmate_study_intent_card.dart';
 import '../widgets/skulmate_surface_styles.dart';
-import 'game_library_screen.dart';
 
 /// SkulMate tab landing — Gizmo structure, PrepSkul identity (single scroll).
 class SkulMateHomeScreen extends StatefulWidget {
@@ -72,20 +71,6 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     } catch (_) {
       if (mounted) safeSetState(() => _loadingGames = false);
     }
-  }
-
-  void _openLibrary({int initialTab = 1}) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => GameLibraryScreen(
-          childId: widget.childId,
-          initialTab: initialTab,
-        ),
-      ),
-    ).then((_) {
-      if (mounted) _applyStatusBarStyle();
-    });
   }
 
   Future<void> _submitTopic() async {

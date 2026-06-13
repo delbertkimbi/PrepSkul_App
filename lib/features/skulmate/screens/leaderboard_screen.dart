@@ -921,7 +921,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       if (mine != null && mine.isNotEmpty) return mine;
     }
     final name = entry.userName?.trim();
-    if (name != null && name.isNotEmpty) return name;
+    if (name != null &&
+        name.isNotEmpty &&
+        !ProfileDisplayUtils.isGenericName(name)) {
+      return name;
+    }
     return 'Player';
   }
 
