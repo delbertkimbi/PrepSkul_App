@@ -524,15 +524,15 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
           await navService.navigateToRoute(
             routeResult.route,
             arguments: routeResult.arguments,
-            replace: true,
+            clearStack: true,
           );
         } else {
           if (userRole == 'tutor') {
-            Navigator.pushReplacementNamed(context, '/tutor-nav');
+            NavigationService.resetStackNamed(context, '/tutor-nav');
           } else if (userRole == 'parent') {
-            Navigator.pushReplacementNamed(context, '/parent-nav');
+            NavigationService.resetStackNamed(context, '/parent-nav');
           } else {
-            Navigator.pushReplacementNamed(context, '/student-nav');
+            NavigationService.resetStackNamed(context, '/student-nav');
           }
         }
       }

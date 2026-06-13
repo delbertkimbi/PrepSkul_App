@@ -6,6 +6,8 @@ import 'package:prepskul/core/config/app_config.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../../../core/navigation/main_navigation_scope.dart';
+import '../../../core/navigation/student_tab_index.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/utils/status_bar_utils.dart';
 import '../../../core/utils/responsive_helper.dart';
@@ -52,6 +54,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   String _userName = '';
   bool _isLoading = true;
   bool _isFirstVisit = false;
+  bool _firstVisitRedirectScheduled = false;
   Map<String, dynamic>? _surveyData;
   String _userType = 'student';
   bool _surveyCompleted = false;
@@ -684,15 +687,18 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         });
       }
 
-      if (_isFirstVisit && mounted) {
+      if (_isFirstVisit && mounted && !_firstVisitRedirectScheduled) {
+        _firstVisitRedirectScheduled = true;
+        _isFirstVisit = false;
         await prefs.setBool('has_visited_home', true);
         Future.delayed(const Duration(milliseconds: 800), () {
           if (!mounted) return;
-          Navigator.pushReplacementNamed(
-            context,
-            _userType == 'parent' ? '/parent-nav' : '/student-nav',
-            arguments: {'initialTab': 1},
-          );
+          final nav = MainNavigationScope.maybeOf(context);
+          // Only nudge new users who are still on Home — never override SkulMate
+          // or another tab they already chose.
+          if (nav != null && nav.selectedIndex == StudentTabIndex.home) {
+            nav.switchTab(StudentTabIndex.findTutors);
+          }
         });
       }
     } catch (e) {
@@ -832,10 +838,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: Colors.grey[50],
+        backgroundColor: Colors.grey[20],
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          backgroundColor: Colors.white,
+        backgroundColor: Colors.white,
           elevation: 0,
           surfaceTintColor: Colors.white,
           centerTitle: false,
@@ -861,7 +867,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             ),
           ],
         ),
-        body: RefreshIndicator(
+      body: RefreshIndicator(
         onRefresh: () async {
           await _loadUserData();
           if (mounted) {
@@ -931,15 +937,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                   _statsReady
                       ? Row(
-                          children: [
-                            Expanded(
-                              child: _buildStatCard(
-                                icon: PhosphorIcons.graduationCap(),
-                                label: AppLocalizations.of(context)!.activeTutors,
-                                value: '$_activeTutorsCount',
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          icon: PhosphorIcons.graduationCap(),
+                          label: AppLocalizations.of(context)!.activeTutors,
+                          value: '$_activeTutorsCount',
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
                             SizedBox(
                               width: ResponsiveHelper.responsiveSpacing(
                                 context,
@@ -948,15 +954,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 desktop: 20,
                               ),
                             ),
-                            Expanded(
-                              child: _buildStatCard(
-                                icon: PhosphorIcons.calendar(),
-                                label: AppLocalizations.of(context)!.sessions,
-                                value: '$_allTimeSessionsCount',
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                          ],
+                      Expanded(
+                        child: _buildStatCard(
+                          icon: PhosphorIcons.calendar(),
+                          label: AppLocalizations.of(context)!.sessions,
+                          value: '$_allTimeSessionsCount',
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
                         )
                       : _buildStatsShimmer(),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 24, tablet: 28, desktop: 32)),
@@ -1128,11 +1134,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   void _switchStudentTab(int index) {
-    Navigator.pushReplacementNamed(
-      context,
-      _userType == 'parent' ? '/parent-nav' : '/student-nav',
-      arguments: {'initialTab': index},
-    );
+    MainNavigationScope.of(context).switchTab(index);
   }
 
   Widget _buildSectionTitle(String title) {

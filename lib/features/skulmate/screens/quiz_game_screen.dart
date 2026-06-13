@@ -24,8 +24,9 @@ import '../widgets/game_standard_widgets.dart';
 import '../widgets/game_settings_sheet.dart';
 import '../widgets/skulmate_companion_banner.dart';
 import '../services/daily_challenge_service.dart';
+import '../services/game_progress_service.dart';
+import '../utils/skulmate_navigation.dart';
 import 'game_results_screen.dart';
-import 'game_library_screen.dart';
 
 /// Quiz game screen with multiple choice questions
 class QuizGameScreen extends StatefulWidget {
@@ -34,12 +35,14 @@ class QuizGameScreen extends StatefulWidget {
 
   /// When true, back/exit goes to game library (dashboard) instead of upload.
   final bool fromGenerationFlow;
+  final GameProgress? resumeFrom;
 
   const QuizGameScreen({
     Key? key,
     required this.game,
     this.isDailyChallenge = false,
     this.fromGenerationFlow = false,
+    this.resumeFrom,
   }) : super(key: key);
 
   @override
@@ -75,6 +78,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   Timer? _mascotReactionTimer;
 
   bool _hasShownRules = false;
+  bool _gameCompleted = false;
 
   /// When true, show correct answer + explanation and "Next" instead of auto-advancing.
   bool _showWrongAnswerFeedback = false;
@@ -101,6 +105,12 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   void initState() {
     super.initState();
     _questions = _buildQuestionSet(widget.game.items);
+    if (widget.resumeFrom != null) {
+      _currentQuestionIndex = widget.resumeFrom!.currentIndex
+          .clamp(0, _questions.length > 0 ? _questions.length - 1 : 0);
+      _score = widget.resumeFrom!.score;
+      _hasShownRules = true;
+    }
     _startTime = DateTime.now();
     _soundService.initialize();
     _ttsService.initialize();
@@ -162,11 +172,25 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     await _soundService.stopMusic(force: true);
   }
 
+  Future<void> _persistProgress() async {
+    if (_gameCompleted || _questions.isEmpty) return;
+    await GameProgressService.saveProgress(
+      GameProgress(
+        gameId: widget.game.id,
+        gameType: widget.game.gameType,
+        currentIndex: _currentQuestionIndex,
+        score: _score,
+        savedAt: DateTime.now(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _mascotReactionTimer?.cancel();
     _countdownTimer?.cancel();
     _fillBlankController.dispose();
+    unawaited(_persistProgress());
     unawaited(_stopVoiceAndMusic());
     _confettiController.dispose();
     _ttsService.resetSpeechRate();
@@ -625,6 +649,8 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   }
 
   Future<void> _finishGame() async {
+    _gameCompleted = true;
+    await GameProgressService.clearProgress(widget.game.id);
     final timeTaken = DateTime.now().difference(_startTime!).inSeconds;
     final totalQuestions = _questions.length;
     final isPerfectScore = _score == totalQuestions;
@@ -652,6 +678,24 @@ class _QuizGameScreenState extends State<QuizGameScreen>
         ),
       );
     }
+
+    unawaited(
+      SkulMateService.saveGameSession(
+        gameId: widget.game.id,
+        score: _score,
+        totalQuestions: totalQuestions,
+        correctAnswers: _score,
+        timeTakenSeconds: timeTaken,
+        answers: {
+          'breakdown': _questionBreakdown
+              .map((q) => {
+                    'question': q.question,
+                    'isCorrect': q.isCorrect,
+                  })
+              .toList(),
+        },
+      ).catchError((_) {}),
+    );
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -936,23 +980,19 @@ class _QuizGameScreenState extends State<QuizGameScreen>
           Scaffold(
             appBar: SkulMateGameAppBar(
               title: widget.game.title,
-              leading: widget.fromGenerationFlow
-                  ? IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () async {
-                        await _stopVoiceAndMusic();
-                        if (!context.mounted) return;
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                const GameLibraryScreen(initialTab: 1),
-                          ),
-                          (route) => false,
-                        );
-                      },
-                    )
-                  : null,
+              leading: SkulMateNavigation.gameBackButton(
+                context,
+                onPressed: () async {
+                  await _stopVoiceAndMusic();
+                  await _persistProgress();
+                  if (!context.mounted) return;
+                  if (widget.fromGenerationFlow) {
+                    SkulMateNavigation.exitToSkulMateHome(context);
+                  } else {
+                    SkulMateNavigation.popGame(context);
+                  }
+                },
+              ),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 4, left: 0),
@@ -1141,16 +1181,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                           Expanded(
                                             child: ElevatedButton(
                                               onPressed: () {
-                                                Navigator.pushAndRemoveUntil(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        const GameLibraryScreen(
-                                                          initialTab: 1,
-                                                        ),
-                                                  ),
-                                                  (route) => false,
-                                                );
+                                                SkulMateNavigation.exitToSkulMateHome(context);
                                               },
                                               style: ElevatedButton.styleFrom(
                                                 backgroundColor: AppTheme.primaryColor,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/navigation/navigation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Survey Intro Screen
@@ -85,11 +86,11 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
     if (mounted) {
       // Navigate to appropriate home screen
       if (widget.userType == 'tutor') {
-        Navigator.pushReplacementNamed(context, '/tutor-nav');
+        NavigationService.resetStackNamed(context, '/tutor-nav');
       } else if (widget.userType == 'parent') {
-        Navigator.pushReplacementNamed(context, '/parent-nav');
+        NavigationService.resetStackNamed(context, '/parent-nav');
       } else {
-        Navigator.pushReplacementNamed(context, '/student-nav');
+        NavigationService.resetStackNamed(context, '/student-nav');
       }
     }
   }

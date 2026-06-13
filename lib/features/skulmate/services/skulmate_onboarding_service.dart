@@ -61,16 +61,15 @@ class SkulMateOnboardingService {
   /// Returns false if user already has games (skip onboarding)
   static Future<bool> shouldShowOnboarding() async {
     try {
-      // If already completed, don't show
       if (await hasCompletedOnboarding()) {
         return false;
       }
 
-      // If user has games, skip onboarding
-      final result = await SkulMateService.getGamesPaginated(limit: 1);
+      final result = await SkulMateService.getGamesPaginated(limit: 1).timeout(
+        const Duration(seconds: 2),
+      );
       final games = result['games'] as List;
       if (games.isNotEmpty) {
-        // User has games, mark onboarding as complete automatically
         await markOnboardingComplete();
         return false;
       }
@@ -78,8 +77,8 @@ class SkulMateOnboardingService {
       return true;
     } catch (e) {
       LogService.error('Error checking if should show onboarding: $e');
-      // On error, show onboarding to be safe
-      return true;
+      // Prefer opening SkulMate over blocking on slow/offline networks.
+      return false;
     }
   }
 }

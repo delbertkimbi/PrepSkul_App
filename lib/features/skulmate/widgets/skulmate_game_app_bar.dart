@@ -30,7 +30,13 @@ class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget 
       foregroundColor: Colors.white,
       iconTheme: const IconThemeData(color: Colors.white),
       automaticallyImplyLeading: false,
-      leading: leading,
+      leading: leading ??
+          (Navigator.canPop(context)
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                )
+              : null),
       centerTitle: centerTitle,
       actionsIconTheme: const IconThemeData(size: 20, color: Colors.white),
       titleTextStyle: GoogleFonts.poppins(

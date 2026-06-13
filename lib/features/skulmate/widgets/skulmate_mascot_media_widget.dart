@@ -22,6 +22,9 @@ class SkulMateMascotMediaWidget extends StatefulWidget {
   /// When true, skips video and shows the static mascot image only (e.g. tiny HUD chips).
   final bool preferStaticImage;
 
+  /// When false, mascot floats with no card frame (home hero).
+  final bool showFrame;
+
   /// Frame fill behind mascot art (matches quiz / companion card greys, not stark white).
   final Color frameBackgroundColor;
 
@@ -38,6 +41,7 @@ class SkulMateMascotMediaWidget extends StatefulWidget {
     this.useLandscapeFrame = false,
     this.videoVolume = 0.0,
     this.preferStaticImage = false,
+    this.showFrame = true,
     this.frameBackgroundColor = AppTheme.neutral100,
   });
 
@@ -273,13 +277,15 @@ class _SkulMateMascotMediaWidgetState extends State<SkulMateMascotMediaWidget>
   Widget build(BuildContext context) {
     final imagePath = _imagePaths[widget.state]!;
 
+    final fillStill = widget.showFrame && !widget.preferStaticImage;
+
     final Widget inner = widget.preferStaticImage
         ? _buildImage(imagePath, fillFrame: false)
         : Stack(
             alignment: Alignment.center,
             fit: StackFit.expand,
             children: [
-              _buildImage(imagePath, fillFrame: true),
+              _buildImage(imagePath, fillFrame: fillStill),
               if (_videoReady && _controller != null)
                 Positioned.fill(
                   child: FadeTransition(
@@ -303,6 +309,16 @@ class _SkulMateMascotMediaWidgetState extends State<SkulMateMascotMediaWidget>
                 ),
             ],
           );
+
+    if (!widget.showFrame) {
+      final bare = SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: inner,
+      );
+      if (!widget.useLandscapeFrame) return bare;
+      return AspectRatio(aspectRatio: 1, child: bare);
+    }
 
     final frame = Container(
       width: widget.width,

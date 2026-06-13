@@ -100,10 +100,12 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
   @override
   void initState() {
     super.initState();
+    const tabCount = 3;
+    final maxTab = tabCount - 1;
     _tabController = TabController(
-      length: 3,
+      length: tabCount,
       vsync: this,
-      initialIndex: widget.initialTab.clamp(0, 2),
+      initialIndex: widget.initialTab.clamp(0, maxTab),
     );
     _loadGames();
     _loadGameStats();
@@ -993,11 +995,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Tab 0: Sessions
           SessionSummariesTab(childId: widget.childId),
-          // Tab 1: My Games
           _buildMyGamesTab(),
-          // Tab 2: Upload
           _buildUploadTab(),
         ],
       ),

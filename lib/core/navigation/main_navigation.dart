@@ -14,7 +14,7 @@ import '../../features/tutor/screens/tutor_sessions_screen.dart';
 import '../../features/discovery/screens/find_tutors_screen.dart';
 import '../../features/booking/screens/my_requests_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
-import '../../features/skulmate/screens/game_library_screen.dart';
+import '../../features/skulmate/screens/skulmate_home_screen.dart';
 import '../../features/skulmate/screens/skulmate_onboarding_screen.dart';
 import '../../features/skulmate/services/skulmate_onboarding_service.dart';
 import '../../core/config/app_config.dart';
@@ -26,6 +26,7 @@ import '../utils/responsive_helper.dart';
 import '../../features/tutor/widgets/tutor_page_body.dart';
 import '../../features/tutor/widgets/tutor_navigation_shell.dart';
 import '../../features/sessions/services/live_session_overlay_controller.dart';
+import 'main_navigation_scope.dart';
 
 class MainNavigation extends StatefulWidget {
   final String userRole;
@@ -41,6 +42,7 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation>
     with WidgetsBindingObserver {
   late int _selectedIndex;
+  bool _initialTabApplied = false;
 
   void _stopGameMusicIfOnHomeTab() {
     if (_selectedIndex == 0) {
@@ -49,24 +51,38 @@ class _MainNavigationState extends State<MainNavigation>
   }
 
   int get _skulMateTabIndex => AppConfig.enableSkulMate ? 2 : -1;
+  bool _skulMateOnboardingCheckInFlight = false;
 
   Future<void> _handleStudentTabTap(int index) async {
-    if (index == _skulMateTabIndex) {
-      final showOnboarding =
-          await SkulMateOnboardingService.shouldShowOnboarding();
-      if (showOnboarding && mounted) {
-        await Navigator.of(context).push<bool>(
-          MaterialPageRoute(
-            builder: (_) => const SkulMateOnboardingScreen(popWhenDone: true),
-          ),
-        );
-      }
+    // Respond on first tap — do not block on async onboarding/network checks.
+    if (index != _selectedIndex) {
+      safeSetState(() => _selectedIndex = index);
+      _stopGameMusicIfOnHomeTab();
     }
-    if (!mounted) return;
-    safeSetState(() {
-      _selectedIndex = index;
-    });
-    _stopGameMusicIfOnHomeTab();
+
+    if (index != _skulMateTabIndex ||
+        _skulMateOnboardingCheckInFlight ||
+        !mounted) {
+      return;
+    }
+
+    _skulMateOnboardingCheckInFlight = true;
+    try {
+      final showOnboarding =
+          await SkulMateOnboardingService.shouldShowOnboarding().timeout(
+                const Duration(seconds: 2),
+                onTimeout: () => false,
+              );
+      if (!mounted || !showOnboarding) return;
+
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => const SkulMateOnboardingScreen(popWhenDone: true),
+        ),
+      );
+    } finally {
+      _skulMateOnboardingCheckInFlight = false;
+    }
   }
 
   @override
@@ -101,32 +117,34 @@ class _MainNavigationState extends State<MainNavigation>
     _stopGameMusicIfOnHomeTab();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Now we can safely access inherited widgets like ModalRoute
-    // Try to get initialTab from route arguments first, then fall back to widget parameter
+  void _applyInitialTabOnce() {
+    if (_initialTabApplied) return;
+    _initialTabApplied = true;
+
     final routeArgs =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final tabFromArgs = routeArgs?['initialTab'] as int?;
+    final targetTab = tabFromArgs ?? widget.initialTab;
+    if (targetTab == null || targetTab < 0) return;
 
-    // Use route arguments if available, otherwise use widget parameter
-    final targetTab = tabFromArgs ?? widget.initialTab ?? 0;
-
-    // Only update tab if we have an explicit target from route args or widget parameter
-    // Don't update if both are null (which happens when modals open/close)
-    final hasExplicitTarget = tabFromArgs != null || widget.initialTab != null;
-
-    // Only update tab if we have a valid target tab AND it's different from current
-    // AND we have an explicit target (not just defaulting to 0)
-    if (targetTab != _selectedIndex && targetTab >= 0 && hasExplicitTarget) {
+    if (targetTab != _selectedIndex) {
       LogService.info(
-        '🔵 [MAIN_NAV] Setting tab index: $targetTab (from args: $tabFromArgs, from widget: ${widget.initialTab})',
+        '🔵 [MAIN_NAV] Initial tab: $targetTab (args: $tabFromArgs, widget: ${widget.initialTab})',
       );
-      safeSetState(() {
-        _selectedIndex = targetTab;
-      });
+      safeSetState(() => _selectedIndex = targetTab);
     }
+  }
+
+  void _switchTab(int index) {
+    if (index < 0 || index == _selectedIndex) return;
+    safeSetState(() => _selectedIndex = index);
+    _stopGameMusicIfOnHomeTab();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _applyInitialTabOnce();
   }
 
   List<Widget> _wrappedTutorTabs() {
@@ -181,7 +199,7 @@ class _MainNavigationState extends State<MainNavigation>
     ];
 
     if (AppConfig.enableSkulMate) {
-      screens.add(const GameLibraryScreen(initialTab: 1));
+      screens.add(const SkulMateHomeScreen());
     }
 
     screens.addAll([
@@ -301,29 +319,41 @@ class _MainNavigationState extends State<MainNavigation>
       );
     }
 
-    final studentScaffold = Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      body: tabBody,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _handleStudentTabTap,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppTheme.primaryColor,
-        unselectedItemColor: AppTheme.textMedium,
-        selectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
+    final studentScaffold = AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: AppTheme.softBackground,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: AppTheme.softBackground,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: AppTheme.softBackground,
+        body: tabBody,
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _handleStudentTabTap,
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: AppTheme.primaryColor,
+          unselectedItemColor: AppTheme.textMedium,
+          selectedLabelStyle: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+          unselectedLabelStyle: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w400,
+          ),
+          iconSize: 22,
+          items: items,
         ),
-        unselectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 11,
-          fontWeight: FontWeight.w400,
-        ),
-        iconSize: 22,
-        items: items,
       ),
     );
     // When a detail screen is on top, the system pops that route; this PopScope only applies when MainNavigation is the top route.
-    return PopScope(
+    return MainNavigationScope(
+      selectedIndex: _selectedIndex,
+      switchTab: _switchTab,
+      child: PopScope(
       canPop: false,
       onPopInvoked: (didPop) async {
         if (didPop) return;
@@ -357,6 +387,7 @@ class _MainNavigationState extends State<MainNavigation>
         }
       },
       child: isTutor ? tutorScaffold() : studentScaffold,
+      ),
     );
   }
 }

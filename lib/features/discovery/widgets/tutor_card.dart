@@ -45,17 +45,16 @@ class TutorCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.softCard,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: Colors.grey[200]!,
+            color: AppTheme.softBorder,
             width: 1,
           ),
-          // Very soft shadow just to lift from background
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 6,
+              color: AppTheme.textDark.withValues(alpha: 0.04),
+              blurRadius: 8,
               offset: const Offset(0, 2),
               spreadRadius: 0,
             ),

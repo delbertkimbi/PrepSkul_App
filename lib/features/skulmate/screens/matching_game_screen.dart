@@ -15,13 +15,14 @@ import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/game_rules_service.dart';
 import '../services/character_selection_service.dart';
+import '../services/game_progress_service.dart';
 import '../widgets/game_settings_sheet.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_companion_banner.dart';
 import '../widgets/game_standard_widgets.dart';
+import '../utils/skulmate_navigation.dart';
 import 'game_results_screen.dart';
-import 'game_library_screen.dart';
 
 class CardData {
   final int id;
@@ -40,8 +41,13 @@ class CardData {
 /// Matching pairs game screen
 class MatchingGameScreen extends StatefulWidget {
   final GameModel game;
+  final GameProgress? resumeFrom;
 
-  const MatchingGameScreen({Key? key, required this.game}) : super(key: key);
+  const MatchingGameScreen({
+    Key? key,
+    required this.game,
+    this.resumeFrom,
+  }) : super(key: key);
 
   @override
   State<MatchingGameScreen> createState() => _MatchingGameScreenState();
@@ -91,6 +97,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   static const int _roundCountdownSeconds = 50;
   int _roundRemainingSeconds = _roundCountdownSeconds;
   Timer? _roundTimer;
+  bool _gameCompleted = false;
 
   @override
   void initState() {
@@ -109,6 +116,16 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
     );
     _initializeItems();
+    if (widget.resumeFrom != null) {
+      _completedPairs = widget.resumeFrom!.currentIndex
+          .clamp(0, _allPairs.length);
+      _score = widget.resumeFrom!.score;
+      _currentRoundStart =
+          (_completedPairs ~/ _maxPairsPerScreen) * _maxPairsPerScreen;
+      if (_currentRoundStart < _allPairs.length) {
+        _loadCurrentRound();
+      }
+    }
     _loadCharacter();
     _loadStats();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -635,12 +652,26 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     );
   }
 
+  Future<void> _persistProgress() async {
+    if (_gameCompleted) return;
+    await GameProgressService.saveProgress(
+      GameProgress(
+        gameId: widget.game.id,
+        gameType: widget.game.gameType,
+        currentIndex: _completedPairs,
+        score: _score,
+        savedAt: DateTime.now(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _matchFlyerTimer?.cancel();
     _mascotReactionTimer?.cancel();
     _roundTimer?.cancel();
+    unawaited(_persistProgress());
     unawaited(_ttsService.stop());
     unawaited(_soundService.stopMusic(force: true));
     for (final controller in _flipControllers.values) {
@@ -1014,6 +1045,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   }
 
   Future<void> _finishGame() async {
+    _gameCompleted = true;
+    await GameProgressService.clearProgress(widget.game.id);
     final endTime = DateTime.now();
     final timeTaken = _startTime != null
         ? endTime.difference(_startTime!).inSeconds
@@ -1111,13 +1144,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     if (quit == true && mounted) {
       await _ttsService.stop();
       await _soundService.stopMusic(force: true);
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (context) => GameLibraryScreen(childId: widget.game.childId),
-        ),
-        (route) => false,
-      );
+      await _persistProgress();
+      SkulMateNavigation.exitToSkulMateHome(context);
     }
   }
 

@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -34,7 +35,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<Friendship> _friendships = [];
   GameStats? _myStats;
   dynamic _myCharacter;
+  String? _myAvatarUrl;
+  String? _myDisplayName;
   bool _isLoading = true;
+  bool _friendsLoaded = false;
+  bool _loadingFriends = false;
   int _scopeIndex = 0; // 0 = Global, 1 = Friends
   final GamesServicesController _gamesServices = GamesServicesController();
   bool _platformAvailable = false;
@@ -59,24 +64,39 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Future<void> _loadAll() async {
     try {
       safeSetState(() => _isLoading = true);
-      final myId = SupabaseService.client.auth.currentUser?.id;
-      final board = await SocialService.getLeaderboard(
-        period: LeaderboardPeriod.allTime,
-        limit: 500,
-      );
-      final friends = myId != null
-          ? await SocialService.getFriends(includePending: false)
-          : <Friendship>[];
-      final stats = await GameStatsService.getStats();
-      final character = await CharacterSelectionService.getSelectedCharacter();
 
+      final myId = _myUserId;
+      final profileFuture = myId != null
+          ? SupabaseService.client
+              .from('profiles')
+              .select('full_name, avatar_url')
+              .eq('id', myId)
+              .maybeSingle()
+          : Future<Map<String, dynamic>?>.value(null);
+
+      final results = await Future.wait<dynamic>([
+        SocialService.getLeaderboard(
+          period: LeaderboardPeriod.allTime,
+          limit: 100,
+        ),
+        GameStatsService.getStats(),
+        CharacterSelectionService.getSelectedCharacter(),
+        profileFuture,
+      ]);
+
+      final profile = results[3] as Map<String, dynamic>?;
       safeSetState(() {
-        _allTimeGlobal = board;
-        _friendships = friends;
-        _myStats = stats;
-        _myCharacter = character;
+        _allTimeGlobal = results[0] as List<LeaderboardEntry>;
+        _myStats = results[1] as GameStats?;
+        _myCharacter = results[2];
+        _myDisplayName = profile?['full_name'] as String?;
+        _myAvatarUrl = profile?['avatar_url'] as String?;
         _isLoading = false;
       });
+
+      if (_scopeIndex == 1) {
+        _loadFriends();
+      }
     } catch (e) {
       LogService.error('Error loading leaderboard: $e');
       safeSetState(() => _isLoading = false);
@@ -89,6 +109,35 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _loadFriends() async {
+    if (_friendsLoaded || _loadingFriends) return;
+    final myId = _myUserId;
+    if (myId == null) return;
+
+    safeSetState(() => _loadingFriends = true);
+    try {
+      final friends =
+          await SocialService.getFriends(includePending: false);
+      if (mounted) {
+        safeSetState(() {
+          _friendships = friends;
+          _friendsLoaded = true;
+          _loadingFriends = false;
+        });
+      }
+    } catch (e) {
+      LogService.error('Error loading friends for leaderboard: $e');
+      if (mounted) safeSetState(() => _loadingFriends = false);
+    }
+  }
+
+  void _onScopeChanged(int index) {
+    safeSetState(() => _scopeIndex = index);
+    if (index == 1 && !_friendsLoaded) {
+      _loadFriends();
     }
   }
 
@@ -349,20 +398,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            gradient: AppTheme.primaryGradient,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primaryColor.withValues(alpha: 0.25),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+          decoration: SkulMateSurfaceStyles.homeCard(radius: 12, compact: true),
           child: PhosphorIcon(
             PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-            color: Colors.white,
+            color: AppTheme.primaryColor,
             size: 22,
           ),
         ),
@@ -428,107 +467,95 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-      decoration: SkulMateSurfaceStyles.heroGradient(radius: 22),
-      child: Stack(
+      decoration: SkulMateSurfaceStyles.homeCard(radius: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Positioned(
-            right: -20,
-            top: -20,
-            child: CircleAvatar(
-              radius: 56,
-              backgroundColor: Colors.white.withValues(alpha: 0.06),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(Icons.rocket_launch_rounded,
-                      color: AppTheme.softYellowLight, size: 18),
-                  const SizedBox(width: 6),
-                  Text(
-                    'ALL-TIME',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                      color: Colors.white.withValues(alpha: 0.9),
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '$_daysLeftInWeek ${_daysLeftInWeek == 1 ? 'day' : 'days'} left',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
+              Icon(Icons.emoji_events_rounded,
+                  color: AppTheme.primaryColor, size: 18),
+              const SizedBox(width: 6),
               Text(
-                'Climb the all-time board',
+                'ALL-TIME',
                 style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  height: 1.2,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: AppTheme.primaryColor,
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Play SkulMate games to earn XP. Rankings are all-time.',
-                style: GoogleFonts.poppins(
-                  fontSize: 12.5,
-                  height: 1.35,
-                  color: Colors.white.withValues(alpha: 0.88),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Text(
-                    '$games / $_allTimeGamesGoal games',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${(progress * 100).round()}%',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.softYellowLight,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 10,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                    AppTheme.accentGreen,
+                child: Text(
+                  '$_daysLeftInWeek ${_daysLeftInWeek == 1 ? 'day' : 'days'} left',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
                   ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Climb the all-time board',
+            style: GoogleFonts.poppins(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.textDark,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Play SkulMate games to earn XP. Rankings are all-time.',
+            style: GoogleFonts.poppins(
+              fontSize: 12.5,
+              height: 1.35,
+              color: AppTheme.textMedium,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                '$games / $_allTimeGamesGoal games',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${(progress * 100).round()}%',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: AppTheme.neutral100,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                AppTheme.primaryColor,
+              ),
+            ),
           ),
         ],
       ),
@@ -555,14 +582,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             child: _ScopeChip(
               label: 'Global',
               selected: _scopeIndex == 0,
-              onTap: () => safeSetState(() => _scopeIndex = 0),
+              onTap: () => _onScopeChanged(0),
             ),
           ),
           Expanded(
             child: _ScopeChip(
               label: 'Friends',
               selected: _scopeIndex == 1,
-              onTap: () => safeSetState(() => _scopeIndex = 1),
+              onTap: () => _onScopeChanged(1),
             ),
           ),
         ],
@@ -599,37 +626,44 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     final first = e.first;
     final third = e.length > 2 ? e[2] : null;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Expanded(
-          child: _podiumSlot(
-            rank: 2,
-            entry: second,
-            color: AppTheme.skyBlue,
-            height: 132,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+      decoration: SkulMateSurfaceStyles.homeCard(radius: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: _podiumSlot(
+              rank: 2,
+              entry: second,
+              color: const Color(0xFF90A4AE),
+              medalColor: const Color(0xFFB0BEC5),
+              height: 72,
+            ),
           ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: _podiumSlot(
-            rank: 1,
-            entry: first,
-            color: AppTheme.softYellow,
-            height: 152,
-            highlight: true,
+          const SizedBox(width: 8),
+          Expanded(
+            child: _podiumSlot(
+              rank: 1,
+              entry: first,
+              color: AppTheme.softYellow,
+              medalColor: const Color(0xFFFFD54F),
+              height: 88,
+              highlight: true,
+            ),
           ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: _podiumSlot(
-            rank: 3,
-            entry: third,
-            color: AppTheme.accentOrange,
-            height: 118,
+          const SizedBox(width: 8),
+          Expanded(
+            child: _podiumSlot(
+              rank: 3,
+              entry: third,
+              color: AppTheme.accentOrange,
+              medalColor: const Color(0xFFFFAB91),
+              height: 60,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -637,121 +671,160 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     required int rank,
     required LeaderboardEntry? entry,
     required Color color,
+    required Color medalColor,
     required double height,
     bool highlight = false,
   }) {
     if (entry == null) {
-      return SizedBox(
-        height: height + 56,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.softBorder, width: 2),
-                color: AppTheme.neutral100,
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Container(
+            width: highlight ? 48 : 42,
+            height: highlight ? 48 : 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppTheme.softBorder,
+                width: 1.5,
               ),
-              child: Icon(Icons.more_horiz, color: AppTheme.textLight, size: 20),
+              color: AppTheme.neutral100,
             ),
-            const SizedBox(height: 8),
-            Text(
-              '—',
+            child: Icon(
+              Icons.person_outline_rounded,
+              color: AppTheme.textLight,
+              size: highlight ? 22 : 20,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Open',
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textLight,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            height: height,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppTheme.neutral100,
+                  AppTheme.neutral100.withValues(alpha: 0.5),
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '${rank}${_suffix(rank)}',
               style: GoogleFonts.poppins(
-                fontSize: 12,
+                fontSize: highlight ? 16 : 14,
+                fontWeight: FontWeight.w800,
                 color: AppTheme.textLight,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
     final me = entry.userId == _myUserId;
+    final avatarSize = highlight ? 52.0 : 44.0;
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (highlight)
-          Icon(Icons.star_rounded, color: color, size: 22)
-        else
-          const SizedBox(height: 22),
-        SizedBox(
+        Container(
+          padding: const EdgeInsets.all(2.5),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [medalColor, color],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: highlight ? 0.35 : 0.22),
+                blurRadius: highlight ? 12 : 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: _avatarForEntry(
+            entry,
+            me,
+            size: avatarSize,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _displayName(entry),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            fontSize: highlight ? 12.5 : 11.5,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textDark,
+          ),
+        ),
+        Text(
+          '${_formatXp(entry.totalXP)} XP',
+          style: GoogleFonts.poppins(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+        if (entry.gamesPlayed > 0) ...[
+          Text(
+            '${entry.gamesPlayed} games',
+            style: GoogleFonts.poppins(
+              fontSize: 9.5,
+              color: AppTheme.textMedium,
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Container(
           height: height,
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [
-                        color,
-                        color.withValues(alpha: 0.65),
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.45),
-                        blurRadius: highlight ? 14 : 8,
-                        spreadRadius: highlight ? 1 : 0,
-                      ),
-                    ],
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    child: _avatarForEntry(entry, me, size: highlight ? 52 : 46),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.neutral100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '$rank${_suffix(rank)}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.textMedium,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  (entry.userName ?? 'Player').length > 12
-                      ? '${(entry.userName ?? 'Player').substring(0, 10)}…'
-                      : (entry.userName ?? 'Player'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textDark,
-                  ),
-                ),
-                Text(
-                  '${_formatXp(entry.totalXP)} XP',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                color.withValues(alpha: highlight ? 0.55 : 0.45),
+                color.withValues(alpha: highlight ? 0.85 : 0.75),
               ],
             ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.25),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (highlight)
+                Icon(Icons.emoji_events_rounded, color: Colors.white, size: 22),
+              Text(
+                '${rank}${_suffix(rank)}',
+                style: GoogleFonts.poppins(
+                  fontSize: highlight ? 18 : 15,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -762,50 +835,27 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     final me = _myUserId;
     if (me == null) return const SizedBox.shrink();
     final rank = _myRankInScope;
-    final weeklyXp = _myAllTimeEntry?.totalXP ?? 0;
-    final label = rank != null
-        ? 'Your rank: #$rank'
-        : 'Your rank: —';
-    final scope = _scopeIndex == 0 ? 'Global · all-time' : 'Friends · all-time';
+    final totalXp = _myAllTimeEntry?.totalXP ?? _myStats?.totalXP ?? 0;
+    final games = _myAllTimeEntry?.gamesPlayed ?? 0;
+    final scope = _scopeIndex == 0 ? 'Global' : 'Friends';
+    final rankLabel = rank != null ? '#$rank' : 'NR';
+    final rankTitle =
+        rank != null ? 'Your rank: #$rank' : 'Not ranked yet';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.softBorder),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.textDark.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      decoration: SkulMateSurfaceStyles.homeCard(radius: 16),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              rank != null ? '#$rank' : '—',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.primaryColor,
-              ),
-            ),
-          ),
+          _buildMyAvatar(size: 46),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  label,
+                  rankTitle,
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -813,7 +863,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   ),
                 ),
                 Text(
-                  '$scope · ${_formatXp(weeklyXp)} XP',
+                  '$scope · all-time · ${_formatXp(totalXp)} XP'
+                  '${games > 0 ? ' · $games games' : ''}',
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     color: AppTheme.textMedium,
@@ -822,9 +873,44 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               ],
             ),
           ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              rankLabel,
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  String _displayName(LeaderboardEntry entry) {
+    if (entry.userId == _myUserId) {
+      final mine = _myDisplayName?.trim();
+      if (mine != null && mine.isNotEmpty) return mine;
+    }
+    final name = entry.userName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return 'Player';
+  }
+
+  String _rankRowSubtitle(LeaderboardEntry entry) {
+    final parts = <String>[
+      if (entry.userLevel != null && entry.userLevel! > 0)
+        'Level ${entry.userLevel}',
+      if (entry.gamesPlayed > 0) '${entry.gamesPlayed} games',
+      if (entry.perfectScores > 0) '${entry.perfectScores} perfect',
+    ];
+    return parts.isEmpty ? 'All-time player' : parts.join(' · ');
   }
 
   String _suffix(int r) {
@@ -870,7 +956,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Widget _buildRankRow({required int rank, required LeaderboardEntry entry}) {
     final isMe = entry.userId == _myUserId;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -880,13 +966,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               : AppTheme.softBorder,
           width: isMe ? 1.5 : 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.textDark.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow: SkulMateSurfaceStyles.homeCardShadow(compact: true),
       ),
       child: Row(
         children: [
@@ -897,11 +977,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               style: GoogleFonts.poppins(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
-                color: AppTheme.textMedium,
+                color: rank <= 10
+                    ? AppTheme.primaryColor
+                    : AppTheme.textMedium,
               ),
             ),
           ),
-          _avatarForEntry(entry, isMe, size: 44),
+          _avatarForEntry(entry, isMe, size: 42),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -911,11 +993,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   children: [
                     Flexible(
                       child: Text(
-                        entry.userName ?? 'Player',
+                        _displayName(entry),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.poppins(
-                          fontSize: 15,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.textDark,
                         ),
@@ -942,11 +1024,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     ],
                   ],
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  'XP',
+                  _rankRowSubtitle(entry),
                   style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    color: AppTheme.textLight,
+                    fontSize: 11,
+                    color: AppTheme.textMedium,
                   ),
                 ),
               ],
@@ -958,9 +1041,17 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               Text(
                 _formatXp(entry.totalXP),
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.primaryColor,
+                ),
+              ),
+              Text(
+                'XP',
+                style: GoogleFonts.poppins(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textLight,
                 ),
               ),
             ],
@@ -970,15 +1061,44 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
+  Widget _buildMyAvatar({required double size}) {
+    final name = _myDisplayName ?? 'You';
+    final avatarUrl = _myAvatarUrl;
+    if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
+      return _profilePhotoAvatar(avatarUrl, name, size: size);
+    }
+    if (_myCharacter != null) {
+      return ClipOval(
+        child: Container(
+          width: size,
+          height: size,
+          color: AppTheme.primaryColor.withValues(alpha: 0.08),
+          child: Center(
+            child: SkulMateCharacterWidget(
+              character: _myCharacter,
+              size: size * 0.88,
+              animated: false,
+              showName: false,
+            ),
+          ),
+        ),
+      );
+    }
+    return _initialAvatar(name, size: size);
+  }
+
   Widget _avatarForEntry(LeaderboardEntry entry, bool isMe, {required double size}) {
+    final name = _displayName(entry);
+    final avatarUrl = isMe ? _myAvatarUrl : entry.userAvatarUrl;
+    if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
+      return _profilePhotoAvatar(avatarUrl, name, size: size);
+    }
+
     final character = isMe
         ? _myCharacter
         : (entry.userCharacterId != null
             ? SkulMateCharacters.getById(entry.userCharacterId!)
             : null);
-    final name = entry.userName ?? 'Player';
-    final initial =
-        name.trim().isEmpty ? '?' : name.trim().toUpperCase().substring(0, 1);
 
     if (character != null) {
       return ClipOval(
@@ -997,6 +1117,49 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
       );
     }
+    return _initialAvatar(name, size: size);
+  }
+
+  Widget _profilePhotoAvatar(String url, String name, {required double size}) {
+    final isNetwork = url.startsWith('http://') ||
+        url.startsWith('https://') ||
+        url.startsWith('//');
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: AppTheme.softBorder.withValues(alpha: 0.8),
+          width: 1.5,
+        ),
+      ),
+      child: ClipOval(
+        child: isNetwork
+            ? CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.cover,
+                width: size,
+                height: size,
+                memCacheWidth: (size * 2).round(),
+                memCacheHeight: (size * 2).round(),
+                placeholder: (_, __) => _initialAvatar(name, size: size),
+                errorWidget: (_, __, ___) => _initialAvatar(name, size: size),
+              )
+            : Image.asset(
+                url,
+                fit: BoxFit.cover,
+                width: size,
+                height: size,
+                errorBuilder: (_, __, ___) => _initialAvatar(name, size: size),
+              ),
+      ),
+    );
+  }
+
+  Widget _initialAvatar(String name, {required double size}) {
+    final initial =
+        name.trim().isEmpty ? '?' : name.trim().toUpperCase().substring(0, 1);
     return CircleAvatar(
       radius: size / 2,
       backgroundColor: AppTheme.neutral200,

@@ -12,14 +12,20 @@ import '../widgets/drag_drop_question_widget.dart';
 import '../widgets/game_standard_widgets.dart';
 import '../widgets/skulmate_companion_banner.dart';
 import '../services/character_selection_service.dart';
+import '../services/game_progress_service.dart';
 import '../services/game_sound_service.dart';
 import 'game_results_screen.dart';
 
 /// Drag and drop game screen
 class DragDropGameScreen extends StatefulWidget {
   final GameModel game;
+  final GameProgress? resumeFrom;
 
-  const DragDropGameScreen({Key? key, required this.game}) : super(key: key);
+  const DragDropGameScreen({
+    Key? key,
+    required this.game,
+    this.resumeFrom,
+  }) : super(key: key);
 
   @override
   State<DragDropGameScreen> createState() => _DragDropGameScreenState();
@@ -35,6 +41,7 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
   final Map<String, int> _assignments = {};
   bool _showFeedback = false;
   dynamic _character;
+  bool _gameCompleted = false;
 
   @override
   void initState() {
@@ -46,6 +53,11 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
               (item.dropZones ?? []).isNotEmpty,
         )
         .toList();
+    if (widget.resumeFrom != null && _questions.isNotEmpty) {
+      _currentQuestionIndex = widget.resumeFrom!.currentIndex
+          .clamp(0, _questions.length - 1);
+      _score = widget.resumeFrom!.score;
+    }
     _startTime = DateTime.now();
     _soundService.initialize();
     unawaited(_soundService.playMusicForGame(widget.game.gameType));
@@ -66,8 +78,22 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
     if (mounted) setState(() => _character = character);
   }
 
+  Future<void> _persistProgress() async {
+    if (_gameCompleted || _questions.isEmpty) return;
+    await GameProgressService.saveProgress(
+      GameProgress(
+        gameId: widget.game.id,
+        gameType: widget.game.gameType,
+        currentIndex: _currentQuestionIndex,
+        score: _score,
+        savedAt: DateTime.now(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    unawaited(_persistProgress());
     unawaited(_soundService.stopMusic(force: true));
     super.dispose();
   }
@@ -129,6 +155,8 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
       });
       return;
     }
+    _gameCompleted = true;
+    unawaited(GameProgressService.clearProgress(widget.game.id));
     final duration = DateTime.now().difference(_startTime!).inSeconds;
     Navigator.pushReplacement(
       context,

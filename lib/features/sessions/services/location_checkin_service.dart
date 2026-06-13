@@ -136,28 +136,28 @@ class LocationCheckInService {
             speedAccuracy: 0,
           );
         } else {
-          try {
-            final locations = await locationFromAddress(sessionAddress);
-            if (locations.isNotEmpty) {
-              final location = locations.first;
-              sessionPosition = Position(
-                latitude: location.latitude,
-                longitude: location.longitude,
-                timestamp: DateTime.now(),
-                accuracy: 0,
-                altitude: 0,
-                altitudeAccuracy: 0,
-                heading: 0,
-                headingAccuracy: 0,
-                speed: 0,
-                speedAccuracy: 0,
-              );
-            } else {
-              LogService.warning('Geocoding returned no results for: $sessionAddress');
+        try {
+          final locations = await locationFromAddress(sessionAddress);
+          if (locations.isNotEmpty) {
+            final location = locations.first;
+            sessionPosition = Position(
+              latitude: location.latitude,
+              longitude: location.longitude,
+              timestamp: DateTime.now(),
+              accuracy: 0,
+              altitude: 0,
+              altitudeAccuracy: 0,
+              heading: 0,
+              headingAccuracy: 0,
+              speed: 0,
+              speedAccuracy: 0,
+            );
+          } else {
+            LogService.warning('Geocoding returned no results for: $sessionAddress');
               return false;
-            }
-          } catch (e) {
-            LogService.warning('Geocoding failed for address: $sessionAddress, error: $e');
+          }
+        } catch (e) {
+          LogService.warning('Geocoding failed for address: $sessionAddress, error: $e');
             return false;
           }
         }
@@ -242,18 +242,18 @@ class LocationCheckInService {
               resolved.lng,
             );
           } else if (sessionAddress.contains(',')) {
-            final parts = sessionAddress.split(',');
-            final lat = double.tryParse(parts[0].trim());
-            final lon = double.tryParse(parts[1].trim());
-            if (lat != null && lon != null) {
-              distance = calculateDistance(
-                currentPosition.latitude,
-                currentPosition.longitude,
-                lat,
-                lon,
-              );
-            }
+          final parts = sessionAddress.split(',');
+          final lat = double.tryParse(parts[0].trim());
+          final lon = double.tryParse(parts[1].trim());
+          if (lat != null && lon != null) {
+            distance = calculateDistance(
+              currentPosition.latitude,
+              currentPosition.longitude,
+              lat,
+              lon,
+            );
           }
+        }
         }
       } else if (verifyProximity && currentPosition == null && canBypassLocationVerify(userId)) {
         isVerified = true;

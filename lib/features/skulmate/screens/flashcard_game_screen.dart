@@ -15,6 +15,7 @@ import '../services/game_sound_service.dart';
 import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
+import '../services/game_progress_service.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/flashcard_help_sheet.dart';
@@ -25,8 +26,13 @@ import 'game_results_screen.dart';
 /// Flashcard game screen with flip animation
 class FlashcardGameScreen extends StatefulWidget {
   final GameModel game;
+  final GameProgress? resumeFrom;
 
-  const FlashcardGameScreen({Key? key, required this.game}) : super(key: key);
+  const FlashcardGameScreen({
+    Key? key,
+    required this.game,
+    this.resumeFrom,
+  }) : super(key: key);
 
   @override
   State<FlashcardGameScreen> createState() => _FlashcardGameScreenState();
@@ -55,6 +61,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   dynamic _character; // Will be SkulMateCharacter
   GameStats? _currentStats;
   bool _isTTSEnabled = true;
+  bool _gameCompleted = false;
 
   // Swipe mechanics
   double _dragPosition = 0;
@@ -68,6 +75,12 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.resumeFrom != null) {
+      final max = widget.game.items.length > 0 ? widget.game.items.length - 1 : 0;
+      _currentCardIndex =
+          widget.resumeFrom!.currentIndex.clamp(0, max);
+      _score = widget.resumeFrom!.score;
+    }
     _startTime = DateTime.now();
     _soundService.initialize();
     unawaited(_soundService.playMusicForGame(widget.game.gameType));
@@ -115,9 +128,23 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     _loadStats();
   }
 
+  Future<void> _persistProgress() async {
+    if (_gameCompleted) return;
+    await GameProgressService.saveProgress(
+      GameProgress(
+        gameId: widget.game.id,
+        gameType: widget.game.gameType,
+        currentIndex: _currentCardIndex,
+        score: _score,
+        savedAt: DateTime.now(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _flipController.dispose();
+    unawaited(_persistProgress());
     unawaited(_soundService.stopMusic(force: true));
     _ttsService.dispose();
     _progressController.dispose();
@@ -392,6 +419,8 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   }
 
   Future<void> _finishGame() async {
+    _gameCompleted = true;
+    await GameProgressService.clearProgress(widget.game.id);
     final endTime = DateTime.now();
     final timeTaken = _startTime != null
         ? endTime.difference(_startTime!).inSeconds

@@ -13,6 +13,7 @@ import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
+import '../services/game_progress_service.dart';
 import '../models/game_stats_model.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
@@ -22,9 +23,13 @@ import 'game_results_screen.dart';
 /// Puzzle Pieces game screen
 class PuzzlePiecesGameScreen extends StatefulWidget {
   final GameModel game;
+  final GameProgress? resumeFrom;
 
-  const PuzzlePiecesGameScreen({Key? key, required this.game})
-    : super(key: key);
+  const PuzzlePiecesGameScreen({
+    Key? key,
+    required this.game,
+    this.resumeFrom,
+  }) : super(key: key);
 
   @override
   State<PuzzlePiecesGameScreen> createState() => _PuzzlePiecesGameScreenState();
@@ -63,6 +68,7 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
   dynamic _character;
   GameStats? _currentStats;
   String? _selectedPieceId;
+  bool _gameCompleted = false;
 
   @override
   void initState() {
@@ -80,6 +86,14 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
       CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
     );
     _initializePieces();
+    if (widget.resumeFrom != null) {
+      _score = widget.resumeFrom!.score;
+      final placed = widget.resumeFrom!.currentIndex;
+      for (var i = 0; i < placed && i < _pieces.length; i++) {
+        _pieces[i].isPlaced = true;
+        _pieces[i].currentPosition = _pieces[i].correctPosition;
+      }
+    }
     _loadCharacter();
     _loadStats();
   }
@@ -195,6 +209,8 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
   }
 
   Future<void> _finishGame() async {
+    _gameCompleted = true;
+    await GameProgressService.clearProgress(widget.game.id);
     final endTime = DateTime.now();
     final timeTaken = _startTime != null
         ? endTime.difference(_startTime!).inSeconds
@@ -250,8 +266,23 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
     }
   }
 
+  Future<void> _persistProgress() async {
+    if (_gameCompleted) return;
+    final placed = _pieces.where((p) => p.isPlaced).length;
+    await GameProgressService.saveProgress(
+      GameProgress(
+        gameId: widget.game.id,
+        gameType: widget.game.gameType,
+        currentIndex: placed,
+        score: _score,
+        savedAt: DateTime.now(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    unawaited(_persistProgress());
     _progressController.dispose();
     _confettiController.dispose();
     super.dispose();

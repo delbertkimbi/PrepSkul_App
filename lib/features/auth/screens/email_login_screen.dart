@@ -413,10 +413,10 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         // Profile doesn't exist - user needs to complete signup
         // Redirect to profile setup instead of throwing error
         if (mounted) {
-          Navigator.pushReplacementNamed(
+          NavigationService.resetStackNamed(
             context,
             '/profile-setup',
-            arguments: {'userRole': 'learner'}, // Default to learner
+            arguments: {'userRole': 'learner'},
           );
         }
         return; // Exit early, don't throw error
@@ -458,21 +458,21 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           // Navigate to the pending deep link
           final navService = NavigationService();
           if (navService.isReady) {
-            await navService.navigateToRoute(pendingDeepLink, replace: true);
+            await navService.navigateToRoute(pendingDeepLink, clearStack: true);
           } else {
             // Queue the deep link for later processing
             navService.queueDeepLink(Uri.parse(pendingDeepLink));
             // Fallback to default navigation if deep link fails
             if (surveyCompleted) {
               if (userRole == 'tutor') {
-                Navigator.pushReplacementNamed(context, '/tutor-nav');
+                NavigationService.resetStackNamed(context, '/tutor-nav');
               } else if (userRole == 'parent') {
-                Navigator.pushReplacementNamed(context, '/parent-nav');
+                NavigationService.resetStackNamed(context, '/parent-nav');
               } else {
-                Navigator.pushReplacementNamed(context, '/student-nav');
+                NavigationService.resetStackNamed(context, '/student-nav');
               }
             } else {
-              Navigator.pushReplacementNamed(
+              NavigationService.resetStackNamed(
                 context,
                 '/profile-setup',
                 arguments: {'userRole': userRole},
@@ -484,17 +484,15 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
 
         // No pending deep link, use default navigation
         if (surveyCompleted) {
-          // Navigate to role-based dashboard
           if (userRole == 'tutor') {
-            Navigator.pushReplacementNamed(context, '/tutor-nav');
+            NavigationService.resetStackNamed(context, '/tutor-nav');
           } else if (userRole == 'parent') {
-            Navigator.pushReplacementNamed(context, '/parent-nav');
+            NavigationService.resetStackNamed(context, '/parent-nav');
           } else {
-            Navigator.pushReplacementNamed(context, '/student-nav');
+            NavigationService.resetStackNamed(context, '/student-nav');
           }
         } else {
-          // Navigate to profile setup/survey
-          Navigator.pushReplacementNamed(
+          NavigationService.resetStackNamed(
             context,
             '/profile-setup',
             arguments: {'userRole': userRole},

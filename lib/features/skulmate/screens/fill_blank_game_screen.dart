@@ -14,19 +14,25 @@ import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
 import '../services/tts_service.dart';
+import '../services/game_progress_service.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/game_standard_widgets.dart';
 import '../widgets/game_settings_sheet.dart';
 import '../widgets/skulmate_companion_banner.dart';
+import '../utils/skulmate_navigation.dart';
 import 'game_results_screen.dart';
-import 'game_library_screen.dart';
 
 /// Fill-in-the-blank game screen
 class FillBlankGameScreen extends StatefulWidget {
   final GameModel game;
+  final GameProgress? resumeFrom;
 
-  const FillBlankGameScreen({Key? key, required this.game}) : super(key: key);
+  const FillBlankGameScreen({
+    Key? key,
+    required this.game,
+    this.resumeFrom,
+  }) : super(key: key);
 
   @override
   State<FillBlankGameScreen> createState() => _FillBlankGameScreenState();
@@ -62,6 +68,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   Timer? _bgmKeepAliveTimer;
   bool _isTimerRunning = false;
   bool _isFinishingGame = false;
+  bool _gameCompleted = false;
   List<String> _hints = []; // Auto-complete hints
   bool _hintShown = false;
   int _typingSpeed = 0; // Characters per second
@@ -77,6 +84,12 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (widget.resumeFrom != null) {
+      final max = widget.game.items.isEmpty ? 0 : widget.game.items.length - 1;
+      _currentQuestionIndex =
+          widget.resumeFrom!.currentIndex.clamp(0, max);
+      _score = widget.resumeFrom!.score;
+    }
     _startTime = DateTime.now();
     unawaited(_initAudio());
     _confettiController = ConfettiController(
@@ -290,6 +303,19 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     }
   }
 
+  Future<void> _persistProgress() async {
+    if (_gameCompleted || _isFinishingGame) return;
+    await GameProgressService.saveProgress(
+      GameProgress(
+        gameId: widget.game.id,
+        gameType: widget.game.gameType,
+        currentIndex: _currentQuestionIndex,
+        score: _score,
+        savedAt: DateTime.now(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -297,6 +323,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     _questionTimer?.cancel();
     _autoAdvanceTimer?.cancel();
     _bgmKeepAliveTimer?.cancel();
+    unawaited(_persistProgress());
     unawaited(_ttsService.stop());
     unawaited(_soundService.stopMusic(force: true));
     for (final controller in _controllers.values) {
@@ -632,6 +659,8 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   Future<void> _finishGame() async {
     if (_isFinishingGame) return;
     _isFinishingGame = true;
+    _gameCompleted = true;
+    await GameProgressService.clearProgress(widget.game.id);
     _autoAdvanceTimer?.cancel();
     _questionTimer?.cancel();
     await _ttsService.stop();
@@ -702,16 +731,11 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   Future<void> _exitGame() async {
     _autoAdvanceTimer?.cancel();
     _questionTimer?.cancel();
+    await _persistProgress();
     await _ttsService.stop();
     await _soundService.stopMusic(force: true);
     if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (context) => GameLibraryScreen(childId: widget.game.childId),
-        ),
-        (route) => false,
-      );
+      SkulMateNavigation.exitToSkulMateHome(context);
     }
   }
 

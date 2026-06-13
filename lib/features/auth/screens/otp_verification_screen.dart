@@ -218,11 +218,11 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             await navService.navigateToRoute(
               routeResult.route,
               arguments: routeResult.arguments,
-              replace: true,
+              clearStack: true,
             );
           } else {
             // Fallback if nav service isn't ready yet.
-            Navigator.pushReplacementNamed(
+            NavigationService.resetStackNamed(
               context,
               userRole.isEmpty ? '/role-selection' : '/profile-setup',
               arguments: userRole.isEmpty ? null : {'userRole': userRole},

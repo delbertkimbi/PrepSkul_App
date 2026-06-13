@@ -269,6 +269,7 @@ class SkulMateService {
     String? fileUrl,
     String? imageUrl,
     String? text,
+    String? youtubeUrl,
     String? sourceFileName,
     String? childId,
     String gameType = 'auto',
@@ -282,6 +283,7 @@ class SkulMateService {
       fileUrl: fileUrl,
       imageUrl: imageUrl,
       text: text,
+      youtubeUrl: youtubeUrl,
       sourceFileName: sourceFileName,
       childId: childId,
       gameType: gameType,
@@ -297,6 +299,7 @@ class SkulMateService {
     String? fileUrl,
     String? imageUrl,
     String? text,
+    String? youtubeUrl,
     String? sourceFileName,
     String? childId,
     String gameType = 'auto',
@@ -402,6 +405,7 @@ class SkulMateService {
         if (imageUrl != null && fileUrl == null)
           'fileUrl': imageUrl, // Send imageUrl as fileUrl
         if (text != null) 'text': text,
+        if (youtubeUrl != null && youtubeUrl.isNotEmpty) 'youtubeUrl': youtubeUrl,
         if (sourceFileName != null && sourceFileName.isNotEmpty)
           'sourceFileName': sourceFileName,
         'userId': userId,

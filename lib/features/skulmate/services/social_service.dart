@@ -303,48 +303,28 @@ class SocialService {
           break;
       }
 
-      final response = await SupabaseService.client
-          .from('skulmate_leaderboards')
-          .select('''
-            *,
-            user:profiles!skulmate_leaderboards_user_id_fkey(
-              id,
-              full_name,
-              email,
-              avatar_url,
-              skulmate_character_id
-            )
-          ''')
-          .eq('period', period.toString())
-          .eq('period_start', periodStart.toIso8601String())
-          .order('rank', ascending: true)
-          .limit(limit);
+      final response = await SupabaseService.client.rpc(
+        'get_skulmate_leaderboard',
+        params: {
+          'p_period': period.toString(),
+          'p_period_start': periodStart.toIso8601String(),
+          'p_limit': limit,
+        },
+      );
 
-      return response.map<LeaderboardEntry>((json) {
-        final user = json['user'] as Map<String, dynamic>?;
+      final rows = (response as List).cast<Map<String, dynamic>>();
+
+      return rows.map<LeaderboardEntry>((json) {
         final storedName = (json['user_name'] as String?)?.trim();
-        final rawName = (user?['full_name'] as String?)?.trim();
-        final email = user?['email'] as String?;
         final displayName = (storedName != null &&
                 storedName.isNotEmpty &&
                 storedName.toLowerCase() != 'user' &&
                 storedName.toLowerCase() != 'student')
             ? storedName
-            : (rawName != null &&
-                rawName.isNotEmpty &&
-                rawName.toLowerCase() != 'user' &&
-                rawName.toLowerCase() != 'student')
-            ? rawName
-            : (email != null && email.isNotEmpty
-                ? email.split('@').first
-                : 'Player');
+            : 'Player';
         return LeaderboardEntry.fromJson({
           ...json,
           'user_name': displayName,
-          'user_avatar_url': user?['avatar_url'],
-          'user_character_id': user?['skulmate_character_id'],
-          // Note: user_level would need to be fetched separately from user_game_stats
-          // For now, we'll leave it null and it can be calculated client-side if needed
         });
       }).toList();
     } catch (e) {

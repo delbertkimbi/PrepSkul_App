@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/game_model.dart';
 import '../services/skulmate_service.dart';
+import '../utils/game_type_visuals.dart';
+import 'skulmate_surface_styles.dart';
 
 /// Card widget for displaying a game in the library
 class GameCard extends StatefulWidget {
@@ -10,6 +12,11 @@ class GameCard extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback? onDelete;
   final VoidCallback? onShare;
+  final bool compact;
+  /// Tighter layout for horizontal carousels on the home screen.
+  final bool horizontal;
+  /// Optional subtitle override (e.g. progress hint).
+  final String? subtitleOverride;
 
   const GameCard({
     Key? key,
@@ -17,6 +24,9 @@ class GameCard extends StatefulWidget {
     required this.onTap,
     this.onDelete,
     this.onShare,
+    this.compact = false,
+    this.horizontal = false,
+    this.subtitleOverride,
   }) : super(key: key);
 
   @override
@@ -34,8 +44,10 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
   @override
   void initState() {
     super.initState();
-    _loadStats();
-    _loadFavorite();
+    if (!widget.compact) {
+      _loadStats();
+      _loadFavorite();
+    }
   }
 
   Future<void> _loadStats() async {
@@ -74,127 +86,158 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
     }
   }
 
-  IconData get _gameIcon {
-    switch (widget.game.gameType) {
-      case GameType.quiz:
-        return Icons.quiz;
-      case GameType.flashcards:
-        return Icons.style;
-      case GameType.matching:
-        return Icons.compare_arrows;
-      case GameType.fillBlank:
-        return Icons.edit;
-      case GameType.match3:
-        return Icons.grid_view;
-      case GameType.bubblePop:
-        return Icons.bubble_chart;
-      case GameType.wordSearch:
-        return Icons.search;
-      case GameType.crossword:
-        return Icons.grid_4x4;
-      case GameType.diagramLabel:
-        return Icons.label;
-      case GameType.dragDrop:
-        return Icons.drag_handle;
-      case GameType.puzzlePieces:
-        return Icons.extension;
-      case GameType.simulation:
-        return Icons.sim_card;
-      case GameType.mystery:
-        return Icons.search;
-      case GameType.escapeRoom:
-        return Icons.lock;
-    }
-  }
+  IconData get _gameIcon => GameTypeVisuals.iconFor(widget.game.gameType);
 
-  String get _gameTypeLabel {
-    switch (widget.game.gameType) {
-      case GameType.quiz:
-        return 'Quiz';
-      case GameType.flashcards:
-        return 'Flashcards';
-      case GameType.matching:
-        return 'Matching';
-      case GameType.fillBlank:
-        return 'Fill in Blank';
-      case GameType.match3:
-        return 'Match-3';
-      case GameType.bubblePop:
-        return 'Bubble Pop';
-      case GameType.wordSearch:
-        return 'Word Search';
-      case GameType.crossword:
-        return 'Crossword';
-      case GameType.diagramLabel:
-        return 'Diagram Label';
-      case GameType.dragDrop:
-        return 'Drag & Drop';
-      case GameType.puzzlePieces:
-        return 'Puzzle Pieces';
-      case GameType.simulation:
-        return 'Simulation';
-      case GameType.mystery:
-        return 'Mystery';
-      case GameType.escapeRoom:
-        return 'Escape Room';
-    }
-  }
+  String get _gameTypeLabel => GameTypeVisuals.labelFor(widget.game.gameType);
 
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-    final accentColor = _accentColorForGameType(widget.game.gameType);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.softBorder),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.textDark.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+    final accentColor = GameTypeVisuals.accentColorFor(widget.game.gameType);
+    final c = widget.compact;
+    final h = widget.horizontal && c;
+    final cardRadius = h ? 12.0 : (c ? 13.0 : 14.0);
+    final hPad = h ? 10.0 : (c ? 11.0 : 14.0);
+    final vPad = h ? 8.0 : (c ? 9.0 : 12.0);
+    final iconSize = h ? 34.0 : (c ? 36.0 : 42.0);
+    final iconInner = h ? 17.0 : (c ? 18.0 : 20.0);
+    final iconRadius = h ? 9.0 : (c ? 10.0 : 12.0);
+    final titleSize = h ? 13.0 : (c ? 13.0 : 14.0);
+    final metaSize = h ? 10.0 : (c ? 10.0 : 11.0);
+    final favSize = c ? 20.0 : 22.0;
+    final metaLine = widget.subtitleOverride ??
+        '$_gameTypeLabel · ${widget.game.items.length} items';
+
+    if (c) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 2),
+        decoration: SkulMateSurfaceStyles.homeCard(
+          radius: cardRadius,
+          compact: true,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(cardRadius),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
+              child: Row(
+                children: [
+                  if (h)
+                    Container(
+                      width: 3,
+                      height: iconSize + 4,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: accentColor,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  Container(
+                    width: iconSize,
+                    height: iconSize,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          accentColor.withValues(alpha: 0.18),
+                          accentColor.withValues(alpha: 0.08),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(iconRadius),
+                    ),
+                    child: Icon(
+                      _gameIcon,
+                      color: accentColor,
+                      size: iconInner,
+                    ),
+                  ),
+                  SizedBox(width: h ? 8 : 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          widget.game.title,
+                          style: GoogleFonts.poppins(
+                            fontSize: titleSize,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                            height: 1.15,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: h ? 2 : 3),
+                        Text(
+                          metaLine,
+                          style: GoogleFonts.poppins(
+                            fontSize: metaSize,
+                            color: AppTheme.textMedium,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!h)
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppTheme.textMedium.withValues(alpha: 0.7),
+                      size: 22,
+                    ),
+                ],
+              ),
+            ),
           ),
-        ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: EdgeInsets.only(bottom: c ? 2 : 4),
+      decoration: SkulMateSurfaceStyles.homeCard(
+        radius: cardRadius,
+        compact: c,
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
         onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(cardRadius),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Left content: icon + game info (extra left/top for nicer fill)
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 6, top: 4),
+                  padding: EdgeInsets.only(left: c ? 4 : 6, top: c ? 2 : 4),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Game icon
                       Container(
-                        width: 42,
-                        height: 42,
+                        width: iconSize,
+                        height: iconSize,
                         decoration: BoxDecoration(
-                          color: accentColor.withOpacity(0.12),
+                          color: accentColor.withValues(alpha: 0.12),
                           border: Border.all(
-                            color: accentColor.withOpacity(0.30),
+                            color: accentColor.withValues(alpha: 0.30),
                             width: 1,
                           ),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(iconRadius),
                         ),
                         child: Icon(
                           _gameIcon,
                           color: accentColor,
-                          size: 20,
+                          size: iconInner,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      // Game info
+                      SizedBox(width: c ? 8 : 10),
                       Expanded(
                         child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,14 +245,14 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                     Text(
                       widget.game.title,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: titleSize,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textDark,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: c ? 4 : 6),
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
@@ -227,18 +270,17 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                           child: Text(
                             _gameTypeLabel,
                             style: GoogleFonts.poppins(
-                              fontSize: 11,
+                              fontSize: metaSize,
                               fontWeight: FontWeight.w500,
                               color: accentColor,
                             ),
                           ),
                         ),
-                        // Difficulty indicator
                         if (widget.game.metadata.difficulty != null)
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: c ? 6 : 8,
+                              vertical: c ? 2 : 3,
                             ),
                             decoration: BoxDecoration(
                               color: _getDifficultyColor(widget.game.metadata.difficulty!).withOpacity(0.08),
@@ -247,7 +289,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                             child: Text(
                               widget.game.metadata.difficulty!.toUpperCase(),
                               style: GoogleFonts.poppins(
-                                fontSize: 10.5,
+                                fontSize: c ? 9.5 : 10.5,
                                 fontWeight: FontWeight.w600,
                                 color: _getDifficultyColor(widget.game.metadata.difficulty!),
                               ),
@@ -256,13 +298,13 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                         Text(
                           '${widget.game.items.length} items',
                           style: GoogleFonts.poppins(
-                            fontSize: 11,
+                            fontSize: metaSize,
                             color: AppTheme.textMedium,
                           ),
                         ),
                       ],
                     ),
-                    if (_stats != null && _stats!['timesPlayed'] > 0) ...[
+                    if (!c && _stats != null && _stats!['timesPlayed'] > 0) ...[
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 12,
@@ -313,16 +355,18 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                         ],
                       ),
                     ],
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatDate(widget.game.createdAt),
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: AppTheme.textMedium,
+                    if (!c) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatDate(widget.game.createdAt),
+                        style: GoogleFonts.poppins(
+                          fontSize: metaSize,
+                          color: AppTheme.textMedium,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
+                    ],
                   ],
                 ),
                       ),
@@ -341,7 +385,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                       padding: const EdgeInsets.all(6),
                       child: Icon(
                         _isFavorite ? Icons.favorite : Icons.favorite_border,
-                        size: 22,
+                        size: favSize,
                       color: _isFavorite ? accentColor : AppTheme.textMedium,
                       ),
                     ),
@@ -377,39 +421,6 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
         return Colors.red;
       default:
         return AppTheme.textMedium;
-    }
-  }
-
-  Color _accentColorForGameType(GameType type) {
-    switch (type) {
-      case GameType.quiz:
-        return const Color(0xFF7E57C2);
-      case GameType.flashcards:
-        return const Color(0xFF1E88E5);
-      case GameType.matching:
-        return const Color(0xFF00897B);
-      case GameType.fillBlank:
-        return const Color(0xFF43A047);
-      case GameType.match3:
-        return const Color(0xFFFB8C00);
-      case GameType.bubblePop:
-        return const Color(0xFFE91E63);
-      case GameType.wordSearch:
-        return const Color(0xFF00ACC1);
-      case GameType.crossword:
-        return const Color(0xFFF9A825);
-      case GameType.diagramLabel:
-        return const Color(0xFF6D4C41);
-      case GameType.dragDrop:
-        return const Color(0xFF3949AB);
-      case GameType.puzzlePieces:
-        return const Color(0xFF8D6E63);
-      case GameType.simulation:
-        return const Color(0xFF5E35B1);
-      case GameType.mystery:
-        return const Color(0xFF8E24AA);
-      case GameType.escapeRoom:
-        return const Color(0xFFE53935);
     }
   }
 

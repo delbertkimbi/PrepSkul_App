@@ -523,7 +523,7 @@ Future<void> handleEmailConfirmation() async {
   if (navService.isReady) {
     if (userRole.isEmpty) {
       LogService.info('[EMAIL_CONFIRM] No role yet — routing to role selection');
-      await navService.navigateToRoute('/role-selection', replace: true);
+      await navService.navigateToRoute('/role-selection', clearStack: true);
       return;
     }
 
@@ -536,7 +536,7 @@ Future<void> handleEmailConfirmation() async {
     await navService.navigateToRoute(
       routeResult.route,
       arguments: routeResult.arguments,
-      replace: true,
+      clearStack: true,
     );
   }
 }
@@ -1030,7 +1030,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             await navService.navigateToRoute(
               routeResult.route,
               arguments: routeResult.arguments,
-              replace: true,
+              clearStack: true,
             );
           }
           AuthService.isGoogleSignInInProgress = false;
@@ -1434,6 +1434,26 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
                 linkExpiredError: linkExpired == true || linkExpired == 'true',
               ),
             );
+          case '/skulmate':
+            if (AppConfig.enableSkulMate) {
+              return _createFadeRoute(
+                () => MainNavigation(
+                  userRole: 'student',
+                  initialTab: 2,
+                ),
+              );
+            } else {
+              return _createFadeRoute(
+                () => Scaffold(
+                  appBar: AppBar(title: const Text('SkulMate')),
+                  body: const Center(
+                    child: Text(
+                      'SkulMate is currently unavailable. Please check back later.',
+                    ),
+                  ),
+                ),
+              );
+            }
           case '/skulmate/upload':
             // SkulMate controlled by AppConfig feature flag
             if (AppConfig.enableSkulMate) {

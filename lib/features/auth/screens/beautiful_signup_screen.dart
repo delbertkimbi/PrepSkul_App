@@ -626,10 +626,10 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
           await navService.navigateToRoute(
             routeResult.route,
             arguments: routeResult.arguments,
-            replace: true,
+            clearStack: true,
           );
         } else {
-          Navigator.pushReplacementNamed(context, '/role-selection');
+          NavigationService.resetStackNamed(context, '/role-selection');
         }
       }
     } catch (e) {

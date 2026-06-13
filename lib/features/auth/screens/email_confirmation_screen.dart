@@ -12,6 +12,7 @@ import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/services/whatsapp_support_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -149,7 +150,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
             (updatedProfile?['user_type'] as String?) ?? storedRole ?? '';
         if (userRole.isEmpty) {
           if (mounted) {
-            Navigator.pushReplacementNamed(context, '/role-selection');
+            NavigationService.resetStackNamed(context, '/role-selection');
           }
           return;
         }
@@ -163,7 +164,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       final userRole = (profile['user_type'] as String?) ?? widget.userRole ?? '';
       if (userRole.isEmpty) {
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/role-selection');
+          NavigationService.resetStackNamed(context, '/role-selection');
         }
         return;
       }
@@ -178,7 +179,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         // Fallback: try to navigate using widget.userRole
         final fallbackRole = widget.userRole ?? '';
         if (fallbackRole.isEmpty) {
-          Navigator.pushReplacementNamed(context, '/role-selection');
+          NavigationService.resetStackNamed(context, '/role-selection');
         } else {
           LogService.warning('Using fallback role: $fallbackRole');
           await _navigateBasedOnRole(fallbackRole, true, prefs);
@@ -193,7 +194,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
     if (user == null || !mounted) return;
 
     if (userRole.isEmpty) {
-      Navigator.pushReplacementNamed(context, '/role-selection');
+      NavigationService.resetStackNamed(context, '/role-selection');
       return;
     }
 
@@ -222,7 +223,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
               if (onboardingComplete || onboardingSkipped) {
                 // Tutor onboarding complete or skipped - go directly to dashboard
                 LogService.success('Tutor onboarding complete - navigating to dashboard');
-                Navigator.pushReplacementNamed(context, '/tutor-nav');
+                NavigationService.resetStackNamed(context, '/tutor-nav');
               } else {
                 // Check if it's a new tutor (no progress at all)
                 final progress = await TutorOnboardingProgressService.loadProgress(user.id);
@@ -233,13 +234,13 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
             } else {
                   // Has some progress - go to dashboard (they can continue from there)
               LogService.success('Tutor with existing progress - navigating to dashboard');
-                  Navigator.pushReplacementNamed(context, '/tutor-nav');
+                  NavigationService.resetStackNamed(context, '/tutor-nav');
                 }
               }
             } catch (e) {
               LogService.warning('Error checking tutor onboarding: $e - navigating to dashboard');
               // On error, go to dashboard (better than blocking user)
-              Navigator.pushReplacementNamed(context, '/tutor-nav');
+              NavigationService.resetStackNamed(context, '/tutor-nav');
             }
       } else if (userRole == 'student' || userRole == 'learner' || userRole == 'parent') {
         // For first-time signup (student/parent/learner), always show survey intro
@@ -264,12 +265,12 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
             } else {
             // Survey intro already seen, go to appropriate dashboard
             final route = userRole == 'parent' ? '/parent-nav' : '/student-nav';
-            Navigator.pushReplacementNamed(context, route);
+            NavigationService.resetStackNamed(context, route);
           }
             }
           } else {
         LogService.info('Unknown role - navigating to profile setup');
-            Navigator.pushReplacementNamed(
+            NavigationService.resetStackNamed(
               context,
               '/profile-setup',
               arguments: {'userRole': userRole},
@@ -279,7 +280,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       LogService.error('Error in _navigateBasedOnRole', e);
       if (mounted) {
         // Final fallback: navigate to student dashboard
-        Navigator.pushReplacementNamed(context, '/student-nav');
+        NavigationService.resetStackNamed(context, '/student-nav');
       }
     }
   }

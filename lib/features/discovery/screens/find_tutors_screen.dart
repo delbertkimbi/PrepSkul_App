@@ -678,12 +678,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
         automaticallyImplyLeading: false, // Remove back button
         elevation: 0,
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: AppTheme.softBackground,
+        surfaceTintColor: AppTheme.softBackground,
         title: const AppLogoHeader(),
         actions: [
           if (AppConfig.enableGroupClasses)
@@ -1077,17 +1077,16 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     return Container(
       margin: EdgeInsets.only(bottom: cardMargin),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.softCard,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.grey[300]!,
-          width: 1.2,
+          color: AppTheme.softBorder,
+          width: 1,
         ),
-        // Very soft shadow just to lift from background
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 4,
+            color: AppTheme.textDark.withValues(alpha: 0.04),
+            blurRadius: 8,
             offset: const Offset(0, 2),
             spreadRadius: 0,
           ),

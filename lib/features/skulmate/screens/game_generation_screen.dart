@@ -28,7 +28,7 @@ import 'crossword_game_screen.dart';
 import 'simulation_game_screen.dart';
 import 'mystery_game_screen.dart';
 import 'escape_room_game_screen.dart';
-import 'game_library_screen.dart';
+import '../utils/skulmate_navigation.dart';
 import 'text_input_screen.dart';
 import 'skulmate_plans_screen.dart';
 import '../services/game_sound_service.dart';
@@ -41,6 +41,7 @@ class GameGenerationScreen extends StatefulWidget {
   final String? fileUrl;
   final String? imageUrl;
   final String? text;
+  final String? youtubeUrl;
   final String? childId;
   final String? difficulty;
   final String? topic;
@@ -63,6 +64,7 @@ class GameGenerationScreen extends StatefulWidget {
     this.fileUrl,
     this.imageUrl,
     this.text,
+    this.youtubeUrl,
     this.childId,
     this.difficulty,
     this.topic,
@@ -522,6 +524,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         fileUrl: fileUrl ?? widget.fileUrl,
         imageUrl: imageUrl ?? widget.imageUrl,
         text: widget.text,
+        youtubeUrl: widget.youtubeUrl,
         sourceFileName: sourceFileName,
         childId: widget.childId,
         gameType: requestedGameType,
@@ -543,6 +546,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
               fileUrl: fileUrl ?? widget.fileUrl,
               imageUrl: imageUrl ?? widget.imageUrl,
               text: widget.text,
+              youtubeUrl: widget.youtubeUrl,
               sourceFileName: sourceFileName,
               childId: widget.childId,
               difficulty: widget.difficulty,
@@ -1627,14 +1631,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                             Expanded(
                               child: ElevatedButton(
                                 onPressed: () {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => GameLibraryScreen(
-                                        childId: widget.childId,
-                                      ),
-                                    ),
-                                  );
+                                  SkulMateNavigation.exitToSkulMateHome(context);
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.primaryColor,

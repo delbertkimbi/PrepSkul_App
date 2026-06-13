@@ -10,7 +10,9 @@ import '../services/game_sound_service.dart';
 /// Full-screen, step-based flow for optional game setup (difficulty, subject, exam, game type).
 /// Returns [GenerationContext] on completion, or null when skipped.
 class GameSetupFlowScreen extends StatefulWidget {
-  const GameSetupFlowScreen({Key? key}) : super(key: key);
+  final String? initialGameType;
+
+  const GameSetupFlowScreen({Key? key, this.initialGameType}) : super(key: key);
 
   @override
   State<GameSetupFlowScreen> createState() => _GameSetupFlowScreenState();
@@ -79,6 +81,10 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialGameType != null &&
+        widget.initialGameType!.isNotEmpty) {
+      _gameType = widget.initialGameType!;
+    }
     _soundService.initialize();
     _prefillDifficulty();
   }

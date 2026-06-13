@@ -19,7 +19,7 @@ import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_companion_banner.dart';
 import '../widgets/skulmate_mascot_media_widget.dart';
 import '../widgets/skulmate_surface_styles.dart';
-import 'game_library_screen.dart';
+import '../utils/skulmate_navigation.dart';
 import 'quiz_game_screen.dart';
 
 /// Screen showing game results and performance summary
@@ -294,13 +294,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
             ? IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: () {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const GameLibraryScreen(initialTab: 1),
-                    ),
-                    (route) => false,
-                  );
+                  SkulMateNavigation.exitToSkulMateHome(context);
                 },
               )
             : null,
@@ -464,16 +458,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const GameLibraryScreen(
-                                childId: null,
-                                initialTab: 1,
-                              ),
-                            ),
-                            (route) => false,
-                          );
+                          SkulMateNavigation.exitToSkulMateHome(context);
                         },
                         icon: const Icon(Icons.dashboard_customize_rounded, size: 18),
                         label: const Text('Dashboard'),
