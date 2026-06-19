@@ -423,18 +423,12 @@ class _ParentSurveyState extends State<ParentSurvey> {
           break;
         case 'class_selection':
           if (_selectedEducationLevel != null) {
-            final levelConfig = SurveyConfig.getEducationLevelConfig(
-              _selectedEducationLevel!,
+            _steps.add(
+              const SurveyStep(
+                title: 'What class is your child?',
+                subtitle: 'Select the specific class',
+              ),
             );
-            if (levelConfig != null) {
-              _steps.add(
-                SurveyStep(
-                  title:
-                      'Which ${levelConfig.name.toLowerCase()} is your child in?',
-                  subtitle: 'Select the specific class',
-                ),
-              );
-            }
           }
           break;
         case 'stream_selection':

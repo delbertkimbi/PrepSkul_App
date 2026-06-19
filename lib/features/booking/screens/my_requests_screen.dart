@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/navigation/main_navigation_scope.dart';
+import 'package:prepskul/core/navigation/nav_tab_args.dart';
+import 'package:prepskul/core/navigation/student_tab_index.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -143,25 +146,31 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   }
 
   bool _hasLoadedOnce = false;
+  int? _lastRequestsTabRefreshToken;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh when screen becomes visible (e.g., after creating a booking request or receiving approval notification)
-    // Only refresh if we've already loaded once (to avoid double-loading on first build)
-    // This ensures new requests and status updates are immediately visible when returning to the screen
-    // Skip refresh if we're navigating away (to prevent refresh when View Session is clicked)
-    if (_hasLoadedOnce && 
-        ModalRoute.of(context)?.isCurrent == true && 
-        !_isNavigating) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && 
-            ModalRoute.of(context)?.isCurrent == true && 
-            !_isNavigating) {
-          _loadRequests();
-        }
-      });
-    }
+    final navScope = MainNavigationScope.maybeOf(context);
+    final onRequestsTab =
+        navScope?.selectedIndex == StudentTabIndex.requests;
+    if (!onRequestsTab) return;
+
+    final refreshToken = navScope!.selectedIndex;
+    if (_lastRequestsTabRefreshToken == refreshToken) return;
+    _lastRequestsTabRefreshToken = refreshToken;
+
+    if (!_hasLoadedOnce) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final stillOnRequests =
+          MainNavigationScope.maybeOf(context)?.selectedIndex ==
+              StudentTabIndex.requests;
+      if (stillOnRequests && !_isNavigating) {
+        _loadRequests();
+      }
+    });
   }
 
   @override
@@ -384,30 +393,25 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         LogService.error('Error loading custom requests: $e');
       }
 
-      // Load trial sessions
-      final trials = await TrialSessionService.getStudentTrialSessions();
-      LogService.success('Loaded ${trials.length} trial sessions');
-      
-      // Cache trial sessions
-      if (trials.isNotEmpty && userId != null) {
-        final trialsJson = trials.map((t) => t.toJson()).toList();
-        await OfflineCacheService.cacheTrialSessions(userId, trialsJson);
-      }
-      
-      // Debug: Log payment statuses
-      for (var trial in trials) {
-        LogService.debug('Trial ${trial.id}: status=${trial.status}, paymentStatus=${trial.paymentStatus}');
-      }
+      // Load trial sessions (isolated so other sources still apply)
+      List<TrialSession> trials = [];
+      try {
+        trials = await TrialSessionService.getStudentTrialSessions();
+        LogService.success('Loaded ${trials.length} trial sessions');
 
-      // Load tutor info for trials (and for booking requests so avatars show in all cards)
-      await _loadTutorInfoForTrials(trials);
-      final bookingTutorIds = bookingRequests
-          .map((r) => r.tutorId)
-          .toSet()
-          .where((id) => !_tutorInfoCache.containsKey(id))
-          .toList();
-      if (bookingTutorIds.isNotEmpty) {
-        await _loadTutorInfoForTutorIds(bookingTutorIds);
+        if (trials.isNotEmpty && userId != null) {
+          final trialsJson = trials.map((t) => t.toJson()).toList();
+          await OfflineCacheService.cacheTrialSessions(userId, trialsJson);
+        }
+
+        for (var trial in trials) {
+          LogService.debug(
+            'Trial ${trial.id}: status=${trial.status}, paymentStatus=${trial.paymentStatus}',
+          );
+        }
+      } catch (e, stackTrace) {
+        LogService.error('Error loading trial sessions: $e');
+        LogService.error('Stack trace: $stackTrace');
       }
 
       if (!mounted) return;
@@ -418,14 +422,31 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         _customRequests = customRequests;
         _isLoading = false;
         _cacheTimestamp = DateTime.now();
-        _hasLoadedOnce = true; // Mark that we've loaded at least once
+        _hasLoadedOnce = true;
       });
-      
-      // Debug logging
+
+      // Tutor avatars are optional — never block list rendering.
+      try {
+        await _loadTutorInfoForTrials(trials);
+        final bookingTutorIds = bookingRequests
+            .map((r) => r.tutorId)
+            .toSet()
+            .where((id) => !_tutorInfoCache.containsKey(id))
+            .toList();
+        if (bookingTutorIds.isNotEmpty) {
+          await _loadTutorInfoForTutorIds(bookingTutorIds);
+        }
+        if (mounted) safeSetState(() {});
+      } catch (e) {
+        LogService.warning('Could not load tutor info for requests list: $e');
+      }
+
+      final activeTrials =
+          trials.where(SessionDateUtils.isTrialActiveForLearnerRequests).length;
       LogService.info('📊 MyRequestsScreen state updated:');
       LogService.info('   - Booking requests: ${bookingRequests.length}');
       LogService.info('   - Custom requests: ${customRequests.length}');
-      LogService.info('   - Trial sessions: ${trials.length}');
+      LogService.info('   - Trial sessions: ${trials.length} ($activeTrials active for Requests)');
       if (bookingRequests.isNotEmpty) {
         LogService.info('   - Booking request IDs: ${bookingRequests.map((r) => r.id).join(", ")}');
         LogService.info('   - Booking request statuses: ${bookingRequests.map((r) => r.status).join(", ")}');
@@ -646,8 +667,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
           // Calculate effective rating (same logic as tutor_service.dart)
           final totalReviews = (tutor['total_reviews'] ?? 0) as int;
-          final adminApprovedRating = tutor['admin_approved_rating'] as double?;
-          final calculatedRating = (tutor['rating'] ?? 0.0) as double;
+          final adminApprovedRating =
+              (tutor['admin_approved_rating'] as num?)?.toDouble();
+          final calculatedRating =
+              (tutor['rating'] as num?)?.toDouble() ?? 0.0;
 
           // Use admin rating until we have at least 3 real reviews
           final effectiveRating =
@@ -698,8 +721,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
             final totalReviews = (tutorProfile['total_reviews'] ?? 0) as int;
             final adminApprovedRating =
-                tutorProfile['admin_approved_rating'] as double?;
-            final calculatedRating = (tutorProfile['rating'] ?? 0.0) as double;
+                (tutorProfile['admin_approved_rating'] as num?)?.toDouble();
+            final calculatedRating =
+                (tutorProfile['rating'] as num?)?.toDouble() ?? 0.0;
 
             final effectiveRating =
                 (totalReviews < 3 && adminApprovedRating != null)
@@ -769,8 +793,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       ? avatarUrl
                       : null;
           final totalReviews = (tutor['total_reviews'] ?? 0) as int;
-          final adminApprovedRating = tutor['admin_approved_rating'] as double?;
-          final calculatedRating = (tutor['rating'] ?? 0.0) as double;
+          final adminApprovedRating =
+              (tutor['admin_approved_rating'] as num?)?.toDouble();
+          final calculatedRating =
+              (tutor['rating'] as num?)?.toDouble() ?? 0.0;
           final effectiveRating =
               (totalReviews < 3 && adminApprovedRating != null)
                   ? adminApprovedRating
@@ -802,7 +828,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   List<TrialSession> _getPendingTrialSessions() {
     if (_trialSessions.isEmpty) return [];
-    return _trialSessions.where((req) => req.isPending).toList();
+    return _trialSessions
+        .where(SessionDateUtils.isTrialAwaitingLearnerAction)
+        .toList();
   }
 
   /// Paid/approved bookings move to Sessions — keep only actionable requests here.
@@ -828,43 +856,39 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   /// - For unpaid, expired sessions, keep them visible for up to 24 hours so the
   ///   learner can reschedule, then hide them afterwards.
   bool _isTrialActiveForRequests(TrialSession session) {
-    // Deleted sessions are never shown
-    if (session.status == 'deleted') {
-      return false;
-    }
+    return SessionDateUtils.isTrialActiveForLearnerRequests(session);
+  }
 
-    // Hide cancelled + unpaid sessions from Requests
-    if (session.status == 'cancelled') {
-      final paymentStatus = session.paymentStatus.toLowerCase();
-      if (paymentStatus != 'paid' && paymentStatus != 'completed') {
-        return false;
-      }
-    }
+  double _tutorRatingFromCache(Map<String, dynamic> tutorInfo) {
+    final raw = tutorInfo['rating'];
+    if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw) ?? 0.0;
+    return 0.0;
+  }
 
-    // Completed sessions move to the Sessions experience immediately
-    if (session.status == 'completed') {
-      return false;
-    }
+  /// Scrollable wrapper — [RefreshIndicator] on web needs a bounded scroll child.
+  Widget _scrollableTabBody(Widget child) {
+    final minHeight = MediaQuery.sizeOf(context).height * 0.72;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      children: [
+        SizedBox(height: minHeight, child: child),
+      ],
+    );
+  }
 
-    // If the session time has passed, keep it in Requests only during the
-    // 24‑hour reschedule window for unpaid sessions.
-    if (SessionDateUtils.isSessionExpired(session)) {
-      final isPaid = session.paymentStatus.toLowerCase() == 'paid' ||
-          session.paymentStatus.toLowerCase() == 'completed';
-      if (isPaid) {
-        // Paid + expired trials are handled via Sessions, not Requests.
-        return false;
-      }
-
-      // Unpaid + expired: allow reschedule for up to 24 hours after the end.
-      final endTime = SessionDateUtils.getSessionEndTime(session);
-      final cutoff = endTime.add(const Duration(hours: 24));
-      if (DateTime.now().isAfter(cutoff)) {
-        return false;
-      }
-    }
-
-    return true;
+  Widget _wrapTabScrollable(Widget child, double viewportHeight) {
+    if (child is ScrollView) return child;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: viewportHeight > 0 ? viewportHeight * 0.75 : 600,
+          child: child,
+        ),
+      ],
+    );
   }
 
   @override
@@ -930,12 +954,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               padding: const EdgeInsets.all(20),
               child: ShimmerLoading.requestList(count: 5),
             )
-          : RefreshIndicator(
-              onRefresh: () async {
-                await _loadRequests();
-                if (mounted) safeSetState(() {});
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    await _loadRequests();
+                    if (mounted) safeSetState(() {});
+                  },
+                  child: _wrapTabScrollable(
+                    _buildSelectedTabContent(context, _selectedFilter),
+                    constraints.maxHeight,
+                  ),
+                );
               },
-              child: _buildSelectedTabContent(context, _selectedFilter),
             ),
       floatingActionButton: showFAB
           ? FloatingActionButton.extended(
@@ -1007,121 +1038,93 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             }
           }).toList();
 
-    return Column(
-      children: [
-        // Search bar (disabled for "all" section)
-        if (_selectedFilter != 'all')
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _searchController,
-                  enabled: !_isOffline, // Disable search when offline
-                decoration: InputDecoration(
-                  hintText: _isOffline 
-                      ? 'Search unavailable offline' 
-                      : 'Search by tutor name or subject...',
-                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, color: Colors.grey),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: _isOffline 
-                      ? Colors.grey[200] 
-                      : Colors.grey[100],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-                  onChanged: _isOffline 
-                    ? null 
-                    : (value) {
-                        setState(() => _searchQuery = value);
-                      },
-                ),
-              ],
-            ),
-          ),
-        // Results count
-        if (_searchQuery.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${filteredRequests.length} result${filteredRequests.length != 1 ? 's' : ''} found',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ),
-          ),
-        // List
-        Expanded(
-          child: filteredRequests.isEmpty
-              ? _searchQuery.isNotEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No results found',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Try a different search term',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: Colors.grey[500],
-                            ),
-                          ),
-                        ],
+    if (filteredRequests.isEmpty) {
+      return _scrollableTabBody(
+        _searchQuery.isNotEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No results found',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        color: Colors.grey[600],
                       ),
-                    )
-                  : _buildRequestTutorCard(context, 
-        title: t.myRequestsEmptyTitle,
-        subtitle:
-            'Tell us what you\'re looking for and we\'ll find the perfect match for you',
-        showButton: true,
-                    )
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
-                  itemCount: filteredRequests.length,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Try a different search term',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : _buildRequestTutorCard(
+                context,
+                title: t.myRequestsEmptyTitle,
+                subtitle:
+                    'Tell us what you\'re looking for and we\'ll find the perfect match for you',
+                showButton: true,
+              ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      itemCount: filteredRequests.length,
       itemBuilder: (ctx, index) {
-                    final item = filteredRequests[index];
-        final isHighlighted = _highlightRequestId != null && 
-            ((item.type == 'booking' && item.booking?.id == _highlightRequestId) ||
-             (item.type == 'trial' && item.trial?.id == _highlightRequestId) ||
-             (item.type == 'custom' && item.custom?.id == _highlightRequestId));
-        
-        if (item.type == 'booking') {
-          return _buildBookingRequestCard(context, item.booking!, isHighlighted: isHighlighted);
-        } else if (item.type == 'custom') {
-          return _buildCustomRequestCard(context, item.custom!, isHighlighted: isHighlighted);
-        } else {
-          return _buildTrialSessionCard(context, item.trial!, isHighlighted: isHighlighted);
+        try {
+          final item = filteredRequests[index];
+          final isHighlighted = _highlightRequestId != null &&
+              ((item.type == 'booking' &&
+                      item.booking?.id == _highlightRequestId) ||
+                  (item.type == 'trial' &&
+                      item.trial?.id == _highlightRequestId) ||
+                  (item.type == 'custom' &&
+                      item.custom?.id == _highlightRequestId));
+
+          if (item.type == 'booking') {
+            return _buildBookingRequestCard(
+              context,
+              item.booking!,
+              isHighlighted: isHighlighted,
+            );
+          } else if (item.type == 'custom') {
+            return _buildCustomRequestCard(
+              context,
+              item.custom!,
+              isHighlighted: isHighlighted,
+            );
+          } else {
+            return _buildTrialSessionCard(
+              context,
+              item.trial!,
+              isHighlighted: isHighlighted,
+            );
+          }
+        } catch (e, stackTrace) {
+          LogService.error('Failed to render request card at index $index: $e');
+          LogService.error('$stackTrace');
+          return Card(
+            margin: const EdgeInsets.only(bottom: 10),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Unable to display this request. Pull to refresh.',
+                style: GoogleFonts.poppins(fontSize: 13),
+              ),
+            ),
+          );
         }
       },
-                ),
-        ),
-      ],
     );
   }
 
@@ -1137,14 +1140,18 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     ];
 
     if (allPending.isEmpty) {
-      return _buildEmptyState(context, 
-        icon: Icons.pending_outlined,
-        title: t.myRequestsNoPendingTitle,
-        subtitle: t.myRequestsNoPendingSubtitle,
+      return _scrollableTabBody(
+        _buildEmptyState(
+          context,
+          icon: Icons.pending_outlined,
+          title: t.myRequestsNoPendingTitle,
+          subtitle: t.myRequestsNoPendingSubtitle,
+        ),
       );
     }
 
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(10),
       itemCount: allPending.length,
       itemBuilder: (ctx, index) {
@@ -1167,15 +1174,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   Widget _buildCustomRequestsTab(BuildContext context) {
     final t = AppLocalizations.of(context)!;
     if (_customRequests.isEmpty) {
-      return _buildRequestTutorCard(context, 
-        title: t.myRequestsEmptyTitle,
-        subtitle:
-            'Tell us what you\'re looking for and we\'ll find the perfect match for you',
-        showButton: true,
+      return _scrollableTabBody(
+        _buildRequestTutorCard(
+          context,
+          title: t.myRequestsEmptyTitle,
+          subtitle:
+              'Tell us what you\'re looking for and we\'ll find the perfect match for you',
+          showButton: true,
+        ),
       );
     }
 
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(10),
       itemCount: _customRequests.length,
       itemBuilder: (ctx, index) {
@@ -1193,15 +1204,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         _trialSessions.where(_isTrialActiveForRequests).toList();
 
     if (activeTrials.isEmpty) {
-      return _buildEmptyState(context, 
-        icon: Icons.quiz_outlined,
-        title: t.myRequestsNoTrialsTitle,
-        subtitle:
-            'Request a trial session from a tutor\'s profile to get started',
+      return _scrollableTabBody(
+        _buildEmptyState(
+          context,
+          icon: Icons.quiz_outlined,
+          title: t.myRequestsNoTrialsTitle,
+          subtitle:
+              'Request a trial session from a tutor\'s profile to get started',
+        ),
       );
     }
 
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(10),
       itemCount: activeTrials.length,
       itemBuilder: (ctx, index) {
@@ -1219,14 +1234,18 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final activeBookings =
         _bookingRequests.where(_isBookingActiveForRequests).toList();
     if (activeBookings.isEmpty) {
-      return _buildEmptyState(context, 
-        icon: Icons.book_outlined,
-        title: t.myRequestsNoBookingsTitle,
-        subtitle: t.myRequestsNoBookingsSubtitle,
+      return _scrollableTabBody(
+        _buildEmptyState(
+          context,
+          icon: Icons.book_outlined,
+          title: t.myRequestsNoBookingsTitle,
+          subtitle: t.myRequestsNoBookingsSubtitle,
+        ),
       );
     }
 
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(10),
       itemCount: activeBookings.length,
       itemBuilder: (ctx, index) {
@@ -1675,7 +1694,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 Navigator.of(context).pushNamedAndRemoveUntil(
                                   _getMainNavRoute(),
                                   (route) => route.isFirst,
-                                  arguments: {'initialTab': 2},
+                                  arguments: NavTabArgs.studentRequests(),
                                 );
                               }
                             }
@@ -2030,9 +2049,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     // Get tutor info from cache
     final tutorInfo = _tutorInfoCache[session.tutorId] ?? {};
     final t = AppLocalizations.of(context)!;
-    final tutorName = tutorInfo['full_name'] ?? 'Tutor';
-    final tutorAvatarUrl = tutorInfo['avatar_url'];
-    final tutorRating = (tutorInfo['rating'] ?? 0.0) as double;
+    final tutorName = tutorInfo['full_name']?.toString() ?? 'Tutor';
+    final tutorAvatarUrl = tutorInfo['avatar_url']?.toString();
+    final tutorRating = _tutorRatingFromCache(tutorInfo);
 
     // Determine status for display (combine payment and session status)
     String displayStatus = session.status;
@@ -2258,32 +2277,38 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                      _buildModernInfoItem(
-                        Icons.calendar_today_outlined,
-                    session.formattedDate,
-                  ),
+                    children: [
+                      Expanded(
+                        child: _buildCompactInfoItem(
+                          Icons.calendar_today_outlined,
+                          session.formattedDate,
+                        ),
+                      ),
                       Container(
                         width: 1,
                         height: 20,
-                        color: Colors.grey[300],
+                        color: Colors.grey.shade300,
                       ),
-                      _buildModernInfoItem(
-                        Icons.access_time_outlined,
-                    session.formattedTime,
-                  ),
+                      Expanded(
+                        child: _buildCompactInfoItem(
+                          Icons.access_time_outlined,
+                          session.formattedTime,
+                        ),
+                      ),
                       Container(
                         width: 1,
                         height: 20,
-                        color: Colors.grey[300],
+                        color: Colors.grey.shade300,
                       ),
-                      _buildModernInfoItem(
-                        session.location == 'online' 
-                            ? Icons.video_call_outlined 
-                            : Icons.location_on_outlined,
-                    session.location == 'online' ? 'Online' : 'On-site',
-                  ),
-                ],
+                      Expanded(
+                        child: _buildCompactInfoItem(
+                          session.location == 'online'
+                              ? Icons.video_call_outlined
+                              : Icons.location_on_outlined,
+                          session.location == 'online' ? 'Online' : 'On-site',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
@@ -2498,7 +2523,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                     Navigator.of(context).pushNamedAndRemoveUntil(
                                       _getMainNavRoute(),
                                       (route) => route.isFirst,
-                                      arguments: {'initialTab': 2},
+                                      arguments: NavTabArgs.studentRequests(),
                                     );
                                   }
                                 }
@@ -3489,6 +3514,30 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 
+  Widget _buildCompactInfoItem(IconData icon, String text) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: Colors.grey.shade600),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            text,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade700,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildModernInfoItem(IconData icon, String text, {bool expanded = false}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4251,7 +4300,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         Navigator.of(context).pushNamedAndRemoveUntil(
           _getMainNavRoute(),
           (route) => route.isFirst,
-          arguments: {'initialTab': 2}, // Sessions tab
+          arguments: NavTabArgs.studentRequests(), // Sessions tab
         );
       }
     } catch (e, stackTrace) {
@@ -4609,11 +4658,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     ];
 
     if (items.isEmpty) {
-      return _buildEmptyState(
-        context,
-        icon: Icons.history,
-        title: 'No past requests',
-        subtitle: 'You have no requests from the last 30 days.',
+      return _scrollableTabBody(
+        _buildEmptyState(
+          context,
+          icon: Icons.history,
+          title: 'No past requests',
+          subtitle: 'You have no requests from the last 30 days.',
+        ),
       );
     }
 

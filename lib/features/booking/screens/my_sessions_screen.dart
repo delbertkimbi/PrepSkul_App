@@ -26,12 +26,15 @@ import 'package:prepskul/core/utils/geocoding_helper.dart';
 import 'package:prepskul/features/sessions/widgets/session_start_countdown_ring.dart';
 import 'package:prepskul/features/sessions/widgets/location_tracking_widget.dart';
 import 'package:prepskul/features/sessions/widgets/session_mode_statistics_widget.dart';
+import 'package:prepskul/features/sessions/domain/onsite_session_phase.dart';
+import 'package:prepskul/features/sessions/widgets/onsite_presence_summary.dart';
+import 'package:prepskul/features/sessions/services/location_checkin_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
-import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/feedback/app_feedback.dart';
@@ -378,6 +381,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         await _loadTutorInfoForTrials(trialSessions);
 
         for (final trial in trialSessions) {
+          // Sessions tab is paid-only; unpaid trials belong in Requests.
+          if (!SessionDateUtils.isTrialPaid(trial)) continue;
+
           // Deduplicate: if individual_session already exists for this trial (same id),
           // skip trial to avoid duplicate cards (e.g. SESSION + TRIAL for same session)
           final trialId = trial.id;
@@ -385,53 +391,26 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           final alreadyInPast = past.any((s) => (s['id'] as String?) == trialId);
           if (alreadyInUpcoming || alreadyInPast) continue;
 
-          // Filter out pending/unpaid trial sessions from upcoming sessions
-          // Only show approved and paid trial sessions in upcoming
-          final status = trial.status;
-          final paymentStatus = trial.paymentStatus;
-          
-          // Skip if not approved/scheduled or not paid (for upcoming sessions)
-          // NOTE: Some flows set trial status to 'scheduled' after approval/payment.
-          final isApproved = status == 'approved' || status == 'scheduled' || status == 'in_progress';
-          final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
-          
-          // For upcoming sessions: only show approved AND paid trials
-          // For past sessions: show all (including pending/unpaid for historical reference)
           final sessionMap = _convertTrialToSessionMap(trial);
           if (sessionMap != null) {
-            // Classify as upcoming or past using SessionDateUtils
+            final status = trial.status;
             final isCompleted = status == 'completed' ||
                 status == 'cancelled' ||
                 status == 'rejected' ||
                 status == 'expired';
-            
-            // Use SessionDateUtils for time-based classification
-            // Classification is primarily time-based:
-            // - Upcoming tab: now is before session end time (including grace)
-            // - Past tab: now is after session end time
-            // This prevents a session from jumping to Past just because someone
-            // left the call early; it only moves after the scheduled window.
+
+            // Time-based classification:
+            // - Upcoming: session window has not ended yet (pending, awaiting payment, etc.)
+            // - Past: window ended, or terminal status (completed/cancelled/rejected/expired)
             final isExpired = SessionDateUtils.isSessionExpired(trial);
             final isInProgress = SessionDateUtils.isSessionInProgress(trial);
             final isUpcomingTime = SessionDateUtils.isSessionUpcoming(trial);
 
             if (isExpired || status == 'expired' || isCompleted) {
-              // Fully past sessions (time window over) belong in Past, regardless of
-              // whether they were formally completed or left unattended.
               past.add(sessionMap);
             } else if (isInProgress || isUpcomingTime) {
-              // Time window is either upcoming or currently active.
-              // Only show on Upcoming tab when the trial is approved/scheduled and paid.
-              if (isApproved && isPaid) {
-                upcoming.add(sessionMap);
-              } else {
-                // Unapproved/unpaid trials remain in Past/history so they don't
-                // clutter the "Upcoming" view used for joining sessions.
-                past.add(sessionMap);
-              }
+              upcoming.add(sessionMap);
             } else {
-              // Fallback: if we can't confidently classify, keep in Past so
-              // the learner can still see the record without breaking UX.
               past.add(sessionMap);
             }
           }
@@ -1954,22 +1933,15 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ],
-                    if (location != 'online' && (status == 'scheduled' || status == 'in_progress')) ...[
+                    if (location != 'online' &&
+                        (status == 'scheduled' || status == 'in_progress')) ...[
                       const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(PhosphorIcons.shieldCheck(), size: 14, color: AppTheme.primaryColor),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              'On-site check-in will be required at session start.',
-                              style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                          ),
-                        ],
+                      _buildStudentOnsiteSummary(
+                        session: session,
+                        sessionId: sessionId,
+                        scheduledDate: sessionStart,
+                        scheduledTime: scheduledTime,
+                        status: status,
                       ),
                     ],
                   ],
@@ -2205,6 +2177,46 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   }
 
   /// Navigate to session detail screen instead of showing popup
+  Widget _buildStudentOnsiteSummary({
+    required Map<String, dynamic> session,
+    required String sessionId,
+    required DateTime? scheduledDate,
+    required String scheduledTime,
+    required String status,
+  }) {
+    final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+    final tutorId = recurringData?['tutor_id'] as String? ??
+        session['tutor_id'] as String?;
+
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: tutorId == null
+          ? Future.value(null)
+          : LocationCheckInService.getCheckInStatus(
+              sessionId: sessionId,
+              userId: tutorId,
+            ),
+      builder: (context, snapshot) {
+        final tutorCheckedIn = snapshot.data?['has_checked_in'] == true;
+        final phase = OnsiteSessionPhaseResolver.resolve(
+          sessionStatus: status,
+          scheduledStart: scheduledDate,
+          hasCheckedIn: tutorCheckedIn,
+          hasCheckedOut: status == 'completed',
+        );
+        final message = OnsiteSessionPhaseResolver.studentNextStepLabel(
+          phase: phase,
+          scheduledStart: scheduledDate,
+          tutorHasCheckedIn: tutorCheckedIn,
+        );
+        return OnsitePresenceSummary(
+          phase: phase,
+          message: message,
+          onTap: () => _navigateToSessionDetail(session),
+        );
+      },
+    );
+  }
+
   void _navigateToSessionDetail(Map<String, dynamic> session) {
     // Navigate to dedicated session detail screen instead of showing popup
     Navigator.push(

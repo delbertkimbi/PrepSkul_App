@@ -26,7 +26,9 @@ import 'package:prepskul/features/admin/screens/admin_user_detail_screen.dart';
 import 'package:prepskul/features/admin/screens/admin_tutor_request_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
+import 'package:prepskul/core/navigation/nav_tab_args.dart';
 import 'package:prepskul/core/navigation/student_tab_index.dart';
+import 'package:prepskul/core/navigation/tutor_tab_index.dart';
 import 'package:prepskul/features/messaging/screens/conversations_list_screen.dart';
 
 class NotificationNavigationService {
@@ -132,7 +134,7 @@ class NotificationNavigationService {
     final route = role == 'parent' ? '/parent-nav' : '/student-nav';
     await navService.navigateToRoute(
       route,
-      arguments: {'initialTab': StudentTabIndex.skulMate},
+      arguments: NavTabArgs.studentSkulMate(),
       replace: true,
     );
   }
@@ -212,10 +214,11 @@ class NotificationNavigationService {
       // Fallback: navigate to requests tab
       final role = userType == 'parent' ? 'parent' : (userType == 'tutor' ? 'tutor' : 'student');
       final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-      final tab = role == 'tutor' ? 1 : StudentTabIndex.requests;
       await navService.navigateToRoute(
         route,
-        arguments: {'initialTab': tab},
+        arguments: role == 'tutor'
+            ? NavTabArgs.tutorRequests()
+            : NavTabArgs.studentRequests(),
         replace: true,
       );
     }
@@ -251,7 +254,7 @@ class NotificationNavigationService {
         // This will display the trial session in the tutor's context with approve/reject options
         await navService.navigateToRoute(
           '/tutor-nav',
-          arguments: {'initialTab': 1, 'trialId': trialId},
+          arguments: NavTabArgs.tutor(tab: 'requests', trialId: trialId),
           replace: true,
         );
       } else {
@@ -267,11 +270,11 @@ class NotificationNavigationService {
       // Fallback: navigate to requests tab
       final role = userType == 'parent' ? 'parent' : (userType == 'tutor' ? 'tutor' : 'student');
       final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-      final tab = role == 'tutor' ? 1 : StudentTabIndex.requests;
-      
       await navService.navigateToRoute(
         route,
-        arguments: {'initialTab': tab, 'trialId': trialId},
+        arguments: role == 'tutor'
+            ? NavTabArgs.tutor(tab: 'requests', trialId: trialId)
+            : NavTabArgs.studentRequests(),
         replace: true,
       );
     }
@@ -337,9 +340,9 @@ class NotificationNavigationService {
     
     await navService.navigateToRoute(
       route,
-      arguments: {
-        'initialTab': role == 'tutor' ? 3 : StudentTabIndex.profile,
-      },
+      arguments: role == 'tutor'
+          ? NavTabArgs.tutor(tab: 'profile')
+          : NavTabArgs.studentProfile(),
       replace: true,
     );
   }
@@ -403,7 +406,7 @@ class NotificationNavigationService {
       if (userType == 'tutor') {
         await navService.navigateToRoute(
           '/tutor-nav',
-          arguments: {'initialTab': 1}, // Requests tab
+          arguments: NavTabArgs.tutorRequests(),
           replace: true,
         );
       }
@@ -412,7 +415,7 @@ class NotificationNavigationService {
       if (userType == 'tutor') {
         await navService.navigateToRoute(
           '/tutor-nav',
-          arguments: {'initialTab': 2}, // Sessions tab
+          arguments: NavTabArgs.tutorSessions(),
           replace: true,
         );
       }
@@ -442,7 +445,7 @@ class NotificationNavigationService {
         // Fallback: navigate to requests tab
         await navService.navigateToRoute(
           '/tutor-nav',
-          arguments: {'initialTab': 1, 'bookingId': bookingId},
+          arguments: NavTabArgs.tutorRequests(bookingId: bookingId),
           replace: true,
         );
       }
@@ -472,7 +475,7 @@ class NotificationNavigationService {
       final route = role == 'parent' ? '/parent-nav' : '/student-nav';
       await navService.navigateToRoute(
         route,
-        arguments: {'initialTab': StudentTabIndex.requests},
+        arguments: NavTabArgs.studentRequests(),
         replace: false,
       );
     }
@@ -493,9 +496,9 @@ class NotificationNavigationService {
       final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
       await navService.navigateToRoute(
         route,
-        arguments: {
-          'initialTab': role == 'tutor' ? 2 : StudentTabIndex.requests,
-        },
+        arguments: role == 'tutor'
+            ? NavTabArgs.tutorSessions()
+            : NavTabArgs.studentRequests(),
         replace: false,
       );
       return;
@@ -520,9 +523,9 @@ class NotificationNavigationService {
         final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
         await navService.navigateToRoute(
           route,
-          arguments: {
-            'initialTab': role == 'tutor' ? 2 : StudentTabIndex.requests,
-          },
+          arguments: role == 'tutor'
+              ? NavTabArgs.tutorSessions()
+              : NavTabArgs.studentRequests(),
           replace: true,
         );
       }
@@ -534,9 +537,9 @@ class NotificationNavigationService {
       final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
       await navService.navigateToRoute(
         route,
-        arguments: {
-          'initialTab': role == 'tutor' ? 2 : StudentTabIndex.requests,
-        },
+        arguments: role == 'tutor'
+            ? NavTabArgs.tutorSessions()
+            : NavTabArgs.studentRequests(),
         replace: true,
       );
     }
@@ -557,9 +560,9 @@ class NotificationNavigationService {
       final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
       await navService.navigateToRoute(
         route,
-        arguments: {
-          'initialTab': role == 'tutor' ? 1 : StudentTabIndex.requests,
-        },
+        arguments: role == 'tutor'
+            ? NavTabArgs.tutorRequests()
+            : NavTabArgs.studentRequests(),
         replace: true,
       );
       return;
@@ -608,10 +611,11 @@ class NotificationNavigationService {
               : (userType == 'parent' ? 'parent' : 'student');
           final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
           // Students/parents go to Find Tutors tab (1), tutors go to Requests tab (1)
-          final tab = userType == 'tutor' ? 1 : StudentTabIndex.findTutors;
           await navService.navigateToRoute(
             route,
-            arguments: {'initialTab': tab},
+            arguments: userType == 'tutor'
+                ? NavTabArgs.tutorRequests()
+                : NavTabArgs.student(tab: 'findTutors'),
             replace: true,
           );
         } else {
@@ -620,10 +624,11 @@ class NotificationNavigationService {
               ? 'tutor'
               : (userType == 'parent' ? 'parent' : 'student');
           final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-          final tab = userType == 'tutor' ? 1 : StudentTabIndex.requests;
           await navService.navigateToRoute(
             route,
-            arguments: {'initialTab': tab},
+            arguments: userType == 'tutor'
+                ? NavTabArgs.tutorRequests()
+                : NavTabArgs.studentRequests(),
             replace: true,
           );
         }
@@ -645,7 +650,7 @@ class NotificationNavigationService {
           final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
           await navService.navigateToRoute(
             route,
-            arguments: {'initialTab': StudentTabIndex.requests},
+            arguments: NavTabArgs.studentRequests(),
             replace: false,
           );
         }
@@ -659,10 +664,11 @@ class NotificationNavigationService {
             ? 'tutor'
             : (userType == 'parent' ? 'parent' : 'student');
         final route2 = role2 == 'tutor' ? '/tutor-nav' : (role2 == 'parent' ? '/parent-nav' : '/student-nav');
-        final tab2 = userType == 'tutor' ? 1 : StudentTabIndex.requests;
         await navService.navigateToRoute(
           route2,
-          arguments: {'initialTab': tab2},
+          arguments: userType == 'tutor'
+              ? NavTabArgs.tutorRequests()
+              : NavTabArgs.studentRequests(),
           replace: false,
         );
         break;
@@ -677,9 +683,9 @@ class NotificationNavigationService {
         final route3 = role3 == 'tutor' ? '/tutor-nav' : (role3 == 'parent' ? '/parent-nav' : '/student-nav');
         await navService.navigateToRoute(
           route3,
-          arguments: {
-            'initialTab': userType == 'tutor' ? 3 : StudentTabIndex.profile,
-          },
+          arguments: userType == 'tutor'
+              ? NavTabArgs.tutor(tab: 'profile')
+              : NavTabArgs.studentProfile(),
           replace: false,
         );
         break;
@@ -691,7 +697,7 @@ class NotificationNavigationService {
         if (userType == 'tutor') {
           await navService.navigateToRoute(
             '/tutor-nav',
-            arguments: {'initialTab': 2}, // Sessions tab
+            arguments: NavTabArgs.tutorSessions(),
             replace: false,
           );
         }
@@ -799,9 +805,9 @@ class NotificationNavigationService {
           final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
           await navService.navigateToRoute(
             route,
-            arguments: {
-              'initialTab': role == 'tutor' ? 2 : StudentTabIndex.requests,
-            },
+            arguments: role == 'tutor'
+                ? NavTabArgs.tutorSessions()
+                : NavTabArgs.studentRequests(),
             replace: false,
           );
         }
@@ -819,7 +825,7 @@ class NotificationNavigationService {
           final route = role == 'parent' ? '/parent-nav' : '/student-nav';
           await navService.navigateToRoute(
             route,
-            arguments: {'initialTab': StudentTabIndex.requests},
+            arguments: NavTabArgs.studentRequests(),
             replace: true,
           );
         }
@@ -837,8 +843,8 @@ class NotificationNavigationService {
           await navService.navigateToRoute(
             route,
             arguments: role == 'tutor'
-                ? null
-                : {'initialTab': StudentTabIndex.skulMate},
+                ? NavTabArgs.tutorSessions()
+                : NavTabArgs.studentSkulMate(),
             replace: false,
           );
         }
@@ -867,7 +873,7 @@ class NotificationNavigationService {
             roleRejected == 'parent' ? '/parent-nav' : '/student-nav';
         await navService.navigateToRoute(
           routeRejected,
-          arguments: {'initialTab': StudentTabIndex.requests},
+          arguments: NavTabArgs.studentRequests(),
           replace: true,
         );
         break;
@@ -934,9 +940,9 @@ class NotificationNavigationService {
         final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
         await navService.navigateToRoute(
           route,
-          arguments: {
-            'initialTab': role == 'tutor' ? 2 : StudentTabIndex.requests,
-          },
+          arguments: role == 'tutor'
+              ? NavTabArgs.tutorSessions()
+              : NavTabArgs.studentRequests(),
           replace: true,
         );
       }

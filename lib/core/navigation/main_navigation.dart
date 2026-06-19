@@ -27,6 +27,7 @@ import '../../features/tutor/widgets/tutor_page_body.dart';
 import '../../features/tutor/widgets/tutor_navigation_shell.dart';
 import '../../features/sessions/services/live_session_overlay_controller.dart';
 import 'main_navigation_scope.dart';
+import 'nav_tab_args.dart';
 
 class MainNavigation extends StatefulWidget {
   final String userRole;
@@ -123,7 +124,9 @@ class _MainNavigationState extends State<MainNavigation>
 
     final routeArgs =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    final tabFromArgs = routeArgs?['initialTab'] as int?;
+    final tabFromArgs = widget.userRole == 'tutor'
+        ? NavTabArgs.resolveTutorTabIndex(routeArgs)
+        : NavTabArgs.resolveStudentTabIndex(routeArgs);
     final targetTab = tabFromArgs ?? widget.initialTab;
     if (targetTab == null || targetTab < 0) return;
 

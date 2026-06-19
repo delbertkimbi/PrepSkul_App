@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
+import 'package:prepskul/features/booking/utils/trial_requester_display.dart';
 
 /// BookingRequest Model
 ///
@@ -210,11 +211,16 @@ class BookingRequest {
       trialGoal: json['trial_goal'] as String?,
       learnerChallenges: json['learner_challenges'] as String?,
       scheduledDate: date,
-      // Student info from joined profile - prefer full_name, then email, then generic fallback
-      // Never use "User" - always show meaningful name or email
-      studentName: _extractStudentNameFromProfile(studentProfile),
+      // Requester display (parent who booked, or learner)
+      studentName: _extractStudentNameFromProfile(
+        studentProfile,
+        trialJson: json,
+      ),
       studentAvatarUrl: studentProfile['avatar_url'] ?? studentProfile['profile_photo_url'],
-      studentType: studentProfile['user_type'] ?? 'learner',
+      studentType: TrialRequesterDisplay.resolveStudentTypeFromTrialJson(
+        json,
+        studentProfile,
+      ),
       // Multi-learner: from trial_sessions.learner_labels or learner_label (single)
       learnerLabels: _parseLearnerLabels(json['learner_labels']) ??
           (json['learner_label'] != null && (json['learner_label'] as String).trim().isNotEmpty
@@ -334,51 +340,21 @@ class BookingRequest {
 
   /// Extract student name from profile, with proper fallbacks
   /// Never returns "User" - always returns meaningful identifier
-  static String _extractStudentNameFromProfile(Map<String, dynamic> studentProfile) {
-    // Handle null or empty profile - check if it has any meaningful data
-    final hasFullName = studentProfile['full_name'] != null && 
-                       studentProfile['full_name'].toString().trim().isNotEmpty &&
-                       studentProfile['full_name'].toString().toLowerCase() != 'user' &&
-                       studentProfile['full_name'].toString().toLowerCase() != 'null';
-    final hasEmail = studentProfile['email'] != null && 
-                    studentProfile['email'].toString().trim().isNotEmpty &&
-                    studentProfile['email'].toString().toLowerCase() != 'null';
-    
-    // If profile is truly empty (no name, no email), return generic based on type
-    if (!hasFullName && !hasEmail) {
-      final userType = studentProfile['user_type'] as String? ?? 'learner';
-      return userType == 'parent' ? 'Parent' : 'Student';
-    }
-    
-    // Try full_name first
-    if (hasFullName) {
-      final fullName = studentProfile['full_name'].toString().trim();
-      if (fullName.isNotEmpty && 
-          fullName.toLowerCase() != 'user' &&
-          fullName.toLowerCase() != 'null') {
-        return fullName;
-      }
-    }
-    
-    // Try email as fallback
-    if (hasEmail) {
-      final email = studentProfile['email'].toString().trim();
-      // Extract name from email if possible (before @)
-      final emailName = email.split('@').first.trim();
-      if (emailName.isNotEmpty && 
-          emailName.toLowerCase() != 'user' &&
-          emailName.toLowerCase() != 'null') {
-        // Capitalize first letter for better display
-        if (emailName.length > 1) {
-          return emailName[0].toUpperCase() + emailName.substring(1);
-        }
-        return emailName;
-      }
-    }
-    
-    // Final fallback - determine type and return appropriate default
-    final userType = studentProfile['user_type'] as String? ?? 'learner';
-    return userType == 'parent' ? 'Parent' : 'Student';
+  static String _extractStudentNameFromProfile(
+    Map<String, dynamic> studentProfile, {
+    Map<String, dynamic>? trialJson,
+  }) {
+    final parentId = trialJson?['parent_id'] as String?;
+    final learnerId = trialJson?['learner_id'] as String?;
+    final isParent = parentId != null &&
+        parentId.isNotEmpty &&
+        learnerId != null &&
+        parentId != learnerId;
+
+    final resolved = TrialRequesterDisplay.nameFromProfile(studentProfile);
+    if (!TrialRequesterDisplay.isGenericName(resolved)) return resolved;
+
+    return isParent ? 'Parent' : 'Student';
   }
 
   /// Check if request is pending
