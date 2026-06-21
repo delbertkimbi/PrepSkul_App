@@ -35,6 +35,7 @@ import '../../../features/sessions/services/location_sharing_service.dart';
 import '../../../features/sessions/services/continuous_location_monitoring_service.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'tutor_session_detail_full_screen.dart';
+import 'package:prepskul/features/booking/utils/trial_requester_display.dart';
 import 'package:prepskul/features/sessions/domain/onsite_session_phase.dart';
 import 'package:prepskul/features/sessions/widgets/onsite_presence_summary.dart';
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
@@ -174,9 +175,18 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
 
     final requesterId = trial.requesterId;
     final learnerId = trial.learnerId;
+    final parentId = trial.parentId;
 
     if (requesterId.isNotEmpty) {
       applyRequesterProfile(profilesById[requesterId]);
+    }
+
+    if (studentName == 'Student' &&
+        parentId != null &&
+        parentId.isNotEmpty &&
+        parentId != learnerId) {
+      applyRequesterProfile(profilesById[parentId]);
+      requesterType = 'parent';
     }
 
     if (studentName == 'Student' && learnerId.isNotEmpty) {
@@ -205,11 +215,31 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       }
     }
 
+    if (parentId != null &&
+        parentId.isNotEmpty &&
+        parentId != learnerId) {
+      requesterType = 'parent';
+    }
+
     return <String, Object?>{
       'student_name': studentName,
       'student_avatar_url': studentAvatar,
       'requester_type': requesterType,
+      'learner_label': trial.learnerLabel ??
+          (trial.learnerLabels != null && trial.learnerLabels!.isNotEmpty
+              ? trial.learnerLabels!.first
+              : null),
     };
+  }
+
+  String _resolveTrialDisplayStatus(String status, String? paymentStatus) {
+    final normalized = status.toLowerCase();
+    final paid = paymentStatus?.toLowerCase() == 'paid' ||
+        paymentStatus?.toLowerCase() == 'completed';
+    if ((normalized == 'approved' || normalized == 'scheduled') && !paid) {
+      return 'pending_payment';
+    }
+    return status;
   }
   
   @override
@@ -378,6 +408,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
             'student_name': studentName,
             'student_avatar_url': studentAvatar,
             'requester_type': requesterType,
+            'learner_label': display['learner_label'],
           });
         }
       } catch (e) {
@@ -1223,6 +1254,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     bool isExpired = false;
     bool isCancelled = false;
     String? calendarEventId;
+    String? learnerLabel;
+    String? requesterType;
     final durationMinutes = session['duration_minutes'] as int? ?? 60;
 
     if (isTrialSession) {
@@ -1240,6 +1273,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         paymentStatus = trial.paymentStatus;
         meetLink = trial.meetLink;
         calendarEventId = session['calendar_event_id'] as String?;
+        learnerLabel = session['learner_label'] as String?;
+        requesterType = session['requester_type'] as String?;
         
         // Determine if expired (time passed, not paid, not approved)
         final isTimePassed = SessionDateUtils.isSessionExpired(trial);
@@ -1413,11 +1448,17 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                   // Status badge (time-aware: in_progress before start → Scheduled)
                   Builder(
                     builder: (context) {
-                      final displayStatus = _effectiveDisplayStatus(
+                      var displayStatus = _effectiveDisplayStatus(
                         status: status,
                         sessionDate: sessionDate,
                         sessionTime: sessionTime,
                       );
+                      if (isTrialSession) {
+                        displayStatus = _resolveTrialDisplayStatus(
+                          displayStatus,
+                          paymentStatus,
+                        );
+                      }
                       return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -1476,7 +1517,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          subject ?? 'Session',
+                          (isTrialSession &&
+                                  requesterType == 'parent' &&
+                                  learnerLabel != null &&
+                                  learnerLabel.trim().isNotEmpty)
+                              ? 'Learner: $learnerLabel'
+                              : (subject ?? 'Session'),
                           style: GoogleFonts.poppins(
                             fontSize: 12,
                             color: Colors.grey[600],
@@ -2255,6 +2301,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         return '#F44336'; // Red
       case 'approved':
         return '#4CAF50'; // Green
+      case 'pending_payment':
+        return '#F59E0B'; // Amber
       default:
         return '#757575'; // Gray
     }
@@ -2274,6 +2322,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         return 'Expired';
       case 'approved':
         return 'Approved';
+      case 'pending_payment':
+        return 'Pending payment';
       default:
         return status;
     }

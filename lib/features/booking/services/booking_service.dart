@@ -429,9 +429,25 @@ class BookingService {
           // Update student_avatar_url from joined profile if not already set
           final studentProfile = json['student_profile'];
           if (studentProfile != null && studentProfile is Map) {
-            final profileAvatarUrl = studentProfile['avatar_url'] as String?;
+            final profile = Map<String, dynamic>.from(studentProfile);
+            final profileAvatarUrl = profile['avatar_url'] as String?;
             if (profileAvatarUrl != null && profileAvatarUrl.isNotEmpty) {
               json['student_avatar_url'] = profileAvatarUrl;
+            }
+            final profileName = profile['full_name'] as String?;
+            if (profileName != null &&
+                profileName.trim().isNotEmpty &&
+                profileName.toLowerCase() != 'user' &&
+                profileName.toLowerCase() != 'null' &&
+                profileName.toLowerCase() != 'student') {
+              json['student_name'] = profileName.trim();
+            }
+            final profileType = profile['user_type'] as String?;
+            if (profileType == 'parent') {
+              json['student_type'] = 'parent';
+            } else if ((json['student_type'] as String?) == null ||
+                (json['student_type'] as String).isEmpty) {
+              json['student_type'] = profileType == 'parent' ? 'parent' : 'learner';
             }
           }
           
@@ -538,31 +554,24 @@ class BookingService {
               }
             }
             
-            // CRITICAL FIX: For display purposes, show the REQUESTER (who made the booking)
-            // The requester is the one who actually created the request (could be parent or student)
-            // The learner is who will attend, but for the tutor's view, we want to see who made the request
+            // CRITICAL: For display, show who made the booking (parent or learner).
             Map<String, dynamic> requesterDisplayProfile;
             if (requesterProfile != null && requesterProfile.isNotEmpty) {
-              // Use requester profile (who made the booking) - this is what tutors should see
               requesterDisplayProfile = requesterProfile;
               LogService.debug('✅ Using requester profile for display: ${requesterProfile['full_name']} (user_type: ${requesterProfile['user_type']})');
+            } else if (parentProfile != null && parentProfile.isNotEmpty) {
+              requesterDisplayProfile = parentProfile;
+              LogService.debug('Using parent profile for display');
             } else if (learnerProfile != null && learnerProfile.isNotEmpty) {
-              // Fallback to learner if requester not available
               requesterDisplayProfile = learnerProfile;
               LogService.debug('Using learner profile as fallback for display');
-            } else if (parentProfile != null && parentProfile.isNotEmpty) {
-              // Fallback to parent if available
-              requesterDisplayProfile = parentProfile;
-              LogService.debug('Using parent profile as fallback for display');
             } else {
-              // If no profile found, use defaults
               LogService.warning('⚠️ No valid profile found for trial session ${json['id']}, requester_id: ${json['requester_id']}');
               requesterDisplayProfile = {
-                'user_type': 'learner', // Default to learner
+                'user_type': json['parent_id'] != null ? 'parent' : 'learner',
               };
             }
-            
-            // Pass requester profile for display (who made the booking)
+
             return BookingRequest.fromTrialSession(json, requesterDisplayProfile, null);
           } catch (e) {
             LogService.error('Error parsing trial session: $e');

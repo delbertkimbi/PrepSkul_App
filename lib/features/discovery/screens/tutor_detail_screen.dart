@@ -25,7 +25,7 @@ import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:prepskul/core/services/share_service.dart';
 import 'package:prepskul/features/discovery/widgets/tutor_schedule_preview.dart';
-import 'tutor_schedule_screen.dart';
+import 'tutor_trial_schedule_screen.dart';
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -963,33 +963,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          // Available times
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Available Schedule',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    _buildAvailabilitySchedule(
-                      widget.tutor['combined_availability']
-                          as Map<String, dynamic>?,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          _buildAvailabilitySchedule(
+            widget.tutor['combined_availability'] as Map<String, dynamic>?,
           ),
         ],
       ),
@@ -1573,12 +1548,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
     return TutorSchedulePreview(
       availability: availability,
-      maxSlotsPerDay: 4,
       onViewAll: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => TutorScheduleScreen(
+            builder: (context) => TutorTrialScheduleScreen(
               tutor: widget.tutor,
               availability: availability,
             ),

@@ -11,6 +11,7 @@ import '../../../core/widgets/empty_state_widget.dart';
 import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
 import '../../../features/booking/utils/tutor_request_list_filters.dart';
+import '../../../features/booking/utils/trial_requester_display.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'tutor_request_detail_full_screen.dart';
@@ -364,8 +365,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   }
 
   Widget _buildRequestCard(BookingRequest request) {
-    final typeLower = request.studentType.toLowerCase();
-    final isStudent = typeLower == 'learner' || typeLower == 'student';
+    final display = TrialRequesterDisplay.forBookingRequest(request);
     final isPending = request.status.toLowerCase() == 'pending';
 
     return Container(
@@ -416,8 +416,8 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                       : null,
                   child: request.studentAvatarUrl == null
                       ? Text(
-                          request.studentName.isNotEmpty
-                              ? request.studentName[0].toUpperCase()
+                          display.name.isNotEmpty
+                              ? display.name[0].toUpperCase()
                               : 'S',
                           style: GoogleFonts.poppins(
                             fontSize: 16,
@@ -434,7 +434,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        request.studentName,
+                        display.name,
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -443,7 +443,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        isStudent ? 'Student' : 'Parent',
+                        display.role,
                         style: GoogleFonts.poppins(
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
@@ -491,9 +491,9 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                         statusColor = Colors.green[700]!;
                         statusBgColor = Colors.green[50]!;
                       } else {
-                        displayStatus = 'approved';
-                        statusColor = Colors.green;
-                        statusBgColor = Colors.green.withOpacity(0.1);
+                        displayStatus = 'pending_payment';
+                        statusColor = Colors.orange[800]!;
+                        statusBgColor = Colors.orange.withOpacity(0.12);
                       }
                     } else {
                       // Match parent/learner UI colors
@@ -536,11 +536,14 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                         border: Border.all(color: statusColor.withOpacity(0.3)),
                       ),
                       child: Text(
-                        displayStatus.toUpperCase(),
+                        displayStatus == 'pending_payment'
+                            ? 'PENDING PAYMENT'
+                            : displayStatus.toUpperCase(),
                         style: GoogleFonts.poppins(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                           color: statusColor,
+                          height: 1.2,
                         ),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
@@ -619,6 +622,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.primaryColor,
+                            height: 1.2,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -774,7 +778,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         '/tutor-nav',
         (route) => route.isFirst,
         arguments: {
-          'initialTab': 2,
+          'tab': 'sessions',
           'sessionId': sessionId,
         },
       );

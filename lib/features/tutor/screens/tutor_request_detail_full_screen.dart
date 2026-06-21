@@ -13,6 +13,7 @@ import 'package:prepskul/features/messaging/services/conversation_lifecycle_serv
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'tutor_requests_screen.dart';
+import '../../../features/booking/utils/trial_requester_display.dart';
 
 /// Full-screen detail view for tutor booking requests
 /// Profile-like UI with all request details and action buttons at the bottom
@@ -36,8 +37,8 @@ class _TutorRequestDetailFullScreenState
   @override
   Widget build(BuildContext context) {
     final request = widget.request;
-    final typeLower = request.studentType.toLowerCase();
-    final isStudent = typeLower == 'learner' || typeLower == 'student';
+    final display = TrialRequesterDisplay.forBookingRequest(request);
+    final childName = TrialRequesterDisplay.primaryLearnerName(request);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -66,7 +67,7 @@ class _TutorRequestDetailFullScreenState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Student Profile Section
-                  _buildProfileSection(request, isStudent),
+                  _buildProfileSection(request, display, childName),
                   const SizedBox(height: 32),
 
                   // Session Details Section
@@ -122,8 +123,15 @@ class _TutorRequestDetailFullScreenState
                       ),
                     ),
                   ],
-                  // Learners Section (only when parent booked for 2+ children – hide for single-learner)
+                  // Learners Section (parent bookings — show child even for single learner)
                   if (request.learnerLabels != null &&
+                      request.learnerLabels!.isNotEmpty &&
+                      display.role == 'Parent') ...[
+                    const SizedBox(height: 24),
+                    _buildSectionTitle('Child'),
+                    const SizedBox(height: 16),
+                    _buildChildCard(childName ?? request.learnerLabels!.first),
+                  ] else if (request.learnerLabels != null &&
                       request.learnerLabels!.length > 1) ...[
                     const SizedBox(height: 24),
                     _buildSectionTitle('Learners'),
@@ -168,7 +176,11 @@ class _TutorRequestDetailFullScreenState
     );
   }
 
-  Widget _buildProfileSection(BookingRequest request, bool isStudent) {
+  Widget _buildProfileSection(
+    BookingRequest request,
+    ({String name, String role, List<String> learners}) display,
+    String? childName,
+  ) {
     return Column(
       children: [
         CircleAvatar(
@@ -179,8 +191,8 @@ class _TutorRequestDetailFullScreenState
               : null,
           child: request.studentAvatarUrl == null
               ? Text(
-                  request.studentName.isNotEmpty
-                      ? request.studentName[0].toUpperCase()
+                  display.name.isNotEmpty
+                      ? display.name[0].toUpperCase()
                       : 'S',
                   style: GoogleFonts.poppins(
                     fontSize: 32,
@@ -192,7 +204,7 @@ class _TutorRequestDetailFullScreenState
         ),
         const SizedBox(height: 20),
         Text(
-          request.studentName,
+          display.name,
           style: GoogleFonts.poppins(
             fontSize: 24,
             fontWeight: FontWeight.w700,
@@ -210,7 +222,7 @@ class _TutorRequestDetailFullScreenState
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                isStudent ? 'Student' : 'Parent',
+                display.role,
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -236,9 +248,9 @@ class _TutorRequestDetailFullScreenState
                     statusColor = Colors.blue[700]!;
                     statusBgColor = Colors.blue[50]!;
                   } else {
-                    displayStatus = 'approved';
-                    statusColor = AppTheme.accentGreen;
-                    statusBgColor = AppTheme.accentGreen.withOpacity(0.1);
+                    displayStatus = 'pending_payment';
+                    statusColor = Colors.orange[800]!;
+                    statusBgColor = Colors.orange.withOpacity(0.12);
                   }
                 } else {
                   statusColor = request.status == 'pending'
@@ -260,7 +272,9 @@ class _TutorRequestDetailFullScreenState
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    displayStatus.toUpperCase(),
+                    displayStatus == 'pending_payment'
+                        ? 'PENDING PAYMENT'
+                        : displayStatus.toUpperCase(),
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -297,6 +311,57 @@ class _TutorRequestDetailFullScreenState
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildChildCard(String childName) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.softBackground,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.22)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+            child: Text(
+              childName.isNotEmpty ? childName[0].toUpperCase() : 'C',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Learner',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+                Text(
+                  childName,
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

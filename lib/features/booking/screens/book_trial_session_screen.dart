@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/navigation/nav_tab_args.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -27,6 +28,10 @@ class BookTrialSessionScreen extends StatefulWidget {
   final String? rescheduleSessionId; // ID of the session being rescheduled
   final bool isReschedule; // Flag to indicate this is a reschedule request
   final String? rescheduleReason; // Reason for rescheduling (for date change requests)
+  final DateTime? preselectedDate;
+  final String? preselectedTime;
+  final bool skipScheduleStep;
+  final int? lockTrialDurationMinutes;
 
   const BookTrialSessionScreen({
     Key? key, 
@@ -34,6 +39,10 @@ class BookTrialSessionScreen extends StatefulWidget {
     this.rescheduleSessionId,
     this.isReschedule = false,
     this.rescheduleReason,
+    this.preselectedDate,
+    this.preselectedTime,
+    this.skipScheduleStep = false,
+    this.lockTrialDurationMinutes,
   }) : super(key: key);
 
   @override
@@ -48,7 +57,38 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   final Set<String> _selectedLearnerIds = {};
   bool _bookForMeOnly = true; // "Just me" when parent
 
-  int get _totalSteps => _isParent ? 4 : 3;
+  int get _totalSteps {
+    final base = _isParent ? 4 : 3;
+    return widget.skipScheduleStep ? base - 1 : base;
+  }
+
+  List<Widget> get _stepPages {
+    if (_isParent) {
+      final pages = <Widget>[
+        _buildWhoIsThisFor(),
+        _buildSubjectAndDuration(),
+      ];
+      if (!widget.skipScheduleStep) pages.add(_buildDateAndTime());
+      pages.add(_buildGoalsAndReview());
+      return pages;
+    }
+    final pages = <Widget>[
+      _buildSubjectAndDuration(),
+    ];
+    if (!widget.skipScheduleStep) pages.add(_buildDateAndTime());
+    pages.add(_buildGoalsAndReview());
+    return pages;
+  }
+
+  int _logicalStepIndex(int currentStep) {
+    if (!widget.skipScheduleStep) return currentStep;
+    if (_isParent) {
+      // 0 who, 1 subject, 2 goals (skip date)
+      return currentStep >= 2 ? currentStep + 1 : currentStep;
+    }
+    // 0 subject, 1 goals (skip date)
+    return currentStep >= 1 ? currentStep + 1 : currentStep;
+  }
 
   // Step 1 (or 0 when parent): Who is this for? — then Subject & Duration
   String? _selectedSubject;
@@ -100,6 +140,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   void initState() {
     super.initState();
     _confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    if (widget.lockTrialDurationMinutes != null) {
+      _selectedDuration = widget.lockTrialDurationMinutes!;
+    }
+    if (widget.preselectedDate != null) {
+      _selectedDate = widget.preselectedDate!;
+      _focusedDate = widget.preselectedDate!;
+    }
+    if (widget.preselectedTime != null) {
+      _selectedTime = widget.preselectedTime;
+    }
     if (widget.isReschedule && widget.rescheduleSessionId != null) {
       _loadOriginalSessionData();
     } else {
@@ -402,7 +452,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   }
 
   bool _canProceed() {
-    switch (_currentStep) {
+    final step = _logicalStepIndex(_currentStep);
+    switch (step) {
       case 0:
         if (_isParent) return _bookForMeOnly || _selectedLearnerIds.isNotEmpty;
         return _selectedSubject != null;
@@ -782,7 +833,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     context,
                     '/student-nav',
                     (route) => false,
-                    arguments: {'initialTab': 2},
+                    arguments: NavTabArgs.studentRequests(),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -998,18 +1049,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             child: PageView(
               controller: _pageController,
               physics: const NeverScrollableScrollPhysics(),
-              children: _isParent
-                  ? [
-                      _buildWhoIsThisFor(),
-                      _buildSubjectAndDuration(),
-                      _buildDateAndTime(),
-                      _buildGoalsAndReview(),
-                    ]
-                  : [
-                      _buildSubjectAndDuration(),
-                      _buildDateAndTime(),
-                      _buildGoalsAndReview(),
-                    ],
+              children: _stepPages,
             ),
           ),
           // Navigation buttons
@@ -1350,28 +1390,54 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                 ),
           const SizedBox(height: 32),
 
-          // Duration selection
-          Text(
-            'Session Duration',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
+          // Duration selection (hidden when arriving from schedule picker)
+          if (widget.lockTrialDurationMinutes == null) ...[
+            Text(
+              'Session Duration',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'How long would you like the trial?',
-            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: _buildDurationOption(30, '30 min', '2,000 XAF')),
-              const SizedBox(width: 12),
-              Expanded(child: _buildDurationOption(60, '1 hour', '3,500 XAF')),
-            ],
-          ),
+            const SizedBox(height: 4),
+            Text(
+              'How long would you like the trial?',
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: _buildDurationOption(30, '30 min', '2,000 XAF')),
+                const SizedBox(width: 12),
+                Expanded(child: _buildDurationOption(60, '1 hour', '3,500 XAF')),
+              ],
+            ),
+          ] else ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.timer_outlined, color: AppTheme.primaryColor, size: 20),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${widget.lockTrialDurationMinutes} min trial session',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

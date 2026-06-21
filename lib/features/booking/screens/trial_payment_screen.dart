@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/navigation/nav_tab_args.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -235,7 +236,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           Navigator.of(context).pushNamedAndRemoveUntil(
             '/student-nav',
             (route) => route.isFirst,
-            arguments: {'initialTab': 2},
+            arguments: NavTabArgs.studentRequests(),
           );
         }
       }
@@ -450,7 +451,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           Navigator.of(context).pushNamedAndRemoveUntil(
             '/student-nav',
             (route) => route.isFirst,
-            arguments: {'initialTab': 2},
+            arguments: NavTabArgs.studentRequests(),
           );
         }
       }
@@ -528,7 +529,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           Navigator.of(context).pushNamedAndRemoveUntil(
             '/student-nav',
             (route) => route.isFirst,
-            arguments: {'initialTab': 2}, // Sessions tab
+            arguments: NavTabArgs.studentRequests(), // Sessions tab
           );
         }
       }
@@ -612,7 +613,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
                             Navigator.of(context).pushNamedAndRemoveUntil(
                               '/student-nav',
                               (route) => route.isFirst,
-                              arguments: {'initialTab': 2},
+                              arguments: NavTabArgs.studentRequests(),
                             );
                           }
                         });
@@ -699,7 +700,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         // Navigate to sessions page
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
-            Navigator.pushNamed(context, '/student-nav', arguments: {'initialTab': 2}); // Sessions tab
+            Navigator.pushNamed(context, '/student-nav', arguments: NavTabArgs.studentRequests());
           }
         });
       }

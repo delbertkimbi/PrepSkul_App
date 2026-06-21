@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/navigation/nav_tab_args.dart';
 import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
@@ -1228,7 +1229,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                     '/student-nav',
                     (route) => false,
                     arguments: {
-                      'initialTab': 2, // Requests tab
+                      ...NavTabArgs.studentRequests(),
                       'highlightRequestId': requestId, // Highlight this request
                     },
                   );
@@ -1303,7 +1304,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                     context,
                     '/student-nav',
                     (route) => false,
-                    arguments: {'initialTab': 2}, // Tab 2 = Requests
+                    arguments: NavTabArgs.studentRequests(),
                   );
                 },
                 style: ElevatedButton.styleFrom(

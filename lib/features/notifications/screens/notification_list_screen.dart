@@ -642,7 +642,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         : (notificationType == 'trial_payment_completed' ||
                 notificationType == 'trial_payment_received')
             ? '/sessions'
-            : (notificationType == 'identity_verification_approved' ||
+            : (notificationType == 'trial_accepted' ||
+                    notificationType == 'booking_approved' ||
+                    notificationType == 'identity_verification_approved' ||
                     notificationType == 'identity_verification_rejected')
                 ? '/student/requests'
                 : null;

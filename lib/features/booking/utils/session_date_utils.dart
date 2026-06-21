@@ -87,6 +87,50 @@ class SessionDateUtils {
     return start.add(duration).add(grace);
   }
 
+  /// Whether the learner has completed payment for a trial session.
+  static bool isTrialPaid(TrialSession session) {
+    final paymentStatus = session.paymentStatus.toLowerCase();
+    return paymentStatus == 'paid' || paymentStatus == 'completed';
+  }
+
+  /// Whether an unpaid trial should appear on the learner Requests screens.
+  static bool isTrialActiveForLearnerRequests(TrialSession session) {
+    if (session.status == 'deleted') return false;
+    if (isTrialPaid(session)) return false;
+
+    final status = session.status.toLowerCase();
+    if (status == 'rejected') return false;
+    if (status == 'completed') return false;
+
+    if (status == 'cancelled') {
+      final paymentStatus = session.paymentStatus.toLowerCase();
+      if (paymentStatus != 'paid' && paymentStatus != 'completed') {
+        return false;
+      }
+    }
+
+    // Approved/scheduled but unpaid always stay in Requests until paid.
+    if ((status == 'approved' || status == 'scheduled') && !isTrialPaid(session)) {
+      return true;
+    }
+
+    if (isSessionExpired(session)) {
+      final endTime = getSessionEndTime(session);
+      final cutoff = endTime.add(const Duration(hours: 24));
+      if (DateTime.now().isAfter(cutoff)) return false;
+    }
+
+    return true;
+  }
+
+  /// Trial still needs learner action (approval wait or payment).
+  static bool isTrialAwaitingLearnerAction(TrialSession session) {
+    if (!isTrialActiveForLearnerRequests(session)) return false;
+    if (session.isPending) return true;
+    final status = session.status.toLowerCase();
+    return (status == 'approved' || status == 'scheduled') && !isTrialPaid(session);
+  }
+
   /// Check if a session has expired (date/time has passed)
   static bool isSessionExpired(TrialSession session) {
     final endTime = getSessionEndTime(session);

@@ -85,28 +85,50 @@ class TrialSession {
     return list.isEmpty ? null : list;
   }
 
+  static DateTime _parseDateField(dynamic value) {
+    if (value == null) return DateTime.now();
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return DateTime.now();
+    return DateTime.parse(raw.split('T').first);
+  }
+
+  static DateTime? _parseOptionalDateTime(dynamic value) {
+    if (value == null) return null;
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return null;
+    return DateTime.tryParse(raw);
+  }
+
   /// Create from JSON (from Supabase)
   factory TrialSession.fromJson(Map<String, dynamic> json) {
+    final requesterId = (json['requester_id'] ??
+            json['parent_id'] ??
+            json['learner_id'])
+        ?.toString();
+    if (requesterId == null || requesterId.isEmpty) {
+      throw FormatException('trial_sessions row missing requester/parent/learner id');
+    }
+
     return TrialSession(
       id: json['id'] as String,
       tutorId: json['tutor_id'] as String,
       learnerId: json['learner_id'] as String? ??
           json['requester_id'] as String? ??
-          '',
+          requesterId,
       parentId: json['parent_id'] as String?,
-      requesterId: json['requester_id'] as String,
-      subject: json['subject'] as String,
-      scheduledDate: DateTime.parse(json['scheduled_date'] as String),
-      scheduledTime: json['scheduled_time'] as String,
-      durationMinutes: json['duration_minutes'] as int,
-      location: json['location'] as String,
+      requesterId: requesterId,
+      subject: (json['subject'] as String?) ?? 'Trial Session',
+      scheduledDate: _parseDateField(json['scheduled_date']),
+      scheduledTime: json['scheduled_time']?.toString() ?? '00:00:00',
+      durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 60,
+      location: (json['location'] as String?) ?? 'online',
       trialGoal: json['trial_goal'] as String?,
       learnerChallenges: json['learner_challenges'] as String?,
       learnerLevel: json['learner_level'] as String?,
       status: json['status'] as String? ?? 'pending',
       tutorResponseNotes: json['tutor_response_notes'] as String?,
       rejectionReason: json['rejection_reason'] as String?,
-      trialFee: (json['trial_fee'] as num).toDouble(),
+      trialFee: (json['trial_fee'] as num?)?.toDouble() ?? 0,
       paymentStatus: json['payment_status'] as String? ?? 'unpaid',
       paymentId: json['payment_id'] as String?,
       meetLink: json['meet_link'] as String?,
@@ -115,13 +137,9 @@ class TrialSession {
       learnerLabels: _parseLearnerLabels(json['learner_labels']),
       convertedToRecurring: json['converted_to_recurring'] as bool? ?? false,
       recurringSessionId: json['recurring_session_id'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      respondedAt: json['responded_at'] != null
-          ? DateTime.parse(json['responded_at'] as String)
-          : null,
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
-          : null,
+      createdAt: _parseOptionalDateTime(json['created_at']) ?? DateTime.now(),
+      respondedAt: _parseOptionalDateTime(json['responded_at']),
+      updatedAt: _parseOptionalDateTime(json['updated_at']),
     );
   }
 

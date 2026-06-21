@@ -76,6 +76,26 @@ class OnsiteSessionPhaseResolver {
     }
   }
 
+  /// Human-readable next step for learners on onsite session cards.
+  static String studentNextStepLabel({
+    required OnsiteSessionPhase phase,
+    required DateTime? scheduledStart,
+    required bool tutorHasCheckedIn,
+  }) {
+    switch (phase) {
+      case OnsiteSessionPhase.upcoming:
+        return 'On-site session • tutor check-in opens 1h before start';
+      case OnsiteSessionPhase.readyToCheckIn:
+        return 'Your tutor can check in soon';
+      case OnsiteSessionPhase.onSite:
+        return tutorHasCheckedIn
+            ? 'Your tutor has arrived on site'
+            : 'On-site session in progress';
+      case OnsiteSessionPhase.done:
+        return 'On-site session complete';
+    }
+  }
+
   static String _shortTime(DateTime dt) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

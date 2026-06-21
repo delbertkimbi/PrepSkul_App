@@ -2,130 +2,115 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/discovery/utils/schedule_time_utils.dart';
-import 'package:prepskul/features/discovery/widgets/tutor_schedule_day_section.dart';
 
-/// Horizontal day-slider preview on tutor profile; full week on [TutorScheduleScreen].
-class TutorSchedulePreview extends StatefulWidget {
+/// Availability summary card on tutor profile; full slots on schedule screen.
+class TutorSchedulePreview extends StatelessWidget {
   final Map<String, dynamic> availability;
-  final int maxSlotsPerDay;
   final VoidCallback? onViewAll;
 
   const TutorSchedulePreview({
     super.key,
     required this.availability,
-    this.maxSlotsPerDay = 4,
     this.onViewAll,
   });
 
   @override
-  State<TutorSchedulePreview> createState() => _TutorSchedulePreviewState();
-}
-
-class _TutorSchedulePreviewState extends State<TutorSchedulePreview> {
-  static const double _cardHeight = 132;
-  static const double _viewportFraction = 0.88;
-
-  late final PageController _pageController;
-  int _currentPage = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(viewportFraction: _viewportFraction);
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final days = ScheduleTimeUtils.orderedDays(widget.availability);
+    final days = ScheduleTimeUtils.orderedDays(availability);
     if (days.isEmpty) {
       return Text(
         'Schedule not available',
-        style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
+        style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: _cardHeight,
-          child: PageView.builder(
-            controller: _pageController,
-            itemCount: days.length,
-            onPageChanged: (index) => setState(() => _currentPage = index),
-            itemBuilder: (context, index) {
-              final day = days[index];
-              final raw = widget.availability[day];
-              final times = ScheduleTimeUtils.sorted(
-                raw is List ? raw : [raw],
-              );
-              return Padding(
-                padding: EdgeInsets.only(
-                  left: index == 0 ? 0 : 6,
-                  right: index == days.length - 1 ? 0 : 6,
-                ),
-                child: TutorScheduleDaySection(
-                  day: day,
-                  times: times,
-                  maxSlots: widget.maxSlotsPerDay,
-                  compact: true,
-                  inSlider: true,
-                ),
-              );
-            },
-          ),
-        ),
-        if (days.length > 1) ...[
-          const SizedBox(height: 10),
+    final daysSummary = ScheduleTimeUtils.availabilityDaysSummary(availability);
+    final periodsSummary =
+        ScheduleTimeUtils.availabilityPeriodsSummary(availability);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: AppTheme.neutral100,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.softBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(days.length, (index) {
-              final active = index == _currentPage;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: active ? 16 : 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: active
-                      ? AppTheme.primaryColor
-                      : AppTheme.neutral200,
-                  borderRadius: BorderRadius.circular(3),
+            children: [
+              Icon(
+                Icons.schedule_outlined,
+                size: 18,
+                color: AppTheme.textDark,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Availability',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
                 ),
-              );
-            }),
+              ),
+            ],
           ),
-        ],
-        if (widget.onViewAll != null) ...[
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: widget.onViewAll,
-            child: Row(
-              children: [
-                Text(
-                  'View full schedule',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right,
-                  size: 18,
-                  color: AppTheme.primaryColor,
-                ),
-              ],
+          const SizedBox(height: 12),
+          Text(
+            daysSummary,
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textDark,
+              height: 1.45,
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            periodsSummary,
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textDark,
+              height: 1.45,
+            ),
+          ),
+          if (onViewAll != null) ...[
+            const SizedBox(height: 14),
+            Center(
+              child: InkWell(
+                onTap: onViewAll,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'See complete schedule',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 16,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

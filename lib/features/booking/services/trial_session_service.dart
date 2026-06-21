@@ -558,7 +558,7 @@ class TrialSessionService {
     return uuidRegex.hasMatch(value);
   }
 
-  /// Get all trial sessions for a student/parent
+  /// Get all trial sessions for a student/parent.
   static Future<List<TrialSession>> getStudentTrialSessions({
     String? status,
   }) async {
@@ -566,27 +566,50 @@ class TrialSessionService {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
 
-      var query = _supabase
-          .from('trial_sessions')
-          .select()
-          .or(
-            'requester_id.eq.$userId,parent_id.eq.$userId,learner_id.eq.$userId',
-          );
-
-      if (status != null && status != 'all') {
-        query = query.eq('status', status);
+      Future<List<Map<String, dynamic>>> fetchByColumn(String column) async {
+        try {
+          var query = _supabase.from('trial_sessions').select().eq(column, userId);
+          if (status != null && status != 'all') {
+            query = query.eq('status', status);
+          }
+          final response = await query.order('created_at', ascending: false);
+          return (response as List)
+              .map((row) => Map<String, dynamic>.from(row as Map))
+              .toList();
+        } catch (e) {
+          LogService.warning('Trial fetch by $column failed for $userId: $e');
+          return [];
+        }
       }
 
-      final response = await query.order('created_at', ascending: false);
-      final trials = (response as List)
-          .map((json) {
-            return TrialSession.fromJson(json);
-          })
-          .toList();
+      final mergedRows = <String, Map<String, dynamic>>{};
+      for (final row in [
+        ...await fetchByColumn('requester_id'),
+        ...await fetchByColumn('parent_id'),
+        ...await fetchByColumn('learner_id'),
+      ]) {
+        final id = row['id']?.toString();
+        if (id != null && id.isNotEmpty) {
+          mergedRows[id] = row;
+        }
+      }
 
+      final trials = <TrialSession>[];
+      for (final row in mergedRows.values) {
+        try {
+          trials.add(TrialSession.fromJson(row));
+        } catch (parseError) {
+          LogService.warning(
+            'Skipping invalid trial session row ${row['id']}: $parseError',
+          );
+        }
+      }
+
+      trials.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return trials;
     } catch (e) {
-      throw Exception('Failed to fetch trial sessions: $e');
+      LogService.error('Failed to fetch trial sessions: $e');
+      return [];
     }
   }
 
