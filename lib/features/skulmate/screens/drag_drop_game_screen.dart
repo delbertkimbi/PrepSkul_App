@@ -4,15 +4,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
-import '../models/skulmate_character_model.dart';
 import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
-import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/drag_drop_question_widget.dart';
 import '../widgets/game_standard_widgets.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
 import '../widgets/skulmate_companion_banner.dart';
-import '../services/character_selection_service.dart';
 import '../services/game_progress_service.dart';
+import '../widgets/game_settings_sheet.dart';
 import '../services/game_sound_service.dart';
 import 'game_results_screen.dart';
 
@@ -40,7 +40,6 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
   final GameSoundService _soundService = GameSoundService();
   final Map<String, int> _assignments = {};
   bool _showFeedback = false;
-  dynamic _character;
   bool _gameCompleted = false;
 
   @override
@@ -61,7 +60,6 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
     _startTime = DateTime.now();
     _soundService.initialize();
     unawaited(_soundService.playMusicForGame(widget.game.gameType));
-    _loadCharacter();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         GameRulesOverlay.showIfNeeded(
@@ -73,9 +71,13 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
     });
   }
 
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    if (mounted) setState(() => _character = character);
+  void _openGameSettingsSheet() {
+    GameSettingsSheet.show(
+      context: context,
+      soundService: _soundService,
+      gameType: widget.game.gameType,
+      musicGameTypeOverride: widget.game.gameType,
+    );
   }
 
   Future<void> _persistProgress() async {
@@ -204,16 +206,20 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
         title: widget.game.title.isNotEmpty ? widget.game.title : 'Drag & Drop',
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Center(
-              child: SkulMateCharacterWidget(
-                character: _character ?? SkulMateCharacters.middleMale,
-                size: 40,
-                animated: false,
-                showName: false,
+            padding: const EdgeInsets.only(right: 4, left: 0),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: _openGameSettingsSheet,
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.white.withOpacity(0.22),
+                child: const SkulMateProfileAvatar(
+                  size: 28,
+                  forGameAppBar: true,
+                ),
               ),
             ),
-          ),
+          )
         ],
       ),
       body: SingleChildScrollView(
@@ -245,11 +251,14 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SkulMateCharacterWidget(
-                          character: SkulMateCharacters.middleMale,
-                          size: 44,
-                          animated: false,
-                          showName: false,
+                        SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: const SkulMateMascotMediaWidget(
+                            state: SkulMateMascotState.encouraging,
+                            useLandscapeFrame: false,
+                            borderRadius: 999,
+                          ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(

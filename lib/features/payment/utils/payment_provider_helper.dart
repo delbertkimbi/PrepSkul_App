@@ -83,4 +83,26 @@ class PaymentProviderHelper {
         return '*126#';
     }
   }
+
+  /// Placeholder for MoMo number fields (all Cameroon mobile prefixes).
+  static const String phoneFieldHint = 'Your mobile money number';
+
+  /// Shown when the entered number cannot be parsed.
+  static const String phoneValidationError =
+      'Enter a valid 9-digit Cameroon mobile number';
+
+  /// Normalize to 9-digit local format (e.g. 670123456), or null if invalid.
+  static String? normalizeCameroonMobile(String phone) {
+    final digitsOnly = phone.replaceAll(RegExp(r'[^\d]'), '');
+    final String normalized;
+    if (digitsOnly.startsWith('237') && digitsOnly.length >= 12) {
+      normalized = digitsOnly.substring(3);
+    } else if (digitsOnly.startsWith('6')) {
+      normalized = digitsOnly;
+    } else {
+      return null;
+    }
+    if (normalized.length != 9) return null;
+    return normalized;
+  }
 }

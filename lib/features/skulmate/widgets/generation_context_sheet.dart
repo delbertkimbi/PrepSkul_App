@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/game_stats_model.dart';
 import '../services/game_stats_service.dart';
+import '../utils/skulmate_client_game_policy.dart';
 import 'skulmate_mascot_media_widget.dart';
 
 /// Optional context to pass to game generation for better results
@@ -46,39 +47,63 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
   final TextEditingController _topicController = TextEditingController();
   String? _practiceType;
   String _gameType = 'auto';
-  static const Set<String> _comingSoonGameTypes = {
-    'diagram_label',
-    'match3',
-    'bubble_pop',
-    'word_search',
-    'crossword',
-    'simulation',
-    'mystery',
-    'escape_room',
-  };
+
+  static final List<Map<String, String>> _gameTypeOptions = [
+    for (final value in SkulMateClientGamePolicy.setupSelectableApiTypes)
+      {
+        'value': value,
+        'label': _labelForApiType(value),
+        'emoji': _emojiForApiType(value),
+      },
+  ];
+
+  static String _labelForApiType(String value) {
+    switch (value) {
+      case 'auto':
+        return 'Auto (surprise me)';
+      case 'quiz':
+        return 'Quiz';
+      case 'flashcards':
+        return 'Flashcards';
+      case 'matching':
+        return 'Matching';
+      case 'fill_blank':
+        return 'Fill Blank';
+      case 'drag_drop':
+        return 'Drag & Drop';
+      case 'puzzle_pieces':
+        return 'Puzzle';
+      default:
+        return value;
+    }
+  }
+
+  static String _emojiForApiType(String value) {
+    switch (value) {
+      case 'auto':
+        return '🎲';
+      case 'quiz':
+        return '❓';
+      case 'flashcards':
+        return '🃏';
+      case 'matching':
+        return '🔗';
+      case 'fill_blank':
+        return '✍️';
+      case 'drag_drop':
+        return '🧩';
+      case 'puzzle_pieces':
+        return '🧩';
+      default:
+        return '🎮';
+    }
+  }
 
   static const List<Map<String, String?>> _practiceOptions = [
     {'value': 'easy', 'label': 'Easy – Definitions', 'emoji': '📖'},
     {'value': 'medium', 'label': 'Medium – Facts & recall', 'emoji': '🧠'},
     {'value': 'hard', 'label': 'Hard – Problem solving', 'emoji': '🔢'},
     {'value': null, 'label': 'Mixed', 'emoji': '✨'},
-  ];
-
-  static const List<Map<String, String>> _gameTypeOptions = [
-    {'value': 'auto', 'label': 'Auto (surprise me)', 'emoji': '🎲'},
-    {'value': 'quiz', 'label': 'Quiz', 'emoji': '❓'},
-    {'value': 'flashcards', 'label': 'Flashcards', 'emoji': '🃏'},
-    {'value': 'matching', 'label': 'Matching', 'emoji': '🔗'},
-    {'value': 'fill_blank', 'label': 'Fill Blank', 'emoji': '✍️'},
-    {'value': 'drag_drop', 'label': 'Drag & Drop', 'emoji': '🧩'},
-    {'value': 'match3', 'label': 'Match-3', 'emoji': '🟦'},
-    {'value': 'bubble_pop', 'label': 'Bubble Pop', 'emoji': '🫧'},
-    {'value': 'word_search', 'label': 'Word Search', 'emoji': '🔎'},
-    {'value': 'crossword', 'label': 'Crossword', 'emoji': '🧠'},
-    {'value': 'simulation', 'label': 'Simulation', 'emoji': '🧪'},
-    {'value': 'mystery', 'label': 'Mystery', 'emoji': '🕵️'},
-    {'value': 'escape_room', 'label': 'Escape Room', 'emoji': '🚪'},
-    {'value': 'diagram_label', 'label': 'Diagram Label (Coming Soon)', 'emoji': '🏷️'},
   ];
 
   @override
@@ -135,33 +160,6 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
   }
 
   void _onSelectGameType(String value) {
-    if (_comingSoonGameTypes.contains(value)) {
-      final selected = _gameTypeOptions.firstWhere(
-        (opt) => opt['value'] == value,
-        orElse: () => const {'value': '', 'label': 'This game type', 'emoji': ''},
-      );
-      final label = selected['label'] ?? 'This game type';
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(
-            'Coming soon',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-          ),
-          content: Text(
-            '$label is not available yet. Please choose another game type.',
-            style: GoogleFonts.poppins(),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
     setState(() => _gameType = value);
   }
 
@@ -292,7 +290,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
               TextField(
                 controller: _topicController,
                 decoration: InputDecoration(
-                  hintText: 'e.g. Biology, GCE Maths, SAT Vocabulary',
+                  hintText: 'e.g. Photosynthesis, Algebra, Machine learning',
                   hintStyle: GoogleFonts.poppins(
                     fontSize: 14,
                     color: AppTheme.textLight,
@@ -365,7 +363,6 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                 children: _gameTypeOptions.map((opt) {
                   final value = opt['value']!;
                   final isSelected = _gameType == value;
-                  final isInactive = _comingSoonGameTypes.contains(value);
                   return FilterChip(
                     selected: isSelected,
                     showCheckmark: false,
@@ -374,26 +371,18 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                       style: GoogleFonts.poppins(
                         fontSize: 13,
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isInactive
-                            ? AppTheme.textLight
-                            : (isSelected ? Colors.white : AppTheme.textDark),
+                        color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
                     ),
                     onSelected: (_) {
                       _onSelectGameType(value);
                     },
-                    selectedColor: isInactive
-                        ? const Color(0xFFE5E7EB)
-                        : AppTheme.primaryColor,
-                    backgroundColor: isInactive
-                        ? const Color(0xFFF3F4F6)
-                        : AppTheme.softBackground,
+                    selectedColor: AppTheme.primaryColor,
+                    backgroundColor: AppTheme.softBackground,
                     side: BorderSide(
-                      color: isInactive
-                          ? const Color(0xFFD1D5DB)
-                          : (isSelected
-                              ? AppTheme.primaryColor
-                              : AppTheme.softBorder),
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : AppTheme.softBorder,
                       width: isSelected ? 2 : 1,
                     ),
                   );

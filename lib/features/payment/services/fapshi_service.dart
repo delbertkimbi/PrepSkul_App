@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import '../models/fapshi_transaction_model.dart';
+import '../utils/payment_provider_helper.dart';
 
 /// Fapshi Payment Service
 /// 
@@ -313,7 +314,7 @@ class FapshiService {
     
     // Phone number validation errors - provide clear format guidance
     if (lowerError.contains('phone') && (lowerError.contains('valid') || lowerError.contains('mtn') || lowerError.contains('orange'))) {
-      return 'Please enter a valid phone number.\n\nFormat: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)\n\nExample: 670000000 or 690000000';
+      return PaymentProviderHelper.phoneValidationError;
     }
     
     // Amount validation errors

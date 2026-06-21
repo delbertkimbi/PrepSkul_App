@@ -1039,7 +1039,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           }).toList();
 
     if (filteredRequests.isEmpty) {
-      return _scrollableTabBody(
+      return _scrollableMinHeight(
         _searchQuery.isNotEmpty
             ? Center(
                 child: Column(
@@ -1078,51 +1078,24 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     return ListView.builder(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: filteredRequests.length,
       itemBuilder: (ctx, index) {
-        try {
-          final item = filteredRequests[index];
-          final isHighlighted = _highlightRequestId != null &&
-              ((item.type == 'booking' &&
-                      item.booking?.id == _highlightRequestId) ||
-                  (item.type == 'trial' &&
-                      item.trial?.id == _highlightRequestId) ||
-                  (item.type == 'custom' &&
-                      item.custom?.id == _highlightRequestId));
+        final item = filteredRequests[index];
+        final isHighlighted = _highlightRequestId != null &&
+            ((item.type == 'booking' && item.booking?.id == _highlightRequestId) ||
+                (item.type == 'trial' && item.trial?.id == _highlightRequestId) ||
+                (item.type == 'custom' && item.custom?.id == _highlightRequestId));
 
-          if (item.type == 'booking') {
-            return _buildBookingRequestCard(
-              context,
-              item.booking!,
-              isHighlighted: isHighlighted,
-            );
-          } else if (item.type == 'custom') {
-            return _buildCustomRequestCard(
-              context,
-              item.custom!,
-              isHighlighted: isHighlighted,
-            );
-          } else {
-            return _buildTrialSessionCard(
-              context,
-              item.trial!,
-              isHighlighted: isHighlighted,
-            );
-          }
-        } catch (e, stackTrace) {
-          LogService.error('Failed to render request card at index $index: $e');
-          LogService.error('$stackTrace');
-          return Card(
-            margin: const EdgeInsets.only(bottom: 10),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Unable to display this request. Pull to refresh.',
-                style: GoogleFonts.poppins(fontSize: 13),
-              ),
-            ),
-          );
+        if (item.type == 'booking') {
+          return _buildBookingRequestCard(context, item.booking!,
+              isHighlighted: isHighlighted);
+        } else if (item.type == 'custom') {
+          return _buildCustomRequestCard(context, item.custom!,
+              isHighlighted: isHighlighted);
+        } else {
+          return _buildTrialSessionCard(context, item.trial!,
+              isHighlighted: isHighlighted);
         }
       },
     );
@@ -1140,7 +1113,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     ];
 
     if (allPending.isEmpty) {
-      return _scrollableTabBody(
+      return _scrollableMinHeight(
         _buildEmptyState(
           context,
           icon: Icons.pending_outlined,
@@ -1152,7 +1125,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: allPending.length,
       itemBuilder: (ctx, index) {
         final item = allPending[index];
@@ -1174,7 +1147,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   Widget _buildCustomRequestsTab(BuildContext context) {
     final t = AppLocalizations.of(context)!;
     if (_customRequests.isEmpty) {
-      return _scrollableTabBody(
+      return _scrollableMinHeight(
         _buildRequestTutorCard(
           context,
           title: t.myRequestsEmptyTitle,
@@ -1187,7 +1160,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: _customRequests.length,
       itemBuilder: (ctx, index) {
         final isHighlighted = _highlightRequestId != null && _customRequests[index].id == _highlightRequestId;
@@ -1204,7 +1177,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         _trialSessions.where(_isTrialActiveForRequests).toList();
 
     if (activeTrials.isEmpty) {
-      return _scrollableTabBody(
+      return _scrollableMinHeight(
         _buildEmptyState(
           context,
           icon: Icons.quiz_outlined,
@@ -1217,7 +1190,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: activeTrials.length,
       itemBuilder: (ctx, index) {
         final trial = activeTrials[index];
@@ -1234,7 +1207,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final activeBookings =
         _bookingRequests.where(_isBookingActiveForRequests).toList();
     if (activeBookings.isEmpty) {
-      return _scrollableTabBody(
+      return _scrollableMinHeight(
         _buildEmptyState(
           context,
           icon: Icons.book_outlined,
@@ -1246,7 +1219,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: activeBookings.length,
       itemBuilder: (ctx, index) {
         final request = activeBookings[index];
@@ -1269,9 +1242,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppTheme.softBorder.withValues(alpha: 0.9),
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
+                color: AppTheme.textDark.withValues(alpha: 0.05),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -1812,30 +1788,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   Widget _buildCustomRequestCard(BuildContext context, TutorRequest request, {bool isHighlighted = false}) {
     final t = AppLocalizations.of(context)!;
     final statusColor = _getStatusColor(request.status);
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(19),
-        border: isHighlighted
-            ? Border.all(color: AppTheme.primaryColor, width: 1.5)
-            : Border.all(color: AppTheme.primaryColor.withOpacity(0.22), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.white.withOpacity(0.2),
-            offset: const Offset(-1, -1),
-            blurRadius: 1,
-            spreadRadius: 0,
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            offset: const Offset(1, 1),
-            blurRadius: 1,
-            spreadRadius: 0,
-          ),
-        ],
-      ),
+    final border = isHighlighted
+        ? Border.all(color: AppTheme.primaryColor, width: 1.5)
+        : null;
+
+    return _buildNeomorphicCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      border: border,
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -1846,11 +1805,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               ),
             ),
           ).then((_) {
-            // Refresh after returning from detail page
             _loadRequests();
           });
         },
-        borderRadius: BorderRadius.circular(19),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -2276,10 +2234,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       Expanded(
-                        child: _buildCompactInfoItem(
+                        child: _buildModernInfoItem(
                           Icons.calendar_today_outlined,
                           session.formattedDate,
                         ),
@@ -2295,13 +2252,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           session.formattedTime,
                         ),
                       ),
+                      Expanded(
+                        child: _buildModernInfoItem(
+                          Icons.access_time_outlined,
+                          session.formattedTime,
+                        ),
+                      ),
                       Container(
                         width: 1,
                         height: 20,
                         color: Colors.grey.shade300,
                       ),
                       Expanded(
-                        child: _buildCompactInfoItem(
+                        child: _buildModernInfoItem(
                           session.location == 'online'
                               ? Icons.video_call_outlined
                               : Icons.location_on_outlined,
@@ -3430,6 +3393,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(
           icon,
@@ -3437,7 +3401,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           color: AppTheme.textMedium,
         ),
         const SizedBox(width: 10),
-        Expanded(
+        Flexible(
           child: Text(
             text,
             style: GoogleFonts.poppins(
@@ -3455,23 +3419,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   /// Neomorphic card container with soft shadows and a distinguishable border (no elevation)
   Widget _buildNeomorphicCard({required Widget child, EdgeInsets? margin, Border? border}) {
     return Container(
-      margin: margin ?? const EdgeInsets.only(bottom: 10),
+      margin: margin ?? const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(19),
-        border: border ?? Border.all(color: AppTheme.primaryColor.withOpacity(0.2), width: 1),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: border ??
+            Border.all(
+              color: AppTheme.softBorder.withValues(alpha: 0.9),
+            ),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.25),
-            offset: const Offset(-1, -1),
-            blurRadius: 1,
-            spreadRadius: 0,
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.025),
-            offset: const Offset(1, 1),
-            blurRadius: 1,
-            spreadRadius: 0,
+            color: AppTheme.textDark.withValues(alpha: 0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -4658,7 +4618,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     ];
 
     if (items.isEmpty) {
-      return _scrollableTabBody(
+      return _scrollableMinHeight(
         _buildEmptyState(
           context,
           icon: Icons.history,
@@ -4684,7 +4644,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     });
 
     return ListView.builder(
-      padding: const EdgeInsets.all(10),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: items.length,
       itemBuilder: (ctx, index) {
         final item = items[index];
@@ -4698,6 +4659,21 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           default:
             return const SizedBox.shrink();
         }
+      },
+    );
+  }
+
+  /// Ensures pull-to-refresh works even when tab content is shorter than the viewport.
+  Widget _scrollableMinHeight(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: child,
+          ),
+        );
       },
     );
   }

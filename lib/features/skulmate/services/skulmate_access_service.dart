@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'skulmate_credits_service.dart';
 import 'skulmate_service.dart';
 
 enum SkulmateSourceType { text, image }
@@ -16,8 +17,8 @@ class SkulmateAccessResult {
 }
 
 class SkulmateAccessService {
-  static const int _freeDocTextPerDay = 2;
-  static const int _freeImagePerDay = 4;
+  static const int _freeDocTextPerDay = 4;
+  static const int _freeImagePerDay = 2;
 
   static Future<SkulmateAccessResult> checkGenerationAccess({
     required SkulmateSourceType sourceType,
@@ -86,17 +87,7 @@ class SkulmateAccessService {
       );
     }
 
-    int creditsBalance = 0;
-    try {
-      final creditRow = await SupabaseService.client
-          .from('user_credits')
-          .select('balance')
-          .eq('user_id', userId)
-          .maybeSingle();
-      creditsBalance = (creditRow?['balance'] as num?)?.toInt() ?? 0;
-    } catch (_) {
-      creditsBalance = 0;
-    }
+    int creditsBalance = await SkulmateCreditsService.fetchBalance();
 
     final minimumCreditsRequired = sourceType == SkulmateSourceType.image
         ? 2

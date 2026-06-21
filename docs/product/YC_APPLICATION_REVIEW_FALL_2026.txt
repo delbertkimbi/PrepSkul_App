@@ -1,0 +1,311 @@
+================================================================================
+PREPSKUL — YC FALL 2026 APPLICATION REVIEW
+================================================================================
+Review date: June 2026
+Purpose: Strengthen answers before submit / interview prep
+Companion: PREPSKUL_INVESTOR_PITCH_FAQ.txt
+
+
+================================================================================
+URGENT — FIX BEFORE SUBMIT
+================================================================================
+
+1. OPTIONAL "CODING AGENT SESSION" ATTACHMENT
+   STATUS: Contains a long Cursor chat about Rive icons, Agora PiP, payment UI
+   polish, and classroom bugs — NOT your core product story.
+
+   YC partners read this. It signals:
+     • You are deep in UI bug fixes, not wedge/product insight
+     • Classroom video is a large surface area (scope risk)
+     • No mention of SkulMate, mastery, guidance thesis
+
+   ACTION: Replace with a SHORT session (or delete) showing ONE of:
+     • SkulMate: notes → generate → mastery update → weak-topic reroute
+     • Curriculum matcher + learner context on generate API
+     • Parent progress aggregation from real session data
+   Max 2–3 paragraphs + link to a 60s Loom of the product loop.
+
+2. UNANSWERED FIELDS
+   • Demo video — YC weighs this heavily. Record 2 min max:
+     Parent problem → learner uploads notes → SkulMate game → weak topic
+     → tutor booking OR parent progress view. Show live app, not slides.
+   • Product link — answer: https://app.prepskul.com (or TestFlight/APK)
+   • "Are you looking for a cofounder?" — answer: No (you have CTO co-founder)
+
+3. EQUITY INCONSISTENCY
+   Delbert profile: 60%  |  Leke profile: 40%
+   Equity section: 55% CEO / 45% CTO
+
+   Pick ONE and align everywhere before legal docs. YC notices mismatches.
+
+4. DUPLICATE WORK HISTORY ENTRIES
+   PrepSkul, MTN, DelTech each appear 3× on founder profiles. Clean the form
+   if still editable — looks like copy-paste error.
+
+
+================================================================================
+OVERALL VERDICT
+================================================================================
+
+STRENGTHS (keep and lean into)
+  ✓ Personal founder story + domain exposure (tutoring, MTN, DelTech, 5k+ youth)
+  ✓ Real revenue while students — rare for Cameroon apps
+  ✓ Clear pivot narrative: "built tools → learned problem is guidance"
+  ✓ 600+ learners reached organically via Exam Accelerator (growth hack)
+  ✓ 130+ tutor supply side built
+  ✓ Honest about seasonality and post-exam paying user drop (5 active)
+  ✓ Technical founding team — both code, Flutter + Supabase + AI stack
+  ✓ GCE 23/25 + hackathon wins — credibility for African ed market
+
+WEAKNESSES (what partners will push on)
+  ✗ "Google Maps" metaphor without mechanism — sounds like positioning only
+  ✗ SkulMate adaptive engine under-explained vs tutoring marketplace
+  ✗ Paying users: 5 active post-exam — retention / year-round demand question
+  ✗ Still in school, not graduating before batch — commitment risk
+  ✗ Revenue ~$2k total — small but OK if growth rate + insight are strong
+  ✗ "How will you make money" lists Tichar, Academy, fintech — too sprawling
+  ✗ No demo video
+  ✗ Coding agent attachment hurts more than helps
+
+
+================================================================================
+ANSWER-BY-ANSWER: CORRECTIONS & STRONGER REWRITES
+================================================================================
+
+--------------------------------------------------------------------------------
+50 characters: "Google Maps for education in Africa"
+--------------------------------------------------------------------------------
+OK but vague. Alternatives (pick one):
+  • "AI + tutors that guide learners by level" (44 chars)
+  • "Guided learning: AI revision + live tutors" (43 chars)
+  • Keep Google Maps IF you explain mechanism in next answer (recommended)
+
+
+--------------------------------------------------------------------------------
+What is your company going to make? (CRITICAL — rewrite suggested)
+--------------------------------------------------------------------------------
+CURRENT: Good vision, weak on HOW you know level and WHAT updates dynamically.
+
+ADD THIS PARAGRAPH (after Google Maps line):
+
+  We estimate learner level from three signals: (1) declared — class, goals,
+  pain points from onboarding; (2) observed — accuracy and mastery per topic
+  every time they use SkulMate; (3) human — tutor session notes when gaps are
+  foundational. Grade is context, not destiny. When a learner struggles, we
+  reroute — easier explanations, targeted replay, or a tutor — instead of
+  pushing the same content.
+
+  Today live: tutor marketplace, online lessons, SkulMate (notes/YouTube →
+  adaptive games), per-topic mastery tracking, parent progress view. Building:
+  spaced repetition, scroll feed, placement diagnostics.
+
+  This answers the investor question you got stuck on — without overclaiming.
+
+
+--------------------------------------------------------------------------------
+How far along are you? (add 2–3 sentences)
+--------------------------------------------------------------------------------
+ADD after SkulMate mention:
+
+  SkulMate records concept-level mastery after each game. Parents see weak
+  topics and readiness estimates. We gate tutor prompts so families with an
+  active tutor aren't nagged to "find another."
+
+ADD metrics if true (fill with real numbers):
+  • SkulMate games created: ___
+  • Game sessions completed (last 30 days): ___
+  • % of tutoring customers who also use SkulMate: ___
+
+Honesty line (good — keep):
+  "Traction underestimates demand — early product, validating with users."
+
+
+--------------------------------------------------------------------------------
+Active users / paying (sharpen this)
+--------------------------------------------------------------------------------
+CURRENT: 600 reached, 5 paying post-exam, peak 19 — honest but scary.
+
+REFRAME:
+
+  "600+ learners have used PrepSkul through programs and tutoring. We have
+  __ MAU / __ WAU today [fill if you can]. Paying families peaked at 19
+  during GCE season (Jan–Apr 2026); 5 remain on recurring plans post-exams.
+  Seasonality is real — we're building SkulMate so parents pay year-round for
+  daily revision, not only exam cramming. Our Exam Accelerator proved
+  distribution; recurring tutoring proved willingness to pay for guidance."
+
+YC wants to see you understand the seasonality problem AND have a plan.
+
+
+--------------------------------------------------------------------------------
+Revenue ($80 → $1100 → $500 → $200)
+--------------------------------------------------------------------------------
+Numbers are fine for early stage. ADD one line:
+
+  "~$1,960 USD total platform revenue Jan–May 2026; ~$550 platform profit
+  Jan–Apr. 100% organic, no paid ads, two student founders."
+
+Clarify: Is May $200 partial month or drop-off? If drop-off, say "post-exam
+seasonality" in same breath — don't make partners discover it.
+
+
+--------------------------------------------------------------------------------
+Why this idea / domain expertise (strong — minor tweak)
+--------------------------------------------------------------------------------
+ADD one concrete line:
+
+  "We've personally tutored, built DelTech programs for 2,500+ youth, and
+  coordinated MTN learning programs for 5,000+ — we saw the guidance gap
+  before we had the product language for it."
+
+
+--------------------------------------------------------------------------------
+Competitors (good — add names + wedge)
+--------------------------------------------------------------------------------
+ADD:
+
+  "Global revision apps (Gizmo, Quizlet) lack live tutors and local exam
+  context. Local tutor marketplaces match supply but don't track what the
+  learner still can't do or route the next step. We combine both plus an
+  adaptive layer that updates every session — that's the guidance moat."
+
+
+--------------------------------------------------------------------------------
+How will you make money? (TRIM — too many products)
+--------------------------------------------------------------------------------
+PROBLEM: Tichar, PrepSkul Academy, financial infrastructure in same answer
+reads unfocused. YC funds ONE wedge.
+
+KEEP:
+  • Tutoring (live now) — session + monthly recurring from parents
+  • SkulMate subscription / credits (next 12 months) — parent-paid daily revision
+
+MOVE to "future" one-liner at end:
+  "Longer term: tutor verification (Academy), teacher tools (Tichar), school
+  partnerships — same guidance layer, B2B distribution."
+
+DELETE or shorten EkoFold-style breadth in this answer — save for "other ideas."
+
+
+--------------------------------------------------------------------------------
+Other ideas (iWitness, EkoFold, WanDay)
+--------------------------------------------------------------------------------
+Fine. YC uses this for alternate bets. iWitness is strongest second bet.
+Consider noting PrepSkul is the only one with revenue + users.
+
+
+--------------------------------------------------------------------------------
+School + YC commitment (both founders)
+--------------------------------------------------------------------------------
+YC will worry about finals, classes, split attention.
+
+STRENGTHEN to:
+
+  "If accepted, we will treat YC as full-time. We have already built revenue,
+  130 tutors, and a live product while students — we will defer non-critical
+  coursework, align our academic calendars with the batch, and relocate focus
+  to San Francisco / remote YC expectations. PrepSkul is the company we want
+  to run for the next decade."
+
+Name a specific plan: e.g. "Brian handles engineering full-time; Delbert
+product + growth; both skip non-essential campus commitments during batch."
+
+
+--------------------------------------------------------------------------------
+Legal entity / equity (align numbers)
+--------------------------------------------------------------------------------
+Use ONE cap table in application:
+  Delbert Kimbi — CEO — 55% (or 60% — pick one)
+  Leke Brian — CTO — 45% (or 40%)
+  ESP: 10% planned post-raise (mention if asked in interview)
+
+
+--------------------------------------------------------------------------------
+Location: Buea + Delaware
+--------------------------------------------------------------------------------
+Good. Add: "Founders remain in Cameroon for market; US entity for YC and
+investors."
+
+
+================================================================================
+QUESTIONS YC WILL ASK IN INTERVIEW (prep from your stuck pitch moment)
+================================================================================
+
+Q: "How do you know the learner's level?"
+A: "Three signals — declared profile, observed SkulMate performance per topic,
+   tutor confirmation for big gaps. Onboarding is the prior; sessions are proof.
+   We're Bayesian, not oracle."
+
+Q: "Isn't this just onboarding surveys?"
+A: "No. Surveys start the hypothesis. Mastery graph and session behavior
+   update it. Parents see weak topics change week to week."
+
+Q: "5 paying users — is the business dying post-exam?"
+A: "Seasonal wedge taught us parents pay for exam guidance. Year-round wedge
+   is SkulMate + recurring tutoring for school terms, not only May GCE."
+
+Q: "What did you build that AI can't?"
+A: "Verified tutors for foundational gaps, trust with parents, local payment
+   (Mobile Money), exam-season distribution we already proved."
+
+Q: "Why you vs two founders in Lagos doing tutoring?"
+A: "We have supply (130 tutors), revenue, AI revision live, and mastery data
+   loop — not just WhatsApp matching."
+
+
+================================================================================
+DEMO VIDEO SCRIPT (2 minutes — record this)
+================================================================================
+
+0:00 — Problem (15s)
+  "African parents pay for tutors but still don't know what their child
+   should revise today or whether it's working."
+
+0:15 — Product (45s)
+  Show app: parent/learner → upload notes or topic → SkulMate generates game
+  → play 30s → show results / weak area
+
+0:60 — Guidance loop (30s)
+  Show parent progress OR home reroute nudge OR book tutor from weak topic
+  Say: "Grade is context. Performance updates the path."
+
+1:30 — Traction (20s)
+  "600+ learners, 130 tutors, $2k revenue, organic, Cameroon, two founders."
+
+1:50 — Ask (10s)
+  "We're building the guidance layer for education in Africa. YC helps us
+   make it year-round and scalable."
+
+
+================================================================================
+CHECKLIST BEFORE SUBMIT
+================================================================================
+
+[ ] Remove/replace Cursor classroom chat attachment
+[ ] Upload demo video (2 min max)
+[ ] Fill product link + cofounder question
+[ ] Align equity 60/40 OR 55/45 everywhere
+[ ] Remove duplicate work experience rows
+[ ] Add "three signals" paragraph to product answer
+[ ] Trim monetization answer (focus tutoring + SkulMate)
+[ ] Add MAU/WAU or session counts if available
+[ ] Re-read "how far along" for SkulMate specifics
+[ ] Both founders preview all answers for consistency
+
+
+================================================================================
+BOTTOM LINE
+================================================================================
+
+Your application is INVESTABLE at seed for: founder-market fit, organic
+growth hack, early revenue, technical team, clear insight ("guidance not
+content").
+
+It is NOT YC-STRONG yet on: demo video, adaptive mechanism proof, post-exam
+retention story, focus (too many future products), and the coding agent
+attachment.
+
+Fix those five items and you go from "promising Cameroon edtech" to "these
+founders understand the problem AND shipped the loop."
+
+================================================================================

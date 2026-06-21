@@ -5,6 +5,11 @@ import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:prepskul/core/utils/profile_display_utils.dart';
+import '../l10n/skulmate_copy.dart';
+import '../widgets/skulmate_social_screen_scaffold.dart';
+import '../widgets/skulmate_surface_styles.dart';
 import '../models/social_models.dart';
 import '../services/social_service.dart';
 import '../widgets/add_friend_dialog.dart';
@@ -21,25 +26,22 @@ class FriendsScreen extends StatefulWidget {
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
-class _FriendsScreenState extends State<FriendsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _FriendsScreenState extends State<FriendsScreen> {
   List<Friendship> _friends = [];
   List<Friendship> _pendingRequests = [];
   bool _isLoading = true;
+  int _sectionIndex = 0;
   final GameSoundService _soundService = GameSoundService();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _soundService.initialize();
     _loadFriends();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     super.dispose();
   }
 
@@ -128,110 +130,37 @@ class _FriendsScreenState extends State<FriendsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Friends',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add),
-            tooltip: 'Add Friend',
-            onPressed: () async {
-              final result = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AddFriendScreen(),
-                ),
-              );
-              if (result == true) {
-                _loadFriends();
-              }
-            },
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppTheme.primaryColor,
-          unselectedLabelColor: AppTheme.textMedium,
-          indicatorColor: AppTheme.primaryColor,
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Friends'),
-                  if (_friends.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${_friends.length}',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Requests'),
-                  if (_pendingRequests.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.orange,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${_pendingRequests.length}',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
+    final copy = SkulMateCopy.read(context);
+
+    return SkulMateSocialScreenScaffold(
+      title: copy.friendsTitle,
+      trailing: IconButton(
+        icon: const Icon(Icons.person_add_rounded),
+        tooltip: copy.addFriendTitle,
+        color: AppTheme.primaryColor,
+        onPressed: () async {
+          final result = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(builder: (_) => const AddFriendScreen()),
+          );
+          if (result == true) _loadFriends();
+        },
+      ),
+      headerBelowTitle: SkulMateSegmentedToggle(
+        labels: [copy.friendsTab, copy.requestsTab],
+        selectedIndex: _sectionIndex,
+        badgeCounts: [_friends.length, _pendingRequests.length],
+        onChanged: (i) => safeSetState(() => _sectionIndex = i),
       ),
       body: _isLoading
           ? ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: 5,
-              itemBuilder: (context, index) => ShimmerLoading.listTile(),
+              itemBuilder: (_, __) => ShimmerLoading.listTile(),
             )
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildFriendsTab(),
-                _buildRequestsTab(),
-              ],
-            ),
+          : _sectionIndex == 0
+              ? _buildFriendsTab()
+              : _buildRequestsTab(),
     );
   }
 
@@ -290,41 +219,46 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildFriendCard(Friendship friendship) {
-    final name = friendship.friendName ?? 'Friend';
-    final initial = name.trim().isEmpty ? '?' : name.trim().toUpperCase().substring(0, 1);
+    final name = ProfileDisplayUtils.resolveDisplayName(
+      primary: friendship.friendName,
+      fallback: 'Friend',
+    );
+    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    final avatarUrl = friendship.friendAvatarUrl;
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.softBorder),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.textDark.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: SkulMateSurfaceStyles.homeCard(radius: 16),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 28,
-            backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-            backgroundImage: friendship.friendAvatarUrl != null
-                ? NetworkImage(friendship.friendAvatarUrl!)
-                : null,
-            child: friendship.friendAvatarUrl == null
-                ? Text(
+            radius: 26,
+            backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
+            child: avatarUrl != null && avatarUrl.isNotEmpty
+                ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: avatarUrl,
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Text(
+                        initial,
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ),
+                  )
+                : Text(
                     initial,
                     style: GoogleFonts.poppins(
-                      fontSize: 20,
+                      fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.primaryColor,
                     ),
-                  )
-                : null,
+                  ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -368,41 +302,48 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildRequestCard(Friendship request, bool isIncoming) {
-    final name = request.friendName ?? 'User';
-    final initial = name.trim().isEmpty ? '?' : name.trim().toUpperCase().substring(0, 1);
+    final name = ProfileDisplayUtils.resolveDisplayName(
+      primary: request.friendName,
+      fallback: 'User',
+    );
+    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    final avatarUrl = request.friendAvatarUrl;
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.shade200, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.textDark.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: SkulMateSurfaceStyles.homeCard(radius: 16).copyWith(
+        border: Border.all(color: AppTheme.accentOrange.withValues(alpha: 0.45)),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 28,
-            backgroundColor: Colors.orange.withOpacity(0.12),
-            backgroundImage: request.friendAvatarUrl != null
-                ? NetworkImage(request.friendAvatarUrl!)
-                : null,
-            child: request.friendAvatarUrl == null
-                ? Text(
-                    initial,
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.orange.shade700,
+            radius: 26,
+            backgroundColor: AppTheme.accentOrange.withValues(alpha: 0.12),
+            child: avatarUrl != null && avatarUrl.isNotEmpty
+                ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: avatarUrl,
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Text(
+                        initial,
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.accentOrange,
+                        ),
+                      ),
                     ),
                   )
-                : null,
+                : Text(
+                    initial,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.accentOrange,
+                    ),
+                  ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -446,12 +387,10 @@ class _FriendsScreenState extends State<FriendsScreen>
               children: [
                 ElevatedButton(
                   onPressed: () => _acceptRequest(request.id),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accentGreen,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                  style: SkulMateSurfaceStyles.sheetPrimaryButton().copyWith(
+                    backgroundColor: WidgetStatePropertyAll(AppTheme.accentGreen),
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     ),
                   ),
                   child: const Text('Accept'),
@@ -459,15 +398,15 @@ class _FriendsScreenState extends State<FriendsScreen>
                 const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: () => _declineRequest(request.id),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red.shade700,
-                    side: BorderSide(color: Colors.red.shade300),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                  style: SkulMateSurfaceStyles.sheetSecondaryButton().copyWith(
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     ),
                   ),
-                  child: const Text('Decline'),
+                  child: Text(
+                    'Decline',
+                    style: GoogleFonts.poppins(color: AppTheme.textMedium),
+                  ),
                 ),
               ],
             ),

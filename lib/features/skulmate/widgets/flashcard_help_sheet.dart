@@ -10,17 +10,20 @@ import '../services/skulmate_service.dart';
 class FlashcardHelpSheet extends StatefulWidget {
   final String term;
   final String definition;
+  final String? gameId;
 
   const FlashcardHelpSheet({
     Key? key,
     required this.term,
     required this.definition,
+    this.gameId,
   }) : super(key: key);
 
   static Future<void> show(
     BuildContext context, {
     required String term,
     required String definition,
+    String? gameId,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -33,6 +36,7 @@ class FlashcardHelpSheet extends StatefulWidget {
         child: FlashcardHelpSheet(
           term: term,
           definition: definition,
+          gameId: gameId,
         ),
       ),
     );
@@ -63,6 +67,7 @@ class _FlashcardHelpSheetState extends State<FlashcardHelpSheet> {
       final result = await SkulMateService.explainFlashcard(
         term: widget.term,
         definition: widget.definition,
+        gameId: widget.gameId,
       );
       if (mounted) {
         setState(() {

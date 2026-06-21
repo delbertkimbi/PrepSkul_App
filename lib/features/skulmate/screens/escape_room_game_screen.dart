@@ -7,14 +7,12 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../models/game_model.dart';
-import '../models/skulmate_character_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
-import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
-import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/game_standard_widgets.dart';
 import 'game_results_screen.dart';
 
@@ -43,7 +41,6 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
   late ConfettiController _confettiController;
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
-  dynamic _character;
   GameStats? _currentStats;
   final Map<int, TextEditingController> _answerControllers = {};
 
@@ -63,7 +60,6 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
     _progressAnimation = Tween<double>(begin: 0, end: 0).animate(
       CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
     );
-    _loadCharacter();
     _loadStats();
     _parseGameData();
   }
@@ -107,13 +103,6 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
     final stats = await GameStatsService.getStats();
     safeSetState(() {
       _currentStats = stats;
-    });
-  }
-
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    safeSetState(() {
-      _character = character;
     });
   }
 
@@ -292,17 +281,9 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
             child: CircleAvatar(
               radius: 16,
               backgroundColor: Colors.white.withOpacity(0.22),
-              child: ClipOval(
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: const SkulMateCharacterWidget(
-                    character: SkulMateCharacters.middleMale,
-                    size: 24,
-                    animated: false,
-                    showName: false,
-                  ),
-                ),
+              child: const SkulMateProfileAvatar(
+                size: 28,
+                forGameAppBar: true,
               ),
             ),
           ),

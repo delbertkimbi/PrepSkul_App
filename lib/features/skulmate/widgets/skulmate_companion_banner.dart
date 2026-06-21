@@ -2,8 +2,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import '../models/skulmate_character_model.dart';
-import 'skulmate_character_widget.dart';
 import 'skulmate_mascot_media_widget.dart';
 
 enum CompanionTone { neutral, tip, success, warning }
@@ -12,10 +10,6 @@ class SkulMateCompanionBanner extends StatefulWidget {
   final String message;
   final CompanionTone tone;
   final String label;
-  final SkulMateCharacter? character;
-
-  /// Default true: uses a fixed brand mascot identity for guidance.
-  final bool useBrandMascot;
 
   /// Adds celebratory spark animation around mascot.
   final bool celebrate;
@@ -25,8 +19,6 @@ class SkulMateCompanionBanner extends StatefulWidget {
     required this.message,
     this.tone = CompanionTone.neutral,
     this.label = 'SkulMate',
-    this.character,
-    this.useBrandMascot = true,
     this.celebrate = false,
   });
 
@@ -92,20 +84,14 @@ class _SkulMateCompanionBannerState extends State<SkulMateCompanionBanner>
                   color: Colors.white.withValues(alpha: 0.45),
                 ),
                 child: ClipOval(
-                  child: widget.useBrandMascot || widget.character == null
-                      ? SkulMateMascotMediaWidget(
-                          state: mascotState,
-                          useLandscapeFrame: false,
-                          borderRadius: 999,
-                          autoplay: true,
-                          preferStaticImage: false,
-                          videoVolume: 0.0,
-                        )
-                      : SkulMateCharacterWidget(
-                          character: widget.character!,
-                          size: 40,
-                          animated: false,
-                        ),
+                  child: SkulMateMascotMediaWidget(
+                    state: mascotState,
+                    useLandscapeFrame: false,
+                    borderRadius: 999,
+                    autoplay: true,
+                    preferStaticImage: false,
+                    videoVolume: 0.0,
+                  ),
                 ),
               ),
               if (widget.celebrate) ..._buildCelebrationSparkles(),

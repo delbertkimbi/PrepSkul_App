@@ -7,8 +7,10 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import '../l10n/skulmate_copy.dart';
 import '../screens/challenges_screen.dart';
 import '../screens/friends_screen.dart';
+import '../screens/skulmate_games_screen.dart';
 import '../screens/leaderboard_screen.dart';
 import 'skulmate_history_sheet.dart';
+import 'skulmate_progress_sheet.dart';
 import 'skulmate_surface_styles.dart';
 
 /// Gizmo-style top pills: History (left) · More menu (right).
@@ -51,24 +53,22 @@ class SkulMateHomeTopBar extends StatelessWidget {
             ),
             onSelected: (value) => _onMenuSelected(context, value),
             itemBuilder: (context) => [
+              _menuItem(Icons.grid_view_rounded, copy.myGames, 'library'),
+              _menuItem(Icons.trending_up_rounded, copy.myProgressTitle, 'progress'),
               _menuItem(
                 Icons.emoji_events_outlined,
                 copy.isFrench ? 'Classement' : 'Leaderboard',
                 'leaderboard',
               ),
-              _menuItem(
-                Icons.people_outline,
-                copy.isFrench ? 'Amis' : 'Friends',
-                'friends',
-              ),
+              _menuItem(Icons.people_outline, copy.friendsTitle, 'friends'),
               _menuItem(
                 Icons.sports_esports_outlined,
-                copy.isFrench ? 'Défis' : 'Challenges',
+                copy.challengesTitle,
                 'challenges',
               ),
             ],
             child: _PillButton(
-              icon: Icons.keyboard_arrow_down_rounded,
+              icon: Icons.menu_rounded,
               label: copy.more,
               onTap: null,
             ),
@@ -93,6 +93,15 @@ class SkulMateHomeTopBar extends StatelessWidget {
 
   void _onMenuSelected(BuildContext context, String value) {
     switch (value) {
+      case 'library':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SkulMateGamesScreen(childId: childId),
+          ),
+        );
+      case 'progress':
+        SkulMateProgressSheet.show(context, childId: childId);
       case 'leaderboard':
         Navigator.push(
           context,
@@ -135,6 +144,7 @@ class _PillButton extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.poppins(
               fontSize: 13,
               fontWeight: FontWeight.w600,

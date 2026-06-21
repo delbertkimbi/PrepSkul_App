@@ -6,9 +6,12 @@ import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
 import '../models/skulmate_intake_models.dart';
+import '../services/skulmate_access_service.dart';
 import '../services/skulmate_intake_coordinator.dart';
 import '../services/skulmate_lecture_recording_service.dart';
 import '../services/skulmate_lecture_transcription_service.dart';
+import '../widgets/skulmate_generation_error_panel.dart';
+import '../widgets/skulmate_paywall_sheet.dart';
 import 'skulmate_sheet_scaffold.dart';
 import 'skulmate_surface_styles.dart';
 
@@ -38,6 +41,8 @@ class _SkulMateRecordLectureSheetState extends State<SkulMateRecordLectureSheet>
   int _seconds = 0;
   String? _filePath;
   bool _busy = false;
+  String? _errorTitle;
+  String? _errorDetails;
 
   @override
   void dispose() {
@@ -116,13 +121,25 @@ class _SkulMateRecordLectureSheetState extends State<SkulMateRecordLectureSheet>
     if (path == null || path.isEmpty) return;
 
     final copy = SkulMateCopy.read(context);
+
+    final access = await SkulmateAccessService.checkGenerationAccess(
+      sourceType: SkulmateSourceType.text,
+    );
+    if (!access.canProceed && mounted) {
+      await SkulMatePaywallSheet.show(context, message: access.message);
+      return;
+    }
+
     setState(() {
       _phase = _RecordPhase.transcribing;
       _busy = true;
+      _errorTitle = null;
+      _errorDetails = null;
     });
 
     try {
-      final result = await SkulMateLectureTranscriptionService.transcribeLocalFile(
+      final result =
+          await SkulMateLectureTranscriptionService.transcribeLocalFile(
         localPath: path,
         childId: widget.childId,
         title: copy.lectureRecordingTitle,
@@ -143,19 +160,13 @@ class _SkulMateRecordLectureSheetState extends State<SkulMateRecordLectureSheet>
       );
     } catch (e) {
       if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
       setState(() {
         _phase = _RecordPhase.complete;
         _busy = false;
+        _errorTitle = copy.lectureErrorTitle(msg);
+        _errorDetails = copy.lectureErrorDetails(msg);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-            style: GoogleFonts.poppins(),
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     }
   }
 
@@ -166,9 +177,7 @@ class _SkulMateRecordLectureSheetState extends State<SkulMateRecordLectureSheet>
     return SkulMateSheetScaffold(
       title: copy.recordLecture,
       maxHeightFactor: 0.58,
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-        child: Column(
+      body: Column(
           children: [
             const SizedBox(height: 12),
             _MicCircle(phase: _phase),
@@ -216,13 +225,22 @@ class _SkulMateRecordLectureSheetState extends State<SkulMateRecordLectureSheet>
                 ),
               ),
             ],
+            if (_errorTitle != null) ...[
+              const SizedBox(height: 16),
+              SkulMateGenerationErrorPanel(
+                title: _errorTitle!,
+                details: _errorDetails,
+                kind: SkulMateGenerationErrorPanel.kindFromMessage(
+                  '${_errorTitle ?? ''} ${_errorDetails ?? ''}',
+                ),
+                retryable: true,
+                onRetry: _generateNotes,
+                onBack: () => Navigator.pop(context),
+              ),
+            ],
           ],
         ),
-      ),
-      footer: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        child: _buildActions(copy),
-      ),
+      footer: _buildActions(copy),
     );
   }
 

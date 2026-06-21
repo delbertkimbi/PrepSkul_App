@@ -3,8 +3,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import '../services/social_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/skulmate_copy.dart';
+import '../services/social_service.dart';
+import '../widgets/skulmate_social_screen_scaffold.dart';
+import '../widgets/skulmate_surface_styles.dart';
 
 /// Full-page screen for searching and adding friends
 class AddFriendScreen extends StatefulWidget {
@@ -107,30 +110,15 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Add Friend',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+    final copy = SkulMateCopy.read(context);
+
+    return SkulMateSocialScreenScaffold(
+      title: copy.addFriendTitle,
       body: Column(
         children: [
           // Search bar
           Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -147,10 +135,10 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                       )
                     : null,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 filled: true,
-                fillColor: AppTheme.softBackground,
+                fillColor: Colors.white,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 14,

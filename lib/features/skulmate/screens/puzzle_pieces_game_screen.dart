@@ -8,16 +8,15 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/game_model.dart';
-import '../models/skulmate_character_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
-import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/game_progress_service.dart';
 import '../models/game_stats_model.dart';
-import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/game_standard_widgets.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
 import 'game_results_screen.dart';
 
 /// Puzzle Pieces game screen
@@ -65,7 +64,6 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
   late ConfettiController _confettiController;
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
-  dynamic _character;
   GameStats? _currentStats;
   String? _selectedPieceId;
   bool _gameCompleted = false;
@@ -94,7 +92,6 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
         _pieces[i].currentPosition = _pieces[i].correctPosition;
       }
     }
-    _loadCharacter();
     _loadStats();
   }
 
@@ -103,13 +100,6 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
     safeSetState(() {
       _currentStats = stats;
       _currentStreak = stats.currentStreak;
-    });
-  }
-
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    safeSetState(() {
-      _character = character;
     });
   }
 
@@ -302,17 +292,9 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
             child: CircleAvatar(
               radius: 16,
               backgroundColor: Colors.white.withOpacity(0.22),
-              child: ClipOval(
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: const SkulMateCharacterWidget(
-                    character: SkulMateCharacters.middleMale,
-                    size: 24,
-                    animated: false,
-                    showName: false,
-                  ),
-                ),
+              child: const SkulMateProfileAvatar(
+                size: 28,
+                forGameAppBar: true,
               ),
             ),
           ),
@@ -405,9 +387,14 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
               ],
             ),
           ),
-          const SkulMateCharacterWidget(
-            character: SkulMateCharacters.middleMale,
-            size: 80,
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: const SkulMateMascotMediaWidget(
+              state: SkulMateMascotState.celebration,
+              useLandscapeFrame: false,
+              borderRadius: 999,
+            ),
           ),
         ],
       ),

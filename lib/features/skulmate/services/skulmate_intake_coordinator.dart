@@ -1,22 +1,19 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:prepskul/core/theme/app_theme.dart';
 
-import '../l10n/skulmate_copy.dart';
 import '../models/skulmate_intake_models.dart';
 import '../screens/game_generation_screen.dart';
 import '../screens/game_setup_flow_screen.dart';
 import '../screens/skulmate_path_overview_screen.dart';
 import '../services/skulmate_access_service.dart';
+import '../screens/skulmate_intake_chat_screen.dart';
 import '../widgets/generation_context_sheet.dart';
 import '../widgets/skulmate_from_class_sheet.dart';
-import '../widgets/skulmate_intent_sheet.dart';
+import '../widgets/skulmate_paywall_sheet.dart';
 import '../widgets/skulmate_paste_sheet.dart';
-import '../screens/skulmate_plans_screen.dart';
 
-/// Single entry for SkulMate intake → intent sheet → generation routing.
+/// Single entry for SkulMate intake → chat analysis → generation routing.
 class SkulMateIntakeCoordinator {
   SkulMateIntakeCoordinator._();
 
@@ -29,10 +26,15 @@ class SkulMateIntakeCoordinator {
     final accessOk = await _checkAccess(context, payload);
     if (!accessOk || !context.mounted) return;
 
-    final mode = await SkulMateIntentSheet.show(context, payload: payload);
-    if (mode == null || !context.mounted) return;
-
-    await _routeByMode(context, payload, mode);
+    final result = await Navigator.push<SkulMateIntakeChatResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SkulMateIntakeChatScreen(payload: payload),
+      ),
+    );
+    if (result != null && context.mounted) {
+      await _routeByMode(context, result.payload, result.mode);
+    }
   }
 
   static Future<void> openPasteFlow(
@@ -73,44 +75,17 @@ class SkulMateIntakeCoordinator {
     );
     if (access.canProceed || !context.mounted) return access.canProceed;
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Plan required',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        content: Text(
-          access.message,
-          style: GoogleFonts.poppins(fontSize: 14, height: 1.35),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Not now', style: GoogleFonts.poppins()),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await Navigator.push(
-                ctx,
-                MaterialPageRoute(builder: (_) => const SkulmatePlansScreen()),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-            ),
-            child: Text(
-              'See plans',
-              style: GoogleFonts.poppins(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+    final purchased = await SkulMatePaywallSheet.show(
+      context,
+      message: access.message,
     );
+    if (!context.mounted) return false;
+    if (purchased) {
+      final retry = await SkulmateAccessService.checkGenerationAccess(
+        sourceType: sourceType,
+      );
+      return retry.canProceed;
+    }
     return false;
   }
 
@@ -128,32 +103,22 @@ class SkulMateIntakeCoordinator {
           payload,
           presetGameType: 'flashcards',
         );
-      case SkulMateIntentMode.fromClass:
-        await openFromClass(context, childId: payload.childId);
       case SkulMateIntentMode.scroll:
-      case SkulMateIntentMode.sheet:
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              SkulMateCopy.read(context).comingSoon,
-              style: GoogleFonts.poppins(),
-            ),
-            behavior: SnackBarBehavior.floating,
-          ),
+        await _launchGeneration(
+          context,
+          payload,
+          presetGameType: 'flashcards',
+          openAsScrollFeed: true,
         );
+      case SkulMateIntentMode.sheet:
+      case SkulMateIntentMode.fromClass:
+        break;
       case SkulMateIntentMode.path:
         if (!context.mounted) return;
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => SkulMatePathOverviewScreen(
-              topic: payload.topicHint ?? payload.title,
-              onStartPath: () async {
-                Navigator.pop(context);
-                await _launchGeneration(context, payload);
-              },
-            ),
+            builder: (_) => SkulMatePathOverviewScreen(payload: payload),
           ),
         );
     }
@@ -163,6 +128,7 @@ class SkulMateIntakeCoordinator {
     BuildContext context,
     SkulMateIntakePayload payload, {
     String? presetGameType,
+    bool openAsScrollFeed = false,
   }) async {
     if (!context.mounted) return;
 
@@ -214,6 +180,7 @@ class SkulMateIntakeCoordinator {
           topic: topic,
           difficulty: contextResult?.difficulty,
           gameType: gameType,
+          openAsScrollFeed: openAsScrollFeed,
         ),
       ),
     );

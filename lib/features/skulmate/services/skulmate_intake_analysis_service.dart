@@ -1,0 +1,172 @@
+import 'package:prepskul/core/services/log_service.dart';
+
+import '../l10n/skulmate_copy.dart';
+import '../models/skulmate_intake_analysis.dart';
+import '../models/skulmate_intake_models.dart';
+import 'skulmate_service.dart';
+
+/// Reads learner content and produces a topic brief for the intake chat.
+class SkulMateIntakeAnalysisService {
+  SkulMateIntakeAnalysisService._();
+
+  static SkulMateIntakeAttachment previewAttachment(
+    SkulMateIntakePayload payload,
+    SkulMateCopy copy,
+  ) =>
+      _attachmentFor(payload, copy);
+
+  static Future<SkulMateIntakeAnalysis> analyze(
+    SkulMateIntakePayload payload, {
+    required SkulMateCopy copy,
+  }) async {
+    final attachment = _attachmentFor(payload, copy);
+    String? resolvedText = payload.text?.trim();
+    String topicLabel;
+
+    if (payload.hasYoutube) {
+      LogService.info('🎮 [skulMate] Analyzing YouTube intake…');
+      resolvedText = await SkulMateService.resolveYoutubeTranscript(
+        payload.youtubeUrl!,
+      );
+      topicLabel = _topicFromText(resolvedText) ??
+          copy.intakeTopicFallbackYoutube;
+    } else if (payload.hasText) {
+      resolvedText = payload.text!.trim();
+      topicLabel = _topicFromText(resolvedText) ??
+          payload.title?.trim() ??
+          copy.intakeTopicFallbackNotes;
+    } else if (payload.hasTopicOnly) {
+      topicLabel = payload.topicHint!.trim();
+      resolvedText = null;
+    } else if (payload.source == SkulMateIntakeSource.lecture) {
+      topicLabel = payload.title?.trim() ??
+          _topicFromText(resolvedText) ??
+          copy.intakeTopicFallbackLecture;
+    } else if (payload.hasImages) {
+      topicLabel = _fileName(payload) ?? copy.intakeTopicFallbackPhoto;
+    } else if (payload.hasFiles) {
+      topicLabel = _cleanFileName(_fileName(payload)) ??
+          copy.intakeTopicFallbackDocument;
+    } else {
+      topicLabel = copy.intakeTopicFallbackGeneric;
+    }
+
+    if (topicLabel.length > 72) {
+      topicLabel = '${topicLabel.substring(0, 69)}…';
+    }
+
+    return SkulMateIntakeAnalysis(
+      topicLabel: topicLabel,
+      resolvedText: resolvedText,
+      attachment: attachment,
+    );
+  }
+
+  static SkulMateIntakeAttachment _attachmentFor(
+    SkulMateIntakePayload payload,
+    SkulMateCopy copy,
+  ) {
+    if (payload.hasYoutube) {
+      final id = _youtubeVideoId(payload.youtubeUrl!);
+      return SkulMateIntakeAttachment(
+        source: SkulMateIntakeSource.youtube,
+        label: copy.youtube,
+        thumbnailUrl: id != null
+            ? 'https://img.youtube.com/vi/$id/hqdefault.jpg'
+            : null,
+      );
+    }
+    if (payload.hasImages) {
+      final name = payload.images!.first.name;
+      return SkulMateIntakeAttachment(
+        source: SkulMateIntakeSource.photo,
+        label: copy.photo,
+        fileName: name,
+        localImagePath: payload.images!.first.path,
+      );
+    }
+    if (payload.hasFiles || payload.filesWeb != null) {
+      final name = _fileName(payload);
+      final ext = name?.split('.').last.toLowerCase() ?? '';
+      final label = ext == 'pdf'
+          ? 'PDF'
+          : ext == 'pptx' || ext == 'ppt'
+              ? 'PowerPoint'
+              : copy.upload;
+      return SkulMateIntakeAttachment(
+        source: SkulMateIntakeSource.document,
+        label: label,
+        fileName: name,
+      );
+    }
+    if (payload.source == SkulMateIntakeSource.lecture) {
+      return SkulMateIntakeAttachment(
+        source: SkulMateIntakeSource.lecture,
+        label: copy.recordLecture,
+      );
+    }
+    if (payload.source == SkulMateIntakeSource.paste) {
+      return SkulMateIntakeAttachment(
+        source: SkulMateIntakeSource.paste,
+        label: copy.paste,
+      );
+    }
+    if (payload.hasTopicOnly || payload.source == SkulMateIntakeSource.typedTopic) {
+      return SkulMateIntakeAttachment(
+        source: SkulMateIntakeSource.typedTopic,
+        label: payload.topicHint?.trim().isNotEmpty == true
+            ? payload.topicHint!.trim()
+            : copy.intakeTopicChip,
+      );
+    }
+    return SkulMateIntakeAttachment(
+      source: payload.source,
+      label: copy.upload,
+    );
+  }
+
+  static String? _fileName(SkulMateIntakePayload payload) {
+    if (payload.filesWeb != null && payload.filesWeb!.isNotEmpty) {
+      return payload.filesWeb!.first.name;
+    }
+    if (payload.files != null && payload.files!.isNotEmpty) {
+      final path = payload.files!.first.path;
+      return path.split('/').last;
+    }
+    if (payload.images != null && payload.images!.isNotEmpty) {
+      return payload.images!.first.name;
+    }
+    return null;
+  }
+
+  static String? _cleanFileName(String? name) {
+    if (name == null || name.trim().isEmpty) return null;
+    var base = name.replaceAll(RegExp(r'\.[^.]+$'), '');
+    base = base.replaceAll(RegExp(r'[-_]'), ' ').trim();
+    return base.isEmpty ? null : base;
+  }
+
+  static String? _topicFromText(String? text) {
+    if (text == null || text.trim().isEmpty) return null;
+    final lines = text
+        .split(RegExp(r'\n+'))
+        .map((l) => l.trim())
+        .where((l) => l.length > 2)
+        .toList();
+    if (lines.isEmpty) return null;
+    final first = lines.first;
+    if (first.length <= 80) return first;
+    return '${first.substring(0, 77)}…';
+  }
+
+  static String? _youtubeVideoId(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return null;
+    if (uri.host.contains('youtu.be') && uri.pathSegments.isNotEmpty) {
+      return uri.pathSegments.first;
+    }
+    final v = uri.queryParameters['v'];
+    if (v != null && v.isNotEmpty) return v;
+    return null;
+  }
+}

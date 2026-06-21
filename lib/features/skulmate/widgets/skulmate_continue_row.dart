@@ -77,7 +77,7 @@ class _SkulMateContinueRowState extends State<SkulMateContinueRow> {
     final copy = SkulMateCopy.of(context);
     if (_loading || _items.isEmpty) return const SizedBox.shrink();
 
-    final preview = _items.take(8).toList();
+    final preview = _items.take(ContinueGamesService.maxItems).toList();
     final cardWidth = MediaQuery.sizeOf(context).width * 0.72;
 
     return Column(

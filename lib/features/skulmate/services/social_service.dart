@@ -398,8 +398,7 @@ class SocialService {
           profile: profile,
         ),
         userAvatarUrl: resolvedAvatar,
-        userCharacterId: (profile?['skulmate_character_id'] as String?) ??
-            entry.userCharacterId,
+        userCharacterId: entry.userCharacterId,
         userLevel: entry.userLevel,
       );
     }).toList();
@@ -430,7 +429,7 @@ class SocialService {
     try {
       final profiles = await SupabaseService.client
           .from('profiles')
-          .select('id, full_name, email, avatar_url, skulmate_character_id')
+          .select('id, full_name, email, avatar_url')
           .inFilter('id', userIds);
       for (final row in (profiles as List).cast<Map<String, dynamic>>()) {
         profilesById[row['id'] as String] = row;

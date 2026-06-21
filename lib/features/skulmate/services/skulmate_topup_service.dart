@@ -6,6 +6,7 @@ class SkulmateTopupService {
   /// After payment, webhook/confirmation converts payment amount into credits.
   static Future<String> createTopupPaymentRequest({
     required String packageName,
+    required String planId,
     required int credits,
     required double amountXaf,
   }) async {
@@ -28,6 +29,7 @@ class SkulmateTopupService {
       'original_amount': amountXaf,
       'discount_percent': 0,
       'discount_amount': 0,
+      // DB check constraint only allows weekly | biweekly | monthly | trial.
       'payment_plan': 'monthly',
       'status': 'pending',
       'due_date': dueDate,
@@ -35,6 +37,7 @@ class SkulmateTopupService {
       'metadata': {
         'is_skulmate_topup': true,
         'package_name': packageName,
+        'plan_id': planId,
         'credits': credits,
         'location': 'online',
         'tutor_name': 'SkulMate',

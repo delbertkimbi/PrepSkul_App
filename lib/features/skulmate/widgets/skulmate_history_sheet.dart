@@ -9,7 +9,7 @@ import '../utils/game_type_visuals.dart';
 import '../utils/skulmate_game_router.dart';
 import 'skulmate_sheet_scaffold.dart';
 
-/// Gizmo-style game / chat history bottom sheet with search.
+/// Game history bottom sheet with search.
 class SkulMateHistorySheet extends StatefulWidget {
   final String? childId;
 
@@ -44,6 +44,14 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
   }
 
   Future<void> _load() async {
+    final cached =
+        await SkulMateService.getCachedGames(childId: widget.childId);
+    if (mounted && cached.isNotEmpty) {
+      setState(() {
+        _games = cached;
+        _loading = false;
+      });
+    }
     try {
       final games = await SkulMateService.getGames(childId: widget.childId);
       if (mounted) {
@@ -60,9 +68,7 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
   List<GameModel> get _filtered {
     final q = _searchController.text.trim().toLowerCase();
     if (q.isEmpty) return _games;
-    return _games
-        .where((g) => g.title.toLowerCase().contains(q))
-        .toList();
+    return _games.where((g) => g.title.toLowerCase().contains(q)).toList();
   }
 
   String _subtitle(GameModel game) {
@@ -73,6 +79,7 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
   Widget build(BuildContext context) {
     final copy = SkulMateCopy.of(context);
     final items = _filtered;
+    final listHeight = MediaQuery.sizeOf(context).height * 0.48;
 
     return SkulMateSheetScaffold(
       title: copy.history,
@@ -80,60 +87,56 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
       maxHeightFactor: 0.82,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (_) => setState(() {}),
-              style: GoogleFonts.poppins(fontSize: 14),
-              decoration: InputDecoration(
-                hintText: copy.searchHint,
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: AppTheme.textMedium.withValues(alpha: 0.7),
-                ),
-                filled: true,
-                fillColor: AppTheme.softBackground,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide(color: AppTheme.softBorder),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: const BorderSide(
-                    color: AppTheme.primaryColor,
-                    width: 1.5,
-                  ),
+          TextField(
+            controller: _searchController,
+            onChanged: (_) => setState(() {}),
+            style: GoogleFonts.poppins(fontSize: 14),
+            decoration: InputDecoration(
+              hintText: copy.searchHint,
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: AppTheme.textMedium.withValues(alpha: 0.7),
+              ),
+              filled: true,
+              fillColor: AppTheme.softBackground,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(999),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(999),
+                borderSide: BorderSide(color: AppTheme.softBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(999),
+                borderSide: const BorderSide(
+                  color: AppTheme.primaryColor,
+                  width: 1.5,
                 ),
               ),
             ),
           ),
-          Expanded(
-            child: _loading
+          const SizedBox(height: 12),
+          SizedBox(
+            height: listHeight,
+            child: _loading && items.isEmpty
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                 : items.isEmpty
                     ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Text(
-                            copy.historyEmpty,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.poppins(
-                              color: AppTheme.textMedium,
-                              fontSize: 14,
-                              height: 1.4,
-                            ),
+                        child: Text(
+                          copy.historyEmpty,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.poppins(
+                            color: AppTheme.textMedium,
+                            fontSize: 14,
+                            height: 1.4,
                           ),
                         ),
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                         itemCount: items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 4),
                         itemBuilder: (context, index) {
@@ -151,7 +154,7 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
                               borderRadius: BorderRadius.circular(14),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
+                                  horizontal: 4,
                                   vertical: 10,
                                 ),
                                 child: Row(

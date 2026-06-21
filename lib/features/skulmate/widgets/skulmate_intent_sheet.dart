@@ -6,8 +6,10 @@ import 'package:provider/provider.dart';
 
 import '../l10n/skulmate_copy.dart';
 import '../models/skulmate_intake_models.dart';
+import 'skulmate_sheet_scaffold.dart';
+import 'skulmate_surface_styles.dart';
 
-/// Post-intake mode picker (Play · Scroll · Path · Drill · Sheet · From class).
+/// Post-intake mode picker (Play · Scroll · Path · Drill · Sheet).
 class SkulMateIntentSheet extends StatefulWidget {
   final SkulMateIntakePayload payload;
   final SkulMateCopy copy;
@@ -28,12 +30,22 @@ class SkulMateIntentSheet extends StatefulWidget {
               .languageCode ==
           'fr',
     );
-    return showModalBottomSheet<SkulMateIntentMode>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => SkulMateIntentSheet(payload: payload, copy: copy),
+    return SkulMateSheetScaffold.show<SkulMateIntentMode>(
+      context,
+      child: SkulMateIntentSheet(payload: payload, copy: copy),
     );
+  }
+
+  static const _selectableModes = [
+    SkulMateIntentMode.play,
+    SkulMateIntentMode.scroll,
+    SkulMateIntentMode.path,
+    SkulMateIntentMode.drill,
+    SkulMateIntentMode.sheet,
+  ];
+
+  static bool isComingSoonMode(SkulMateIntentMode mode) {
+    return mode == SkulMateIntentMode.sheet;
   }
 
   @override
@@ -43,89 +55,32 @@ class SkulMateIntentSheet extends StatefulWidget {
 class _SkulMateIntentSheetState extends State<SkulMateIntentSheet> {
   SkulMateIntentMode _selected = SkulMateIntentMode.play;
 
-  static const List<SkulMateIntentMode> _modes = [
-    SkulMateIntentMode.play,
-    SkulMateIntentMode.scroll,
-    SkulMateIntentMode.path,
-    SkulMateIntentMode.drill,
-    SkulMateIntentMode.sheet,
-    SkulMateIntentMode.fromClass,
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppTheme.neutral200,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'SkulMate',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textMedium,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  widget.copy.isFrench
-                      ? 'Comment veux-tu réviser ?'
-                      : 'How do you want to revise?',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textDark,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ..._modes.map(_modeCard),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context, _selected),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryDark,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      widget.copy.modeCta(_selected),
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+    return SkulMateSheetScaffold(
+      title: widget.copy.intentSheetTitle,
+      showWandIcon: false,
+      maxHeightFactor: 0.78,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: SkulMateIntentSheet._selectableModes
+            .map(_modeCard)
+            .toList(),
+      ),
+      footer: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: SkulMateIntentSheet.isComingSoonMode(_selected)
+              ? null
+              : () => Navigator.pop(context, _selected),
+          style: SkulMateSurfaceStyles.sheetPrimaryButton(
+            enabled: !SkulMateIntentSheet.isComingSoonMode(_selected),
+          ),
+          child: Text(
+            widget.copy.modeCta(_selected),
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -134,51 +89,75 @@ class _SkulMateIntentSheetState extends State<SkulMateIntentSheet> {
   }
 
   Widget _modeCard(SkulMateIntentMode mode) {
-    final selected = _selected == mode;
+    final comingSoon = SkulMateIntentSheet.isComingSoonMode(mode);
+    final selected = !comingSoon && _selected == mode;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: InkWell(
-        onTap: () => setState(() => _selected = mode),
+        onTap: comingSoon ? null : () => setState(() => _selected = mode),
         borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppTheme.primaryColor.withValues(alpha: 0.06)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected ? AppTheme.primaryColor : AppTheme.softBorder,
-              width: selected ? 2 : 1,
+        child: Opacity(
+          opacity: comingSoon ? 0.55 : 1,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: selected
+                  ? AppTheme.primaryColor.withValues(alpha: 0.06)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? AppTheme.primaryColor : AppTheme.softBorder,
+                width: selected ? 2 : 1,
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              Text(_emoji(mode), style: const TextStyle(fontSize: 22)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.copy.modeLabel(mode),
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textDark,
+            child: Row(
+              children: [
+                Text(_emoji(mode), style: const TextStyle(fontSize: 22)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.copy.modeLabel(mode),
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
                       ),
+                      Text(
+                        widget.copy.modeSubtitle(mode),
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (comingSoon)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
                     ),
-                    Text(
-                      widget.copy.modeSubtitle(mode),
+                    decoration: BoxDecoration(
+                      color: AppTheme.neutral100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      widget.copy.comingSoon,
                       style: GoogleFonts.poppins(
-                        fontSize: 13,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                         color: AppTheme.textMedium,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+              ],
+            ),
           ),
         ),
       ),

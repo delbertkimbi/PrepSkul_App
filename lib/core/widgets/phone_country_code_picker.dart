@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/models/phone_country.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/widgets/country_flag_icon.dart';
 
 /// Tappable country dial-code selector with a themed bottom sheet.
 class PhoneCountryCodePicker extends StatelessWidget {
@@ -42,7 +43,7 @@ class PhoneCountryCodePicker extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(selected.flag, style: const TextStyle(fontSize: 18)),
+              CountryFlagIcon(isoCode: selected.isoCode, size: 18),
               const SizedBox(width: 6),
               Text(
                 selected.dialCode,
@@ -215,7 +216,10 @@ class _CountryCodeSheetState extends State<_CountryCodeSheet> {
                         ),
                         child: Row(
                           children: [
-                            Text(country.flag, style: const TextStyle(fontSize: 22)),
+                            CountryFlagIcon(
+                              isoCode: country.isoCode,
+                              size: 22,
+                            ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(

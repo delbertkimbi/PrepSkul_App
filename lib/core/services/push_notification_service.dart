@@ -571,7 +571,7 @@ class PushNotificationService {
                     : null,
                 enableVibration: data?['vibrate'] != 'false',
                 // `icon` expects a resource name; Android will use it as the status bar small icon.
-                icon: android?.smallIcon ?? 'ic_launcher',
+                icon: android?.smallIcon ?? '@mipmap/ic_launcher',
               )
             : null,
         iOS: Platform.isIOS
@@ -895,7 +895,8 @@ class PushNotificationService {
   Future<void> scheduleSkulMateStreakReminder({
     required int hour,
     required int minute,
-    int streakCount = 0,
+    required String title,
+    required String body,
     bool startFromTomorrow = false,
   }) async {
     if (kIsWeb) return;
@@ -941,10 +942,8 @@ class PushNotificationService {
       const iosDetails = DarwinNotificationDetails();
       await _localNotifications.zonedSchedule(
         _streakReminderId,
-        'Don\'t lose your streak!',
-        streakCount > 0
-            ? 'You\'ve got a $streakCount day streak. Play your daily challenge, or create a new quiz to unlock one.'
-            : 'Play your daily challenge, or create a new quiz to unlock one.',
+        title,
+        body,
         scheduled,
         const NotificationDetails(android: androidDetails, iOS: iosDetails),
         uiLocalNotificationDateInterpretation:
@@ -952,7 +951,7 @@ class PushNotificationService {
         matchDateTimeComponents: DateTimeComponents.time,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         payload: jsonEncode(<String, dynamic>{
-          'type': 'daily_challenge_reminder',
+          'type': 'skulmate_revision_reminder',
           'actionUrl': '/skulmate',
         }),
       );

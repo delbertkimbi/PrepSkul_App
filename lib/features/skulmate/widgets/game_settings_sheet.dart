@@ -249,14 +249,14 @@ class _AudioSettingCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
+                            Text(
                         subtitle,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
                           height: 1.35,
-                          color: AppTheme.textMedium,
-                        ),
-                      ),
+                                color: AppTheme.textMedium,
+                              ),
+                            ),
                     ],
                   ),
                 ),
@@ -266,9 +266,9 @@ class _AudioSettingCard extends StatelessWidget {
                 onChanged: onToggle,
                 activeTrackColor: accent.withValues(alpha: 0.45),
                 activeThumbColor: accent,
-              ),
-            ],
-          ),
+                            ),
+                          ],
+                        ),
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 200),
             crossFadeState: enabled
@@ -294,9 +294,9 @@ class _AudioSettingCard extends StatelessWidget {
                           data: _sliderTheme(accent),
                           child: Slider(
                             value: volume.clamp(0.0, 1.0),
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
+                              min: 0,
+                              max: 1,
+                              divisions: 100,
                             onChanged: onVolumeChanged,
                             onChangeEnd: (_) => onVolumeSettled?.call(),
                           ),
@@ -319,8 +319,8 @@ class _AudioSettingCard extends StatelessWidget {
                         ),
                         child: Text(
                           '$percent%',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: accent,
                           ),
