@@ -4,13 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
-import '../models/skulmate_character_model.dart';
 import '../widgets/skulmate_game_app_bar.dart';
-import '../widgets/skulmate_character_widget.dart';
-import '../services/character_selection_service.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import '../widgets/game_standard_widgets.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
 import 'game_results_screen.dart';
 
 /// Match-3 game screen (like Candy Crush)
@@ -32,7 +31,6 @@ class _Match3GameScreenState extends State<Match3GameScreen> {
   int _score = 0; // successful matches
   int _xpEarned = 0;
   int _targetMatches = 1;
-  dynamic _character;
 
   @override
   void initState() {
@@ -41,7 +39,6 @@ class _Match3GameScreenState extends State<Match3GameScreen> {
     _soundService.initialize();
     unawaited(_soundService.playMusicForGame(widget.game.gameType));
     _buildTiles();
-    _loadCharacter();
   }
 
   void _buildTiles() {
@@ -67,11 +64,6 @@ class _Match3GameScreenState extends State<Match3GameScreen> {
       ..clear()
       ..addAll(normalized);
     _targetMatches = (_tiles.length / 3).floor().clamp(1, 1000);
-  }
-
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    if (mounted) safeSetState(() => _character = character);
   }
 
   @override
@@ -152,11 +144,13 @@ class _Match3GameScreenState extends State<Match3GameScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Center(
-              child: const SkulMateCharacterWidget(
-                character: SkulMateCharacters.middleMale,
-                size: 40,
-                animated: false,
-                showName: false,
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.white.withOpacity(0.22),
+                child: const SkulMateProfileAvatar(
+                  size: 28,
+                  forGameAppBar: true,
+                ),
               ),
             ),
           ),

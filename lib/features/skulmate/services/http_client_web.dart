@@ -1,88 +1,59 @@
 // Web-specific HTTP client using dart:html for proper CORS handling
+import 'dart:async';
 import 'dart:html' as html;
 import 'package:http/http.dart' as http;
 
 /// Web-specific HTTP POST.
-/// Uses browser fetch/XHR semantics on web.
+/// Returns the response body for all HTTP status codes (including 4xx/5xx)
+/// so callers can read API error JSON — unlike [html.HttpRequest.request],
+/// which throws on non-2xx before the body is available.
 Future<http.Response> postWeb(
   String url,
   Map<String, String> headers,
   String body,
 ) async {
-  try {
-    final request = await html.HttpRequest.request(
-      url,
-      method: 'POST',
-      requestHeaders: headers,
-      sendData: body,
-      // Use bearer token Authorization header, not cookies.
-      // withCredentials=true requires stricter CORS headers and can cause blocks
-      // from some environments; keep false for broader compatibility.
-      withCredentials: false,
-    );
+  final xhr = html.HttpRequest();
+  final completer = Completer<http.Response>();
 
-    // Convert html.HttpRequest to http.Response
-    // Handle null status (shouldn't happen, but be safe)
-    final status = request.status ?? 200; // Default to 200 if null (unlikely)
-    
-    // Convert responseHeaders to Map<String, String>
-    // HttpRequest.responseHeaders is already Map<String, String>
-    final responseHeaders = Map<String, String>.from(request.responseHeaders);
-
-    return http.Response(
-      request.responseText ?? '',
-      status,
-      headers: responseHeaders,
-    );
-  } catch (e) {
-    // HttpRequest.request throws ProgressEvent on error
-    // Extract meaningful error message with better classification
-    String errorMessage = 'Failed to fetch';
-    String errorType = 'unknown';
-    
-    if (e is html.ProgressEvent) {
-      // ProgressEvent contains error information
-      final target = e.target;
-      if (target is html.HttpRequest) {
-        final status = target.status;
-        final statusText = target.statusText ?? '';
-        
-        if (status != null && status != 0) {
-          // HTTP error response received
-          if (status >= 500) {
-            errorType = 'server';
-            errorMessage = 'HTTP $status: Server error - $statusText';
-          } else if (status >= 400) {
-            errorType = 'client';
-            errorMessage = 'HTTP $status: Client error - $statusText';
-          } else {
-            errorType = 'http';
-            errorMessage = 'HTTP $status: $statusText';
-          }
-        } else {
-          // Status 0 usually means CORS error or network error
-          // Check if it's likely a CORS issue
-          if (status == 0) {
-            errorType = 'cors';
-            errorMessage = 'CORS blocked or network error (status: 0)';
-          } else {
-            errorType = 'network';
-            errorMessage = 'Network error (status: $status)';
-          }
-        }
-      } else {
-        errorType = 'progress';
-        errorMessage = 'Request failed: ${e.type}';
-      }
-    } else {
-      errorType = 'exception';
-      errorMessage = e.toString();
-    }
-    
-    // Convert to http.ClientException with error type in message
-    throw http.ClientException(
-      '[$errorType] $errorMessage, uri=$url',
-      Uri.parse(url),
-    );
+  xhr.open('POST', url, async: true);
+  for (final entry in headers.entries) {
+    xhr.setRequestHeader(entry.key, entry.value);
   }
+
+  xhr.onLoad.listen((_) {
+    if (completer.isCompleted) return;
+    completer.complete(
+      http.Response(
+        xhr.responseText ?? '',
+        xhr.status ?? 0,
+        headers: Map<String, String>.from(xhr.responseHeaders ?? const {}),
+      ),
+    );
+  });
+
+  xhr.onError.listen((_) {
+    if (completer.isCompleted) return;
+    completer.completeError(
+      http.ClientException('Network error, uri=$url', Uri.parse(url)),
+    );
+  });
+
+  xhr.onTimeout.listen((_) {
+    if (completer.isCompleted) return;
+    completer.completeError(
+      http.ClientException('Timeout, uri=$url', Uri.parse(url)),
+    );
+  });
+
+  try {
+    xhr.send(body);
+  } catch (e) {
+    if (!completer.isCompleted) {
+      completer.completeError(
+        http.ClientException('Request failed: $e, uri=$url', Uri.parse(url)),
+      );
+    }
+  }
+
+  return completer.future;
 }

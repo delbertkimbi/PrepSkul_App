@@ -507,7 +507,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authPhoneNumber => 'Phone Number';
 
   @override
-  String get authPhoneHint => '6 53 30 19 97';
+  String get authPhoneHint => 'Your mobile number';
 
   @override
   String get authPassword => 'Password';

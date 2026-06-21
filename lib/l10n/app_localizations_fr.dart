@@ -507,7 +507,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get authPhoneNumber => 'Numéro de téléphone (WhatsApp)';
 
   @override
-  String get authPhoneHint => '6 53 30 19 97';
+  String get authPhoneHint => 'Votre numéro mobile';
 
   @override
   String get authPassword => 'Mot de passe';

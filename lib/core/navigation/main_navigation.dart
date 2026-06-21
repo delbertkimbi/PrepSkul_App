@@ -15,8 +15,8 @@ import '../../features/discovery/screens/find_tutors_screen.dart';
 import '../../features/booking/screens/my_requests_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/skulmate/screens/skulmate_home_screen.dart';
-import '../../features/skulmate/screens/skulmate_onboarding_screen.dart';
-import '../../features/skulmate/services/skulmate_onboarding_service.dart';
+import '../../features/skulmate/services/skulmate_welcome_service.dart';
+import '../../features/skulmate/widgets/skulmate_welcome_sheet.dart';
 import '../../core/config/app_config.dart';
 import '../../core/services/supabase_service.dart';
 import '../theme/app_theme.dart';
@@ -44,44 +44,40 @@ class _MainNavigationState extends State<MainNavigation>
   late int _selectedIndex;
   bool _initialTabApplied = false;
 
-  void _stopGameMusicIfOnHomeTab() {
-    if (_selectedIndex == 0) {
-      unawaited(GameSoundService().stopMusic());
-    }
+  void _stopGameMusicOnShellTab() {
+    unawaited(GameSoundService().stopMusic(force: true));
   }
 
   int get _skulMateTabIndex => AppConfig.enableSkulMate ? 2 : -1;
-  bool _skulMateOnboardingCheckInFlight = false;
+  bool _skulMateWelcomeCheckInFlight = false;
 
   Future<void> _handleStudentTabTap(int index) async {
-    // Respond on first tap — do not block on async onboarding/network checks.
+    // Respond on first tap — do not block on async welcome/network checks.
     if (index != _selectedIndex) {
       safeSetState(() => _selectedIndex = index);
-      _stopGameMusicIfOnHomeTab();
+      _stopGameMusicOnShellTab();
     }
 
     if (index != _skulMateTabIndex ||
-        _skulMateOnboardingCheckInFlight ||
+        _skulMateWelcomeCheckInFlight ||
         !mounted) {
       return;
     }
 
-    _skulMateOnboardingCheckInFlight = true;
+    _skulMateWelcomeCheckInFlight = true;
     try {
-      final showOnboarding =
-          await SkulMateOnboardingService.shouldShowOnboarding().timeout(
-                const Duration(seconds: 2),
-                onTimeout: () => false,
-              );
-      if (!mounted || !showOnboarding) return;
+      final showWelcome = await SkulMateWelcomeService.shouldShow().timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => false,
+          );
+      if (!mounted || !showWelcome) return;
 
-      await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => const SkulMateOnboardingScreen(popWhenDone: true),
-        ),
+      await SkulMateWelcomeSheet.show(
+        context,
+        isParent: widget.userRole == 'parent',
       );
     } finally {
-      _skulMateOnboardingCheckInFlight = false;
+      _skulMateWelcomeCheckInFlight = false;
     }
   }
 
@@ -92,7 +88,7 @@ class _MainNavigationState extends State<MainNavigation>
     // Initialize with widget parameter first (available in initState)
     // Route arguments will be read in didChangeDependencies
     _selectedIndex = widget.initialTab ?? 0;
-    _stopGameMusicIfOnHomeTab();
+    _stopGameMusicOnShellTab();
   }
 
   @override
@@ -105,7 +101,7 @@ class _MainNavigationState extends State<MainNavigation>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Hot restart / resume can leave native BGM playing while shell shows Home.
     if (state == AppLifecycleState.resumed) {
-      _stopGameMusicIfOnHomeTab();
+      _stopGameMusicOnShellTab();
       unawaited(LiveSessionOverlayController.instance.refreshFromServer());
     }
   }
@@ -114,7 +110,7 @@ class _MainNavigationState extends State<MainNavigation>
   void reassemble() {
     super.reassemble();
     // Hot-reload safety: clear any leftover game BGM on Home tab.
-    _stopGameMusicIfOnHomeTab();
+    _stopGameMusicOnShellTab();
   }
 
   void _applyInitialTabOnce() {
@@ -138,7 +134,7 @@ class _MainNavigationState extends State<MainNavigation>
   void _switchTab(int index) {
     if (index < 0 || index == _selectedIndex) return;
     safeSetState(() => _selectedIndex = index);
-    _stopGameMusicIfOnHomeTab();
+    _stopGameMusicOnShellTab();
   }
 
   @override
@@ -311,7 +307,7 @@ class _MainNavigationState extends State<MainNavigation>
           safeSetState(() {
             _selectedIndex = index;
           });
-          _stopGameMusicIfOnHomeTab();
+          _stopGameMusicOnShellTab();
         },
         tabBody: tabBody,
         bottomBarItems: items,

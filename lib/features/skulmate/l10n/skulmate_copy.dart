@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
 import 'package:provider/provider.dart';
 import '../models/skulmate_intake_models.dart';
+import '../models/next_stop_suggestion.dart';
 
 /// Bilingual SkulMate UI strings (EN/FR).
 class SkulMateCopy {
@@ -33,9 +34,82 @@ class SkulMateCopy {
   String get jumpBackIn =>
       isFrench ? 'Reprendre' : 'Jump back in';
 
+  /// Gentle resurfacing — no exam/syllabus wording.
+  String get rerouteNudgeLead =>
+      isFrench ? 'Ça vaut un autre essai' : 'Worth another look';
+
+  String get rerouteNudgeAction =>
+      isFrench ? 'Rejouer' : 'Replay';
+
+  String get rerouteNudgeDismiss =>
+      isFrench ? 'Pas maintenant' : 'Not now';
+
+  String get tutorEscalationTitle => isFrench
+      ? 'Un coup de main ?'
+      : 'Want a hand with this?';
+
+  String tutorEscalationBody(String gameTitle) => isFrench
+      ? 'Si $gameTitle reste difficile, un tuteur PrepSkul peut t\'aider à clarifier.'
+      : 'If $gameTitle is still tricky, a PrepSkul tutor can help you get unstuck.';
+
+  String get tutorEscalationAction =>
+      isFrench ? 'Voir les tuteurs' : 'Browse tutors';
+
+  String get tutorEscalationDismiss =>
+      isFrench ? 'Pas maintenant' : 'Not now';
+
   String get viewAll => isFrench ? 'Tout voir' : 'View all';
 
   String get showLess => isFrench ? 'Réduire' : 'Show less';
+
+  String get intentSheetTitle => isFrench
+      ? 'Comment veux-tu réviser ?'
+      : 'How do you want to revise?';
+
+  String get intakeChatTitle => isFrench ? 'Discussion' : 'Chat';
+
+  String get intakeAnalyzing => isFrench
+      ? 'Lecture de ton contenu…'
+      : 'Reading your material…';
+
+  String get intakeTopicChip =>
+      isFrench ? 'Sujet' : 'Topic';
+
+  String get intakeTopicFallbackYoutube => isFrench
+      ? 'cette vidéo YouTube'
+      : 'this YouTube video';
+
+  String get intakeTopicFallbackNotes => isFrench
+      ? 'tes notes'
+      : 'your notes';
+
+  String get intakeTopicFallbackLecture => isFrench
+      ? 'ton enregistrement'
+      : 'your recording';
+
+  String get intakeTopicFallbackPhoto => isFrench
+      ? 'tes photos'
+      : 'your photo notes';
+
+  String get intakeTopicFallbackDocument => isFrench
+      ? 'ton document'
+      : 'your document';
+
+  String get intakeTopicFallbackGeneric => isFrench
+      ? 'ton contenu'
+      : 'your material';
+
+  String intakeChatSummary(String topicLabel) => isFrench
+      ? 'On dirait que tu as partagé du contenu sur $topicLabel. Comment veux-tu réviser ?'
+      : 'It looks like you\'ve shared material on $topicLabel. How would you like to revise?';
+
+  String modeCardSubtitle(SkulMateIntentMode mode, String topicLabel) {
+    if (mode == SkulMateIntentMode.path) return topicLabel;
+    return modeSubtitle(mode);
+  }
+
+  String get intakeRefinePlaceholder =>
+      isFrench ? 'Je veux réviser…' : 'I want to revise…';
 
   String get myGames => isFrench ? 'Mes jeux' : 'My games';
 
@@ -166,9 +240,315 @@ class SkulMateCopy {
   String get comingSoon =>
       isFrench ? 'Bientôt disponible' : 'Coming soon';
 
+  String get welcomeSheetTitle =>
+      isFrench ? 'Bienvenue sur SkulMate' : 'Welcome to SkulMate';
+
+  String welcomeHeadline({bool isParent = false}) {
+    if (isParent) {
+      return isFrench
+          ? 'Aidez votre enfant à transformer ses notes en jeux de révision'
+          : 'Help your child turn notes into revision games';
+    }
+    return isFrench
+        ? 'Transforme tes notes en jeux de révision'
+        : 'Turn your notes into revision games';
+  }
+
+  String welcomeBenefitNotes({bool isParent = false}) {
+    if (isParent) {
+      return isFrench
+          ? 'Importez ses notes, documents ou photos pour générer quiz et cartes.'
+          : 'Import their notes, documents, or photos to generate quizzes and flashcards.';
+    }
+    return isFrench
+        ? 'Importe tes notes, documents ou photos pour générer des quiz et cartes.'
+        : 'Import notes, documents, or photos to generate quizzes and flashcards.';
+  }
+
+  String welcomeBenefitResume({bool isParent = false}) {
+    if (isParent) {
+      return isFrench
+          ? 'Reprenez là où il/elle s\'est arrêté(e) — la progression est sauvegardée.'
+          : 'Pick up where they left off — progress is saved automatically.';
+    }
+    return isFrench
+        ? 'Reprends là où tu t\'es arrêté — ta progression est sauvegardée.'
+        : 'Resume where you left off — your progress is saved automatically.';
+  }
+
+  String welcomeBenefitLeaderboard({bool isParent = false}) {
+    if (isParent) {
+      return isFrench
+          ? 'Suivez l\'XP et le classement de votre enfant avec ses amis.'
+          : 'Track their XP and leaderboard progress with friends.';
+    }
+    return isFrench
+        ? 'Gagne de l\'XP et grimpe au classement avec tes amis.'
+        : 'Earn XP and climb the leaderboard with friends.';
+  }
+
+  String welcomeAiLine({bool isParent = false}) {
+    if (isParent) {
+      return isFrench
+          ? 'L\'IA crée des quiz, cartes et jeux d\'association à partir de leur contenu.'
+          : 'AI builds quizzes, flashcards, and matching games from their content.';
+    }
+    return isFrench
+        ? 'L\'IA crée des quiz, cartes et jeux d\'association à partir de ton contenu.'
+        : 'AI builds quizzes, flashcards, and matching games from your content.';
+  }
+
+  String get welcomeCta =>
+      isFrench ? 'C\'est parti !' : 'Let\'s go!';
+
+  String get paywallTitle =>
+      isFrench ? 'Continue à réviser' : 'Keep revising';
+
+  String get paywallSubtitle => isFrench
+      ? 'Tu as utilisé ta révision gratuite du jour. Ajoute des crédits pour continuer maintenant.'
+      : 'You\'ve used today\'s free revision. Add credits to keep going now.';
+
+  String get paywallUsageTitle => isFrench
+      ? 'Ta révision gratuite aujourd\'hui'
+      : 'Your free revision today';
+
+  String get paywallDocLabel =>
+      isFrench ? 'Documents et texte' : 'Documents & text';
+
+  String get paywallImageLabel =>
+      isFrench ? 'Images' : 'Images';
+
+  String paywallCreditsBalance(int balance) => isFrench
+      ? 'Solde : $balance crédits'
+      : 'Balance: $balance credits';
+
+  String get paywallCreditsActiveHint => isFrench
+      ? 'Tes crédits sont actifs — pas de limite gratuite à afficher.'
+      : 'Your credits are active — no free daily limits apply.';
+
+  String plansHeroWithCredits(int balance) => isFrench
+      ? 'Tu as $balance crédits de révision. Continue à générer des jeux.'
+      : 'You have $balance revision credits. Keep generating games.';
+
+  String get plansHeroWithCreditsShort => isFrench
+      ? 'Continue à générer des jeux quand tu veux.'
+      : 'Keep generating games anytime.';
+
+  String get plansHeroFreeRemaining => isFrench
+      ? 'Révision gratuite disponible aujourd\'hui — voir ton quota ci-dessous.'
+      : 'Free revision available today — see your quota below.';
+
+  String activePlanBadge(String tier) => isFrench
+      ? 'Forfait $tier actif'
+      : '$tier plan active';
+
+  String get plansTopUpHeading => isFrench
+      ? 'Recharger les crédits'
+      : 'Top up credits';
+
+  String get plansChooseHeading => isFrench
+      ? 'Choisir un forfait'
+      : 'Choose a plan';
+
+  String get paywallSeeAllPlans =>
+      isFrench ? 'Voir tous les forfaits' : 'See all plans';
+
+  String get revisionPlansTitle =>
+      isFrench ? 'Crédits de révision' : 'Revision credits';
+
+  String get myProgressTitle =>
+      isFrench ? 'Ma progression' : 'My progress';
+
+  String get progressXpLabel => isFrench ? 'XP total' : 'Total XP';
+
+  String progressLevelLabel(int level) => isFrench
+      ? 'Niveau $level'
+      : 'Level $level';
+
+  String get progressStreakLabel =>
+      isFrench ? 'Série en cours' : 'Current streak';
+
+  String progressBestStreak(int best) => isFrench
+      ? 'Meilleure série : $best jours'
+      : 'Best streak: $best days';
+
+  String get progressGamesLabel =>
+      isFrench ? 'Jeux joués' : 'Games played';
+
+  String progressAccuracy(double pct) => isFrench
+      ? 'Précision : ${pct.toStringAsFixed(0)}%'
+      : 'Accuracy: ${pct.toStringAsFixed(0)}%';
+
+  String get progressTopicsTitle => isFrench
+      ? 'Tes sujets en cours'
+      : 'Your focus topics';
+
+  String get progressTopicsEmpty => isFrench
+      ? 'Joue quelques jeux de révision — tes sujets apparaîtront ici.'
+      : 'Play a few revision games — your topics will show up here.';
+
+  String get nextStopTitle =>
+      isFrench ? 'Prochaine étape' : 'Next stop';
+
+  String nextStopHeadline(NextStopSuggestion s) {
+    switch (s.kind) {
+      case NextStopKind.dueReview:
+        return isFrench
+            ? 'Réviser : ${s.subtitle ?? s.title}'
+            : 'Review: ${s.subtitle ?? s.title}';
+      case NextStopKind.weakTopic:
+        return isFrench
+            ? 'Retravailler : ${s.title}'
+            : 'Revisit: ${s.title}';
+      case NextStopKind.continueGame:
+        return isFrench
+            ? 'Reprendre : ${s.title}'
+            : 'Continue: ${s.title}';
+      case NextStopKind.fromSession:
+        final tutor = s.tutorName ?? (isFrench ? 'ton tuteur' : 'your tutor');
+        return isFrench
+            ? 'Après ta séance avec $tutor : ${s.subtitle ?? s.title}'
+            : 'From your session with $tutor: ${s.subtitle ?? s.title}';
+    }
+  }
+
+  String nextStopCta(NextStopKind kind) {
+    switch (kind) {
+      case NextStopKind.dueReview:
+        return isFrench ? 'Réviser' : 'Review';
+      case NextStopKind.weakTopic:
+        return isFrench ? 'Rejouer' : 'Replay';
+      case NextStopKind.continueGame:
+        return isFrench ? 'Continuer' : 'Continue';
+      case NextStopKind.fromSession:
+        return isFrench ? 'Réviser la séance' : 'Review session';
+    }
+  }
+
+  String progressMasteryBandLabel(String band) {
+    switch (band) {
+      case 'solid':
+        return isFrench ? 'Solide' : 'Solid';
+      case 'building':
+        return isFrench ? 'En progrès' : 'Building';
+      default:
+        return isFrench ? 'À retravailler' : 'Needs work';
+    }
+  }
+
+  String get profileRevisionSection =>
+      isFrench ? 'Ma révision' : 'My revision';
+
+  String get profileViewGames =>
+      isFrench ? 'Voir mes jeux' : 'View my games';
+
+  String get profileCreditsCta =>
+      isFrench ? 'Crédits' : 'Credits';
+
+  String lectureErrorTitle(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('not enough speech') || lower.contains('too short')) {
+      return isFrench
+          ? 'Pas assez de parole détectée'
+          : 'Not enough speech detected';
+    }
+    if (lower.contains('network') ||
+        lower.contains('failed to fetch') ||
+        lower.contains('connection')) {
+      return isFrench ? 'Problème de connexion' : 'Connection problem';
+    }
+    if (lower.contains('not found') || lower.contains('permission')) {
+      return isFrench
+          ? 'Enregistrement introuvable'
+          : 'Recording not found';
+    }
+    return isFrench
+        ? 'Impossible de transcrire'
+        : 'Could not transcribe lecture';
+  }
+
+  String lectureErrorDetails(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('not enough speech') || lower.contains('too short')) {
+      return transcriptTooShort;
+    }
+    if (lower.contains('network') || lower.contains('failed to fetch')) {
+      return isFrench
+          ? 'Vérifie ta connexion et réessaie.'
+          : 'Check your connection and try again.';
+    }
+    return raw;
+  }
+
+  String get friendsTitle => isFrench ? 'Amis' : 'Friends';
+
+  String get friendsTab => isFrench ? 'Amis' : 'Friends';
+
+  String get requestsTab => isFrench ? 'Demandes' : 'Requests';
+
+  String get challengesTitle => isFrench ? 'Défis' : 'Challenges';
+
+  String get challengesAll => isFrench ? 'Tous' : 'All';
+
+  String get challengesSent => isFrench ? 'Envoyés' : 'Sent';
+
+  String get challengesReceived => isFrench ? 'Reçus' : 'Received';
+
+  String get addFriendTitle => isFrench ? 'Ajouter un ami' : 'Add Friend';
+
+  String get createChallengeTitle =>
+      isFrench ? 'Créer un défi' : 'Create Challenge';
+
   String get tellSkulMateMore => isFrench
-      ? 'Dis-en plus à SkulMate…'
-      : 'Tell SkulMate more…';
+      ? 'Dis-en plus sur ce que tu veux réviser…'
+      : 'Tell us more about what you want to revise…';
+
+  String get errorAddCredits =>
+      isFrench ? 'Ajouter des crédits' : 'Add revision credits';
+
+  String get errorGoBack => isFrench ? 'Retour' : 'Go back';
+
+  String get errorTryAgain => isFrench ? 'Réessayer' : 'Try again';
+
+  String get errorManualText => isFrench
+      ? 'Saisir le texte manuellement'
+      : 'Enter text manually instead';
+
+  String get scrollFeedTitle =>
+      isFrench ? 'Révision rapide' : 'Quick revision';
+
+  String get scrollTapReveal =>
+      isFrench ? 'Appuie pour voir la réponse' : 'Tap to reveal answer';
+
+  String get scrollTapTerm =>
+      isFrench ? 'Appuie pour revoir le terme' : 'Tap to see term again';
+
+  String get scrollGotIt => isFrench ? 'Je sais' : 'Got it';
+
+  String get scrollAgain => isFrench ? 'Encore' : 'Again';
+
+  String get scrollDone => isFrench ? 'Terminer' : 'Done';
+
+  String get scrollKeepGoing =>
+      isFrench ? 'Continuer' : 'Keep going';
+
+  String get scrollGateTitle =>
+      isFrench ? 'Belle série !' : 'Nice run!';
+
+  String scrollGateBody(int known, int reviewed) => isFrench
+      ? '$known sur $reviewed — continuer ou terminer la séance ?'
+      : '$known of $reviewed — keep scrolling or wrap up?';
+
+  String get scrollSessionEndTitle =>
+      isFrench ? 'Séance terminée' : 'Session complete';
+
+  String scrollSessionEndBody(int reviewed, int known) => isFrench
+      ? 'Tu as revu $reviewed carte${reviewed == 1 ? '' : 's'} ($known bien connue${known == 1 ? '' : 's'}).'
+      : 'You reviewed $reviewed card${reviewed == 1 ? '' : 's'} ($known marked known).';
+
+  String get scrollEmptyQueue => isFrench
+      ? 'Rien à défiler pour l\'instant — crée un jeu ou reviens quand des révisions sont dues.'
+      : 'Nothing to scroll yet — create a game or come back when reviews are due.';
 
   String modeLabel(SkulMateIntentMode mode) {
     switch (mode) {
@@ -191,8 +571,8 @@ class SkulMateCopy {
     switch (mode) {
       case SkulMateIntentMode.play:
         return isFrench
-            ? 'Transforme en jeu'
-            : 'Turn this into a game';
+            ? 'Transforme en quiz ou jeu'
+            : 'Turn this into a quiz or game';
       case SkulMateIntentMode.scroll:
         return isFrench
             ? 'Révision en défilement'

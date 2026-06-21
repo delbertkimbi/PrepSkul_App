@@ -9,6 +9,9 @@ import '../models/game_model.dart';
 import '../services/social_service.dart';
 import '../services/skulmate_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/skulmate_surface_styles.dart';
+import '../l10n/skulmate_copy.dart';
+import '../widgets/skulmate_social_screen_scaffold.dart';
 import '../services/game_sound_service.dart';
 
 /// Full-screen, step-based flow for creating a challenge.
@@ -137,24 +140,10 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Create Challenge',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-      ),
+    final copy = SkulMateCopy.read(context);
+
+    return SkulMateSocialScreenScaffold(
+      title: copy.createChallengeTitle,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -535,13 +524,7 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: _prevStep,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    side: const BorderSide(color: AppTheme.primaryColor),
-                  ),
+                  style: SkulMateSurfaceStyles.sheetSecondaryButton(),
                   child: const Text('Back'),
                 ),
               ),
@@ -558,12 +541,13 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
                             !_isCreating
                         ? _createChallenge
                         : null),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                style: SkulMateSurfaceStyles.sheetPrimaryButton(
+                  enabled: _currentStep < _totalSteps - 1
+                      ? (_selectedFriend != null && _currentStep == 0 ||
+                          _selectedGame != null && _currentStep == 1)
+                      : (_selectedFriend != null &&
+                          _selectedGame != null &&
+                          !_isCreating),
                 ),
                 child: _isCreating
                     ? const SizedBox(

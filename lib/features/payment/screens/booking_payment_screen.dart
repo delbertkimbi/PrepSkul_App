@@ -24,7 +24,6 @@ import 'package:prepskul/features/payment/services/payment_gate_service.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
 import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
-import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
 
 /// Booking Payment Screen
@@ -118,7 +117,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         widget.paymentRequestId,
       );
       if (request != null) {
-        request = await _enrichPaymentRequest(request);
+        final metadata = _parseMetadata(request['metadata']);
+        final isTopup = metadata?['is_skulmate_topup'] == true;
+        if (!isTopup) {
+          request = await _enrichPaymentRequest(request);
+        }
       }
       if (request != null && mounted) {
         // `amount` is what this installment charges (weekly/bi-weekly/monthly slice).
@@ -292,6 +295,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   /// Safety net if checkout opened without passing through the payment gate.
   Future<void> _redirectIfKycRequired() async {
+    if (_isSkulmateTopup) return;
+
     final destination = await PaymentGateService.resolve(
       paymentRequestId: widget.paymentRequestId,
       bookingRequestId: widget.bookingRequestId,
@@ -370,47 +375,18 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       _paymentStatus = 'idle';
     });
 
-    // Validate and normalize phone number (same as trial payment)
-    final phone = _phoneController.text.trim();
-    String? normalizedPhone;
-    try {
-      // Normalize phone number (remove non-digits, handle country code)
-      final digitsOnly = phone.replaceAll(RegExp(r'[^\d]'), '');
-      if (digitsOnly.startsWith('237')) {
-        normalizedPhone = digitsOnly.substring(3);
-      } else if (digitsOnly.startsWith('67') ||
-          digitsOnly.startsWith('69') ||
-          digitsOnly.startsWith('65') ||
-          digitsOnly.startsWith('66') ||
-          digitsOnly.startsWith('68')) {
-        normalizedPhone = digitsOnly;
-      } else {
-        safeSetState(() {
-          _errorMessage =
-              'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
-          _isProcessing = false;
-        });
-        return;
-      }
-
-      if (normalizedPhone.length != 9) {
-        safeSetState(() {
-          _errorMessage =
-              'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
-          _isProcessing = false;
-        });
-        return;
-      }
-    } catch (_) {
+    // Validate and normalize phone number
+    final normalizedPhone =
+        PaymentProviderHelper.normalizeCameroonMobile(_phoneController.text.trim());
+    if (normalizedPhone == null) {
       safeSetState(() {
-        _errorMessage =
-            'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+        _errorMessage = PaymentProviderHelper.phoneValidationError;
         _isProcessing = false;
       });
       return;
     }
 
-    final provider = FapshiService.detectPhoneProvider(normalizedPhone!);
+    final provider = FapshiService.detectPhoneProvider(normalizedPhone);
 
     String? transId;
     try {
@@ -457,7 +433,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         MaterialPageRoute(
           builder: (context) => PaymentConfirmationScreen(
             provider: provider,
-            phoneNumber: normalizedPhone!,
+            phoneNumber: normalizedPhone,
             amount: _total,
             transactionId: transId!,
             isSandbox: !FapshiService.isProduction,
@@ -839,13 +815,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                           navigator.pop(); // Close dialog
 
                           if (_isSkulmateTopup) {
-                            // Close payment screen and go straight to skulMate upload
                             navigator.pop(true);
-                            navigator.push(
-                              MaterialPageRoute(
-                                builder: (_) => const SkulMateUploadScreen(),
-                              ),
-                            );
                             return;
                           }
 
@@ -1042,12 +1012,18 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     String paymentPlan,
   ) {
     final metadata = _parseMetadata(_paymentRequest?['metadata']);
+    final isTopup = metadata?['is_skulmate_topup'] == true;
+    final orderTitle = isTopup
+        ? (metadata?['package_name'] as String? ??
+            description ??
+            'SkulMate credits')
+        : tutorName;
 
     return PaymentCheckoutUi.checkoutShell(
       context: context,
       order: PaymentCheckoutOrder(
-        title: tutorName,
-        subtitle: _compactOrderSubtitle(paymentPlan, metadata),
+        title: orderTitle,
+        subtitle: isTopup ? '' : _compactOrderSubtitle(paymentPlan, metadata),
         paymentPlan: paymentPlan,
         description: description,
         metadata: metadata,
@@ -1060,14 +1036,14 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         detectedProvider: _detectedProvider,
         validationHint: _detectedProvider == null &&
                 _phoneController.text.trim().isNotEmpty
-            ? 'Enter a valid MTN or Orange number'
+            ? PaymentProviderHelper.phoneValidationError
             : null,
       ),
       errorBanner:
           _errorMessage != null ? _buildCompactErrorMessage() : null,
       payEnabled: _canInitiatePayment,
       isProcessing: _isProcessing,
-      payLabel: 'Pay ${PricingService.formatPrice(_total)}',
+      payLabel: 'Pay now',
       onPay: _initiatePayment,
     );
   }
@@ -1423,7 +1399,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           controller: _phoneController,
           keyboardType: TextInputType.phone,
           decoration: InputDecoration(
-            hintText: '67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
+            hintText: PaymentProviderHelper.phoneFieldHint,
             prefixIcon: Icon(Icons.phone, color: AppTheme.primaryColor),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             filled: true,

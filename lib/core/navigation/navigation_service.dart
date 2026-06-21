@@ -14,7 +14,7 @@ import 'package:prepskul/core/navigation/route_guards.dart';
 import 'package:prepskul/core/navigation/navigation_state.dart';
 import 'package:prepskul/core/navigation/navigation_analytics.dart';
 import 'package:prepskul/features/dashboard/utils/home_stats_prefs.dart';
-import 'package:prepskul/features/skulmate/services/skulmate_onboarding_service.dart';
+import 'package:prepskul/features/skulmate/services/skulmate_welcome_service.dart';
 
 class NavigationService {
   static final NavigationService _instance = NavigationService._internal();
@@ -234,18 +234,19 @@ class NavigationService {
               await prefs.remove('signup_email');
               await prefs.remove('signup_full_name');
               await prefs.remove('pending_deep_link');
-              await SkulMateOnboardingService.clearForUser(cachedUserId);
+              await SkulMateWelcomeService.clearForUser(cachedUserId);
               await HomeStatsPrefs.clearForUser(prefs, cachedUserId);
               await HomeStatsPrefs.clearLegacy(prefs);
-              await prefs.remove('skulmate_onboarding_completed');
             }
             
             final localIsLoggedIn = prefs.getBool('is_logged_in') ?? false;
 
             if (!localIsLoggedIn) {
+              final profileRole =
+                  profile['user_type']?.toString().trim() ?? '';
               await AuthService.saveSession(
                 userId: currentUserId,
-                userRole: profile['user_type'] ?? 'student',
+                userRole: profileRole,
                 phone: profile['phone_number'] ?? '',
                 fullName: profile['full_name'] ?? '',
                 surveyCompleted: profile['survey_completed'] ?? false,

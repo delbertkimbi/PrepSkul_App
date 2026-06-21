@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -7,6 +6,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'http_client_stub.dart' if (dart.library.html) 'http_client_web.dart';
+import 'lecture_audio_bytes.dart';
 
 /// Result of lecture audio transcription.
 class LectureTranscriptionResult {
@@ -34,40 +34,38 @@ class SkulMateLectureTranscriptionService {
   }) async {
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) {
-      throw Exception('User not authenticated');
+      throw Exception('Please log in to continue.');
     }
 
-    final file = File(localPath);
-    if (!await file.exists()) {
-      throw Exception('Recording file not found');
+    final bytes = await readRecordingBytes(localPath);
+    if (bytes.isEmpty) {
+      throw Exception('Recording file is empty');
     }
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final storagePath = '$userId/lecture_audio_$timestamp.m4a';
 
     try {
-      await SupabaseService.client.storage.from(_documentsBucket).upload(
+      await SupabaseService.client.storage.from(_documentsBucket).uploadBinary(
             storagePath,
-            file,
+            bytes,
             fileOptions: const FileOptions(
               contentType: 'audio/mp4',
               upsert: true,
             ),
           );
 
-      final audioUrl = SupabaseService.client.storage
+      final audioUrl = await SupabaseService.client.storage
           .from(_documentsBucket)
-          .getPublicUrl(storagePath);
+          .createSignedUrl(storagePath, 3600);
 
-      final result = await _callTranscribeApi(
+      return await _callTranscribeApi(
         audioUrl: audioUrl,
         userId: userId,
         childId: childId,
         title: title,
         durationSeconds: durationSeconds,
       );
-
-      return result;
     } finally {
       try {
         await SupabaseService.client.storage

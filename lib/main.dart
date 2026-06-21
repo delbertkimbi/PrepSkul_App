@@ -48,10 +48,7 @@ import 'package:prepskul/core/config/app_config.dart';
 import 'package:app_links/app_links.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
-import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
-import 'package:prepskul/features/skulmate/screens/game_library_screen.dart';
-import 'package:prepskul/features/skulmate/screens/character_selection_screen.dart';
-import 'package:prepskul/features/skulmate/screens/skulmate_onboarding_screen.dart';
+import 'package:prepskul/features/skulmate/screens/skulmate_games_screen.dart';
 import 'package:prepskul/features/skulmate/screens/leaderboard_screen.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
@@ -1405,8 +1402,17 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
           case '/auth-method-selection':
             return _createFadeRoute(() => const AuthMethodSelectionScreen());
           case '/login':
-          case '/beautiful-login':
-            return _createFadeRoute(() => const BeautifulLoginScreen());
+          case '/beautiful-login': {
+            final loginArgs = settings.arguments as Map<String, dynamic>?;
+            return _createFadeRoute(
+              () => BeautifulLoginScreen(
+                initialPhone: loginArgs?['phone'] as String?,
+                initialCountryIso: loginArgs?['countryIso'] as String?,
+                accountCreatedMessage:
+                    loginArgs?['accountCreatedMessage'] as String?,
+              ),
+            );
+          }
           case '/beautiful-signup':
             return _createFadeRoute(() => const BeautifulSignupScreen());
           case '/email-signup':
@@ -1455,9 +1461,10 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
               );
             }
           case '/skulmate/upload':
-            // SkulMate controlled by AppConfig feature flag
             if (AppConfig.enableSkulMate) {
-              return _createFadeRoute(() => SkulMateUploadScreen());
+              return _createFadeRoute(
+                () => const SkulMateGamesScreen(),
+              );
             } else {
               return _createFadeRoute(
                 () => Scaffold(
@@ -1475,8 +1482,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             if (AppConfig.enableSkulMate) {
               final args = settings.arguments as Map<String, dynamic>?;
               return _createFadeRoute(
-                () => GameLibraryScreen(
-                  initialTab: (args?['initialTab'] as int?) ?? 1,
+                () => SkulMateGamesScreen(
                   initialGameId: args?['initialGameId'] as String?,
                 ),
               );
@@ -1507,42 +1513,6 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
                 ),
               );
             }
-          case '/skulmate/onboarding':
-            if (AppConfig.enableSkulMate) {
-              return _createFadeRoute(() => const SkulMateOnboardingScreen());
-            } else {
-              return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
-                  body: const Center(
-                    child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
-              );
-            }
-          case '/skulmate/character-selection':
-            // SkulMate controlled by AppConfig feature flag
-            if (AppConfig.enableSkulMate) {
-              final args = settings.arguments as Map<String, dynamic>?;
-              return _createFadeRoute(
-                () => CharacterSelectionScreen(
-                  isFirstTime: args?['isFirstTime'] ?? false,
-                ),
-              );
-            } else {
-              return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
-                  body: const Center(
-                    child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
-              );
-            }
         }
 
         if (settings.name != null &&
@@ -1561,8 +1531,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
           }
           final gameId = settings.name!.replaceFirst('/skulmate/game/', '').trim();
           return _createFadeRoute(
-            () => GameLibraryScreen(
-              initialTab: 1,
+            () => SkulMateGamesScreen(
               initialGameId: gameId.isEmpty ? null : gameId,
             ),
           );

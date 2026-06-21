@@ -372,8 +372,9 @@ class StorageService {
               .upload(
                 storagePath,
                 uploadData,
-                fileOptions: const FileOptions(
-                  upsert: true, // Overwrite if the same path exists
+                fileOptions: FileOptions(
+                  contentType: mimeType,
+                  upsert: true,
                 ),
               );
           LogService.success('[DEBUG] Regular upload completed successfully');
@@ -438,7 +439,10 @@ class StorageService {
                   .upload(
                     storagePath,
                     uploadData,
-                    fileOptions: const FileOptions(upsert: false),
+                    fileOptions: FileOptions(
+                      contentType: mimeType,
+                      upsert: false,
+                    ),
                   );
             }
             LogService.success('[DEBUG] Retry upload successful');
@@ -448,6 +452,16 @@ class StorageService {
               'Failed to upload document. Please try again or contact support if the issue persists.',
             );
           }
+        }
+        // If 415 error (MIME type not allowed on bucket), guide user
+        else if (statusCode == 415 ||
+            errorString.contains('415') ||
+            errorString.contains('invalid_mime_type')) {
+          LogService.error('[DEBUG] MIME type rejected by storage bucket: $mimeType');
+          throw Exception(
+            'Word (.docx) uploads are not enabled on the server yet. '
+            'Try saving as PDF or TXT, or use "Enter text manually".',
+          );
         }
         // If 403 error (RLS policy), provide user-friendly message
         else if (statusCode == 403 ||

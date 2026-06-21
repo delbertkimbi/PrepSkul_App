@@ -18,9 +18,6 @@ import '../services/social_service.dart';
 import '../services/games_services_controller.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
-import '../services/character_selection_service.dart';
-import '../models/skulmate_character_model.dart';
-import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_surface_styles.dart';
 
 /// SkulMate leaderboard — all-time rankings, Global / Friends, podium + list.
@@ -35,7 +32,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<LeaderboardEntry> _allTimeGlobal = [];
   List<Friendship> _friendships = [];
   GameStats? _myStats;
-  dynamic _myCharacter;
   String? _myAvatarUrl;
   String? _myDisplayName;
   Map<String, String> _resolvedAvatarUrls = {};
@@ -82,11 +78,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           limit: 100,
         ),
         GameStatsService.getStats(),
-        CharacterSelectionService.getSelectedCharacter(),
         profileFuture,
       ]);
 
-      final profile = results[3] as Map<String, dynamic>?;
+      final profile = results[2] as Map<String, dynamic>?;
       final entries = results[0] as List<LeaderboardEntry>;
       final resolvedMyAvatar = await ProfileDisplayUtils.resolveAvatarUrl(
         profile?['avatar_url'] as String?,
@@ -105,7 +100,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       safeSetState(() {
         _allTimeGlobal = entries;
         _myStats = results[1] as GameStats?;
-        _myCharacter = results[2];
         _myDisplayName = ProfileDisplayUtils.resolveDisplayName(
           primary: profile?['full_name'] as String?,
           profile: profile,
@@ -1094,23 +1088,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
       return _profilePhotoAvatar(avatarUrl, name, size: size);
     }
-    if (_myCharacter != null) {
-      return ClipOval(
-        child: Container(
-          width: size,
-          height: size,
-          color: AppTheme.primaryColor.withValues(alpha: 0.08),
-          child: Center(
-            child: SkulMateCharacterWidget(
-              character: _myCharacter,
-              size: size * 0.88,
-              animated: false,
-              showName: false,
-            ),
-          ),
-        ),
-      );
-    }
     return _initialAvatar(name, size: size);
   }
 
@@ -1120,30 +1097,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         (isMe ? _myAvatarUrl : entry.userAvatarUrl);
     if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
       return _profilePhotoAvatar(avatarUrl, name, size: size);
-    }
-
-    final character = isMe
-        ? _myCharacter
-        : (entry.userCharacterId != null
-            ? SkulMateCharacters.getById(entry.userCharacterId!)
-            : null);
-
-    if (character != null) {
-      return ClipOval(
-        child: Container(
-          width: size,
-          height: size,
-          color: AppTheme.primaryColor.withValues(alpha: 0.08),
-          child: Center(
-            child: SkulMateCharacterWidget(
-              character: character,
-              size: size * 0.88,
-              animated: false,
-              showName: false,
-            ),
-          ),
-        ),
-      );
     }
     return _initialAvatar(name, size: size);
   }

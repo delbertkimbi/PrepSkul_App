@@ -20,16 +20,6 @@ class GameSetupFlowScreen extends StatefulWidget {
 
 class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
   static const int _totalSteps = 3;
-  static const Set<String> _comingSoonGameTypes = {
-    'diagram_label',
-    'match3',
-    'bubble_pop',
-    'word_search',
-    'crossword',
-    'simulation',
-    'mystery',
-    'escape_room',
-  };
   int _currentStep = 0;
 
   final TextEditingController _topicController = TextEditingController();
@@ -68,14 +58,7 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
     {'value': 'matching', 'label': 'Matching', 'subtitle': 'Match pairs', 'icon': Icons.link},
     {'value': 'fill_blank', 'label': 'Fill Blank', 'subtitle': 'Type missing words', 'icon': Icons.short_text},
     {'value': 'drag_drop', 'label': 'Drag & Drop', 'subtitle': 'Move into zones', 'icon': Icons.open_with},
-    {'value': 'match3', 'label': 'Match-3', 'subtitle': 'Match 3 tiles', 'icon': Icons.grid_view},
-    {'value': 'bubble_pop', 'label': 'Bubble Pop', 'subtitle': 'Pop target bubbles', 'icon': Icons.bubble_chart},
-    {'value': 'word_search', 'label': 'Word Search', 'subtitle': 'Find hidden words', 'icon': Icons.search},
-    {'value': 'crossword', 'label': 'Crossword', 'subtitle': 'Solve clues', 'icon': Icons.view_module},
-    {'value': 'simulation', 'label': 'Simulation', 'subtitle': 'Scenario-based', 'icon': Icons.science},
-    {'value': 'mystery', 'label': 'Mystery', 'subtitle': 'Solve clues', 'icon': Icons.search},
-    {'value': 'escape_room', 'label': 'Escape Room', 'subtitle': 'Solve to progress', 'icon': Icons.meeting_room},
-    {'value': 'diagram_label', 'label': 'Diagram Label', 'subtitle': 'Coming soon', 'icon': Icons.label_important_outline},
+    {'value': 'puzzle_pieces', 'label': 'Puzzle', 'subtitle': 'Piece together', 'icon': Icons.extension},
   ];
 
   @override
@@ -147,54 +130,10 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
   }
 
   void _onSelectGameType(String value) {
-    if (_comingSoonGameTypes.contains(value)) {
-      final selected = _gameTypeOptions.firstWhere(
-        (opt) => opt['value'] == value,
-        orElse: () => {'label': 'This game type'},
-      );
-      final label = (selected['label'] as String?) ?? 'This game type';
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Row(
-            children: [
-              const SizedBox(
-                width: 28,
-                height: 28,
-                child: SkulMateMascotMediaWidget(
-                  state: SkulMateMascotState.encouraging,
-                  useLandscapeFrame: false,
-                  borderRadius: 999,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Coming soon',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          content: Text(
-            '$label is not available yet. Please choose another game type.',
-            style: GoogleFonts.poppins(),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
     setState(() => _gameType = value);
   }
 
   Color _gameTypeIconColor(String value) {
-    if (_comingSoonGameTypes.contains(value)) {
-      return const Color(0xFF9CA3AF);
-    }
     switch (value) {
       case 'auto':
         return AppTheme.primaryColor;
@@ -494,15 +433,14 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
           itemBuilder: (context, index) {
             final option = _gameTypeOptions[index];
             final value = option['value'] as String;
-            final inactive = _comingSoonGameTypes.contains(value);
             return _GameTypeCard(
               value: value,
               label: option['label'] as String,
-              subtitle: inactive ? 'Coming soon' : option['subtitle'] as String,
+              subtitle: option['subtitle'] as String,
               icon: option['icon'] as IconData,
               iconColor: _gameTypeIconColor(value),
               isSelected: _gameType == value,
-              isInactive: inactive,
+              isInactive: false,
               onTap: () => _onSelectGameType(value),
             );
           },

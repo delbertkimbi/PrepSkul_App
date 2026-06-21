@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,12 +8,16 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 
 import '../l10n/skulmate_copy.dart';
 import '../models/game_model.dart';
+import '../services/game_sound_service.dart';
 import '../services/skulmate_service.dart';
+import '../services/skulmate_streak_reminder_service.dart';
 import '../widgets/skulmate_continue_row.dart';
 import '../widgets/skulmate_hero_mascot.dart';
 import '../widgets/skulmate_home_games_row.dart';
 import '../widgets/skulmate_home_top_bar.dart';
 import '../widgets/skulmate_import_action_grid.dart';
+import '../widgets/skulmate_next_stop_card.dart';
+import '../widgets/skulmate_reroute_nudge.dart';
 import '../widgets/skulmate_study_intent_card.dart';
 import '../widgets/skulmate_surface_styles.dart';
 
@@ -36,7 +42,9 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _applyStatusBarStyle();
+    unawaited(GameSoundService().stopMusic(force: true));
     _loadGames();
+    SkulMateStreakReminderService.recordActivityAndReschedule();
   }
 
   @override
@@ -60,6 +68,14 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   }
 
   Future<void> _loadGames() async {
+    final cached =
+        await SkulMateService.getCachedGames(childId: widget.childId);
+    if (mounted && cached.isNotEmpty) {
+      safeSetState(() {
+        _games = cached;
+        _loadingGames = false;
+      });
+    }
     try {
       final games = await SkulMateService.getGames(childId: widget.childId);
       if (mounted) {
@@ -69,7 +85,9 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
         });
       }
     } catch (_) {
-      if (mounted) safeSetState(() => _loadingGames = false);
+      if (mounted) {
+        safeSetState(() => _loadingGames = false);
+      }
     }
   }
 
@@ -141,8 +159,21 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                         20,
                         0,
                       ),
-                      child: SkulMateContinueRow(
-                        games: _games,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SkulMateNextStopCard(
+                            games: _games,
+                            childId: widget.childId,
+                          ),
+                          SkulMateContinueRow(
+                            games: _games,
+                          ),
+                          SkulMateRerouteNudge(
+                            games: _games,
+                            childId: widget.childId,
+                          ),
+                        ],
                       ),
                     ),
                   ),

@@ -4,13 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
-import '../models/skulmate_character_model.dart';
 import '../widgets/skulmate_game_app_bar.dart';
-import '../widgets/skulmate_character_widget.dart';
-import '../services/character_selection_service.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import '../widgets/game_standard_widgets.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
 import '../widgets/skulmate_companion_banner.dart';
 import 'game_results_screen.dart';
 
@@ -32,7 +31,6 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
   DateTime _startTime = DateTime.now();
   int _score = 0;
   int _xpEarned = 0;
-  dynamic _character;
 
   @override
   void initState() {
@@ -41,7 +39,6 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
     _soundService.initialize();
     unawaited(_soundService.playMusicForGame(widget.game.gameType));
     _buildClues();
-    _loadCharacter();
   }
 
   void _buildClues() {
@@ -72,11 +69,6 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
     for (var i = 0; i < _clues.length; i++) {
       _controllers[i] = TextEditingController();
     }
-  }
-
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    if (mounted) safeSetState(() => _character = character);
   }
 
   @override
@@ -158,11 +150,13 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Center(
-              child: const SkulMateCharacterWidget(
-                character: SkulMateCharacters.middleMale,
-                size: 40,
-                animated: false,
-                showName: false,
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.white.withOpacity(0.22),
+                child: const SkulMateProfileAvatar(
+                  size: 28,
+                  forGameAppBar: true,
+                ),
               ),
             ),
           ),
@@ -184,7 +178,6 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
             child: SkulMateCompanionBanner(
               message: 'Use hint-style thinking: solve clue by clue and verify each word.',
               tone: CompanionTone.tip,
-              useBrandMascot: true,
             ),
           ),
           const SizedBox(height: 10),

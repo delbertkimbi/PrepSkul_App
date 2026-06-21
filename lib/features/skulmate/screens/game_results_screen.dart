@@ -12,9 +12,8 @@ import '../models/game_model.dart';
 import '../models/game_stats_model.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
-import '../services/character_selection_service.dart';
 import 'package:prepskul/core/services/whatsapp_support_service.dart';
-import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_tutor_escalation_card.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_companion_banner.dart';
 import '../widgets/skulmate_mascot_media_widget.dart';
@@ -58,7 +57,6 @@ class _GameResultsScreenState extends State<GameResultsScreen>
   late Animation<double> _scaleAnimation;
   final GameSoundService _soundService = GameSoundService();
   GameStats? _currentStats;
-  dynamic _character;
 
   @override
   void initState() {
@@ -75,7 +73,6 @@ class _GameResultsScreenState extends State<GameResultsScreen>
     );
     unawaited(_startResultsMusicSafely());
     _loadStats();
-    _loadCharacter();
     if (widget.isPerfectScore) {
       _confettiController.play();
       _soundService.playComplete();
@@ -102,11 +99,6 @@ class _GameResultsScreenState extends State<GameResultsScreen>
     );
   }
 
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    if (mounted) safeSetState(() => _character = character);
-  }
-
   String _companionMessageForScore(int percentage) {
     if (percentage >= 90) {
       return 'Legendary work. Keep this pace and you will master this topic quickly.';
@@ -119,22 +111,10 @@ class _GameResultsScreenState extends State<GameResultsScreen>
 
   @override
   void dispose() {
-    unawaited(_soundService.stopMusic());
+    unawaited(_soundService.stopMusic(force: true));
     _confettiController.dispose();
     _scaleController.dispose();
     super.dispose();
-  }
-
-  /// Short display name (first name only) for character
-  String _characterShortName(dynamic character) {
-    if (character == null) return '';
-    try {
-      final name =
-          character.name as String? ?? character.displayName as String? ?? '';
-      return name.trim().isEmpty ? '' : name.trim().split(RegExp(r'\s+')).first;
-    } catch (_) {
-      return '';
-    }
   }
 
   Future<void> _loadStats() async {
@@ -330,10 +310,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                         : percentage >= 70
                             ? 'Great job! Keep it going.'
                             : 'Nice try - next round will be better.',
-                    celebrate: percentage >= 90,
-                    useBrandMascot: _character == null,
-                    character: _character,
-                  ),
+                    celebrate: percentage >= 90,                  ),
                 ),
                 const SizedBox(height: 6),
                 Container(
@@ -423,6 +400,11 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                   ),
                 ],
                 const SizedBox(height: 8),
+                SkulMateTutorEscalationCard(
+                  game: widget.game,
+                  score: widget.score,
+                  totalQuestions: widget.totalQuestions,
+                ),
                 if (widget.game.gameType == GameType.quiz && !widget.isPerfectScore)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),

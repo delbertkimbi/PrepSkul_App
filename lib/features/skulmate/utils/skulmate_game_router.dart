@@ -17,19 +17,12 @@ import '../screens/puzzle_pieces_game_screen.dart';
 import '../screens/quiz_game_screen.dart';
 import '../screens/simulation_game_screen.dart';
 import '../screens/word_search_game_screen.dart';
+import 'skulmate_client_game_policy.dart';
 
 /// Routes a [GameModel] to the correct playable screen.
 class SkulMateGameRouter {
-  static const Set<GameType> comingSoonTypes = {
-    GameType.diagramLabel,
-    GameType.match3,
-    GameType.bubblePop,
-    GameType.wordSearch,
-    GameType.crossword,
-    GameType.simulation,
-    GameType.mystery,
-    GameType.escapeRoom,
-  };
+  static Set<GameType> get comingSoonTypes =>
+      SkulMateClientGamePolicy.comingSoonTypes;
 
   static Future<bool> open(
     BuildContext context,

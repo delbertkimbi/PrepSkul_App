@@ -13,6 +13,7 @@ import 'package:prepskul/core/services/phone_auth_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/models/phone_country.dart';
 import 'package:prepskul/core/widgets/phone_country_code_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
 class BeautifulSignupScreen extends StatefulWidget {
@@ -202,7 +203,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                             value ?? '',
                                           ),
                                       decoration: InputDecoration(
-                                        hintText: '6 53 30 19 97',
+                                        hintText: t.authPhoneHint,
                                         hintStyle: GoogleFonts.poppins(
                                           color: AppTheme.textLight,
                                           fontSize: 14,
@@ -610,27 +611,28 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
         phoneNumber: phoneNumber,
       );
 
-      await AuthService.saveSession(
-        userId: user.id,
-        userRole: '',
-        phone: phoneNumber,
-        fullName: _nameController.text.trim(),
-        surveyCompleted: false,
-        rememberMe: true,
-      );
+      // No OTP: account is created but user must sign in before role selection.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('signup_full_name', _nameController.text.trim());
+      await SupabaseService.client.auth.signOut();
+      await prefs.remove('is_logged_in');
+      await prefs.remove('user_role');
+      await prefs.remove('user_id');
+      await prefs.remove('user_phone');
+      await prefs.remove('user_name');
+      await prefs.remove('survey_completed');
 
       if (mounted) {
-        final navService = NavigationService();
-        if (navService.isReady) {
-          final routeResult = await navService.determineInitialRoute();
-          await navService.navigateToRoute(
-            routeResult.route,
-            arguments: routeResult.arguments,
-            clearStack: true,
-          );
-        } else {
-          NavigationService.resetStackNamed(context, '/role-selection');
-        }
+        NavigationService.resetStackNamed(
+          context,
+          '/beautiful-login',
+          arguments: {
+            'phone': _phoneController.text.trim(),
+            'countryIso': _selectedCountry.isoCode,
+            'accountCreatedMessage':
+                'Account created! Sign in with your phone and password to continue.',
+          },
+        );
       }
     } catch (e) {
       if (mounted) {

@@ -8,15 +8,13 @@ import 'dart:async';
 import 'dart:math';
 import '../models/game_model.dart';
 import '../models/game_stats_model.dart';
-import '../models/skulmate_character_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
-import '../services/character_selection_service.dart';
 import '../services/tts_service.dart';
 import '../services/game_progress_service.dart';
 import '../widgets/skulmate_game_app_bar.dart';
-import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/game_standard_widgets.dart';
 import '../widgets/game_settings_sheet.dart';
 import '../widgets/skulmate_companion_banner.dart';
@@ -56,7 +54,6 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   late AnimationController _timerController;
   late Animation<double> _timerAnimation;
   late AnimationController _typingController;
-  dynamic _character;
   GameStats? _currentStats;
   bool _ttsEnabled = true;
 
@@ -119,7 +116,6 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
       _controllers[i] = TextEditingController();
       _controllers[i]!.addListener(() => _onTextChanged(i));
     }
-    _loadCharacter();
     _loadStats();
     _startQuestionTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -348,13 +344,6 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     safeSetState(() {
       _currentStats = stats;
       _currentStreak = stats.currentStreak;
-    });
-  }
-
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    safeSetState(() {
-      _character = character;
     });
   }
 
@@ -771,17 +760,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
               child: CircleAvatar(
                 radius: 16,
                 backgroundColor: Colors.white.withOpacity(0.22),
-                child: ClipOval(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: const SkulMateCharacterWidget(
-                      character: SkulMateCharacters.middleMale,
-                      size: 24,
-                      animated: false,
-                      showName: false,
-                    ),
-                  ),
+                child: const SkulMateProfileAvatar(
+                  size: 28,
+                  forGameAppBar: true,
                 ),
               ),
             ),

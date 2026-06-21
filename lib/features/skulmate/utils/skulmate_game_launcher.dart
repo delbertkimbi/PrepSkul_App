@@ -13,24 +13,14 @@ import 'package:prepskul/features/skulmate/screens/puzzle_pieces_game_screen.dar
 import 'package:prepskul/features/skulmate/screens/quiz_game_screen.dart';
 import 'package:prepskul/features/skulmate/screens/simulation_game_screen.dart';
 import 'package:prepskul/features/skulmate/screens/word_search_game_screen.dart';
+import 'package:prepskul/features/skulmate/utils/skulmate_client_game_policy.dart';
 
 /// Opens the correct SkulMate game screen from home teaser or shortcuts.
 class SkulMateGameLauncher {
   SkulMateGameLauncher._();
 
-  static const Set<GameType> _comingSoon = {
-    GameType.diagramLabel,
-    GameType.match3,
-    GameType.bubblePop,
-    GameType.wordSearch,
-    GameType.crossword,
-    GameType.simulation,
-    GameType.mystery,
-    GameType.escapeRoom,
-  };
-
   static void open(BuildContext context, GameModel game, {bool isDailyChallenge = false}) {
-    if (_comingSoon.contains(game.gameType)) {
+    if (SkulMateClientGamePolicy.comingSoonTypes.contains(game.gameType)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('This game type is coming soon.')),
       );

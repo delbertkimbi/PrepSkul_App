@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:http/http.dart' as http;
@@ -7,6 +8,9 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import '../models/game_model.dart';
+import 'concept_mastery_service.dart';
+import 'spaced_repetition_service.dart';
+import 'learner_context_service.dart';
 
 // Conditional import for web-specific HTTP client
 // On web (dart.library.html available): use http_client_web.dart with dart:html
@@ -59,6 +63,7 @@ class SkulMateService {
 
   // Endpoint is relative to apiBaseUrl (which already includes /api)
   static const String _generateEndpoint = '/skulmate/generate';
+  static const String _youtubeTranscriptEndpoint = '/skulmate/youtube-transcript';
   static const String _challengeFromSessionEndpoint =
       '/skulmate/challenge/from-session';
   static const String _explainEndpoint = '/skulmate/explain';
@@ -147,6 +152,78 @@ class SkulMateService {
       }
     }
     throw lastError ?? Exception('Request failed');
+  }
+
+  /// Shared JSON POST for SkulMate API routes (lesson-plan, etc.).
+  static Future<http.Response> postJson({
+    required String url,
+    required String token,
+    required Map<String, dynamic> body,
+  }) {
+    return _postWithRetry(
+      url: url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
+    );
+  }
+
+  /// Fetches YouTube captions for intake analysis and generation.
+  static Future<String> resolveYoutubeTranscript(String youtubeUrl) async {
+    final transcript = await _fetchYoutubeTranscriptText(youtubeUrl);
+    if (transcript != null && transcript.trim().length >= 50) {
+      return transcript.trim();
+    }
+    throw Exception(
+      'Could not read captions from this YouTube video.\n\n'
+      'Try a video with subtitles, or paste notes manually.',
+    );
+  }
+
+  /// Fetches captions server-side, then sends as [text] so older /generate APIs work.
+  static Future<String?> _fetchYoutubeTranscriptText(String youtubeUrl) async {
+    final session = SupabaseService.client.auth.currentSession;
+    final token = session?.accessToken;
+    final url = '$_apiBaseUrl$_youtubeTranscriptEndpoint';
+
+    final response = await _postWithRetry(
+      url: url,
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'youtubeUrl': youtubeUrl}),
+    );
+
+    if (response.statusCode == 404) {
+      throw Exception(
+        'Could not reach the caption service for this video.\n\n'
+        'Try again later, or paste notes manually.',
+      );
+    }
+
+    if (response.statusCode != 200) {
+      String message = 'Could not read captions from this YouTube video.';
+      try {
+        final jsonBody = jsonDecode(response.body) as Map<String, dynamic>?;
+        message = jsonBody?['error'] as String? ?? message;
+      } catch (_) {}
+      throw Exception(
+        '$message\n\nTry "Enter text manually" and paste notes from the video.',
+      );
+    }
+
+    final jsonBody = jsonDecode(response.body) as Map<String, dynamic>;
+    final transcript = jsonBody['transcript'] as String? ?? '';
+    if (transcript.trim().length < 50) {
+      throw Exception(
+        'Transcript was too short for this video.\n\n'
+        'Try a video with subtitles, or tap "Enter text manually".',
+      );
+    }
+    return transcript.trim();
   }
 
   static Future<Map<String, dynamic>> fetchPricingUsage() async {
@@ -360,6 +437,12 @@ class SkulMateService {
         case 'AUTH_REQUIRED':
         case 'AUTH_INVALID':
           return Exception('Authentication error: Please log in and try again.');
+        case 'YOUTUBE_TRANSCRIPT_UNAVAILABLE':
+        case 'YOUTUBE_TRANSCRIPT_TOO_SHORT':
+          return Exception(
+            'This YouTube video has no usable captions.\n\n'
+            'Try a video with subtitles turned on, or tap "Enter text manually" to paste notes from the video.',
+          );
         default:
           return null;
       }
@@ -399,13 +482,42 @@ class SkulMateService {
         throw Exception('User not authenticated');
       }
 
+      var effectiveText = text;
+      String? effectiveYoutubeUrl = youtubeUrl;
+
+      if ((effectiveText == null || effectiveText.trim().isEmpty) &&
+          effectiveYoutubeUrl != null &&
+          effectiveYoutubeUrl.isNotEmpty) {
+        LogService.info('🎮 [skulMate] Resolving YouTube captions…');
+        final transcript = await resolveYoutubeTranscript(effectiveYoutubeUrl);
+        effectiveText = transcript;
+        effectiveYoutubeUrl = null;
+        LogService.info(
+          '🎮 [skulMate] YouTube transcript ready (${transcript.length} chars)',
+        );
+      }
+
+      if ((effectiveText == null || effectiveText.trim().isEmpty) &&
+          topic != null &&
+          topic.trim().length >= 50 &&
+          fileUrl == null &&
+          imageUrl == null &&
+          (effectiveYoutubeUrl == null || effectiveYoutubeUrl.isEmpty)) {
+        effectiveText = topic.trim();
+        LogService.info(
+          '🎮 [skulMate] Using long topic as source text for generation',
+        );
+      }
+
       // API expects fileUrl or text, so send imageUrl as fileUrl if no fileUrl provided
       final requestBody = {
         if (fileUrl != null) 'fileUrl': fileUrl,
         if (imageUrl != null && fileUrl == null)
           'fileUrl': imageUrl, // Send imageUrl as fileUrl
-        if (text != null) 'text': text,
-        if (youtubeUrl != null && youtubeUrl.isNotEmpty) 'youtubeUrl': youtubeUrl,
+        if (effectiveText != null && effectiveText.isNotEmpty)
+          'text': effectiveText,
+        if (effectiveYoutubeUrl != null && effectiveYoutubeUrl.isNotEmpty)
+          'youtubeUrl': effectiveYoutubeUrl,
         if (sourceFileName != null && sourceFileName.isNotEmpty)
           'sourceFileName': sourceFileName,
         'userId': userId,
@@ -540,6 +652,21 @@ class SkulMateService {
               'Please try again shortly. If this continues, contact support so we can check service credits.',
             );
           }
+          if (combinedError.contains('youtube') ||
+              combinedError.contains('fileurl, text, or youtubeurl') ||
+              combinedError.contains('either fileurl, text')) {
+            throw Exception(
+              'YouTube import is not available right now.\n\n'
+              'Please tap "Enter text manually" and paste notes from the video, or try Upload instead.',
+            );
+          }
+          if (combinedError.contains('50 characters')) {
+            throw Exception(
+              'Add more detail or paste your notes (at least 50 characters).\n\n'
+              'For a short topic like a single word, restart the app and try again — '
+              'we generate directly from the topic when no notes are attached.',
+            );
+          }
           // Bad request - likely missing or invalid parameters
           throw Exception(
             'Invalid request.\n\n'
@@ -554,6 +681,12 @@ class SkulMateService {
             errorMessage.isNotEmpty
                 ? errorMessage
                 : 'Free limit reached for this action. Please choose a SkulMate plan to continue.',
+          );
+        } else if (httpResponse.statusCode == 422) {
+          throw Exception(
+            errorMessage.isNotEmpty
+                ? errorMessage
+                : 'Could not use this YouTube link. Try "Enter text manually" instead.',
           );
         } else if (httpResponse.statusCode == 503) {
           if (combinedError.contains('image processing provider is temporarily unavailable') ||
@@ -985,6 +1118,13 @@ class SkulMateService {
     }
   }
 
+  /// Instant local games list (for home / history while network loads).
+  static Future<List<GameModel>> getCachedGames({String? childId}) async {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId == null) return const [];
+    return _readCachedGames(userId: userId, childId: childId);
+  }
+
   /// Fetch all games for current user (backward compatibility)
   ///
   /// Note: For better performance with large lists, use getGamesPaginated() instead
@@ -1002,10 +1142,13 @@ class SkulMateService {
   static Future<ExplainResult> explainFlashcard({
     required String term,
     required String definition,
+    String? gameId,
+    bool weakTopicReroute = false,
   }) async {
     try {
       final session = SupabaseService.client.auth.currentSession;
       final token = session?.accessToken;
+      final learnerContext = await LearnerContextService.build();
 
       final url = '$_apiBaseUrl$_explainEndpoint';
       final httpResponse =
@@ -1019,6 +1162,9 @@ class SkulMateService {
               'term': term,
               'definition': definition,
               'language': LanguageService.languageCode,
+              if (learnerContext != null) 'learnerContext': learnerContext,
+              if (gameId != null && gameId.isNotEmpty) 'gameId': gameId,
+              'weakTopicReroute': weakTopicReroute,
             }),
           ).timeout(
             const Duration(seconds: 45),
@@ -1135,6 +1281,21 @@ class SkulMateService {
         'answers': answers,
         'completed_at': DateTime.now().toIso8601String(),
       });
+
+      unawaited(
+        ConceptMasteryService.recordSessionForGame(
+          gameId: gameId,
+          correctAnswers: correctAnswers,
+          totalQuestions: totalQuestions,
+        ),
+      );
+
+      unawaited(
+        SpacedRepetitionService.recordFromGameSession(
+          gameId: gameId,
+          answers: answers,
+        ),
+      );
 
       LogService.success('🎮 [skulMate] Game session saved');
     } catch (e) {

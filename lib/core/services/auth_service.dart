@@ -10,7 +10,7 @@ import 'email_rate_limit_service.dart';
 import 'notification_helper_service.dart';
 import 'profile_bootstrap_service.dart';
 import 'package:prepskul/features/dashboard/utils/home_stats_prefs.dart';
-import 'package:prepskul/features/skulmate/services/skulmate_onboarding_service.dart';
+import 'package:prepskul/features/skulmate/services/skulmate_welcome_service.dart';
 import 'package:prepskul/features/skulmate/services/skulmate_streak_reminder_service.dart';
 // #region agent log
 import 'dart:convert';
@@ -277,13 +277,12 @@ class AuthService {
       await prefs.remove('signup_email');
       await prefs.remove('signup_full_name');
       await prefs.remove('pending_deep_link');
-      // Clear SkulMate onboarding so new/first-time users see onboarding + character selection
+      // Clear SkulMate welcome so new/first-time users see the welcome sheet
       if (loggingOutUserId.isNotEmpty) {
-        await SkulMateOnboardingService.clearForUser(loggingOutUserId);
+        await SkulMateWelcomeService.clearForUser(loggingOutUserId);
         await HomeStatsPrefs.clearForUser(prefs, loggingOutUserId);
       }
       await HomeStatsPrefs.clearLegacy(prefs);
-      await prefs.remove('skulmate_onboarding_completed');
 
       // Keep remember_me for convenience
       LogService.success('User logged out successfully - all cached data cleared');

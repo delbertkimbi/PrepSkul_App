@@ -12,13 +12,12 @@ import '../models/game_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/tts_service.dart';
-import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
-import '../widgets/skulmate_character_widget.dart';
 import '../widgets/game_roadmap_widget.dart';
 import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/drag_drop_question_widget.dart';
 import '../widgets/game_standard_widgets.dart';
 import '../widgets/game_settings_sheet.dart';
@@ -66,7 +65,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   final GameSoundService _soundService = GameSoundService();
   final TTSService _ttsService = TTSService();
   late ConfettiController _confettiController;
-  dynamic _character;
   GameStats? _currentStats;
   bool _isTTSEnabled = true;
   int? _lastCorrectXp; // +10 or +15 for boss – show pop-up briefly
@@ -118,7 +116,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     _confettiController = ConfettiController(
       duration: const Duration(milliseconds: 1200),
     );
-    _loadCharacter();
     _loadStats();
     _startQuizMusicOnce();
     // Show rules overlay if first time
@@ -308,11 +305,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     if (questionText.isNotEmpty) {
       _ttsService.speak(questionText);
     }
-  }
-
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    safeSetState(() => _character = character);
   }
 
   Future<void> _loadStats() async {
@@ -724,6 +716,8 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     final explainFuture = SkulMateService.explainFlashcard(
       term: term,
       definition: definition,
+      gameId: widget.game.id,
+      weakTopicReroute: true,
     );
 
     bool didAutoSpeak = false;
@@ -1002,24 +996,10 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                   child: CircleAvatar(
                     radius: 16,
                     backgroundColor: Colors.white.withOpacity(0.22),
-                    child: _character != null
-                        ? ClipOval(
-                            child: SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: SkulMateCharacterWidget(
-                                character: _character,
-                                size: 24,
-                                animated: false,
-                                showName: false,
-                              ),
-                            ),
-                          )
-                        : const Icon(
-                            Icons.settings,
-                            size: 16,
-                            color: Colors.white,
-                          ),
+                    child: const SkulMateProfileAvatar(
+                    size: 28,
+                    forGameAppBar: true,
+                  ),
                   ),
                 ),
               ),

@@ -71,6 +71,56 @@ class SkulMateSurfaceStyles {
     );
   }
 
+  /// Soft blue wash for credits / plans screens.
+  static BoxDecoration softScreenGradient() {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          AppTheme.primaryColor.withValues(alpha: 0.07),
+          AppTheme.softBackground,
+          AppTheme.softBackground,
+        ],
+        stops: const [0.0, 0.35, 1.0],
+      ),
+    );
+  }
+
+  /// Plan card — accent fades top & bottom, white center.
+  static BoxDecoration planCardGradient({
+    required Color accent,
+    double radius = 14,
+  }) {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          accent.withValues(alpha: 0.14),
+          Colors.white,
+          Colors.white,
+          accent.withValues(alpha: 0.1),
+        ],
+        stops: const [0.0, 0.38, 0.62, 1.0],
+      ),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: accent.withValues(alpha: 0.35)),
+      boxShadow: homeCardShadow(),
+    );
+  }
+
+  static BoxDecoration softStatusCard({double radius = 14}) {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(
+        color: AppTheme.primaryColor.withValues(alpha: 0.12),
+      ),
+      boxShadow: homeCardShadow(),
+    );
+  }
+
   static BoxDecoration heroNeumorphic({
     double radius = 22,
     List<Color>? colors,
@@ -88,10 +138,10 @@ class SkulMateSurfaceStyles {
         systemNavigationBarIconBrightness: Brightness.dark,
       );
 
-  /// Gizmo-style dark pill primary button for sheets.
+  /// PrepSkul blue pill primary button for bottom sheets.
   static ButtonStyle sheetPrimaryButton({bool enabled = true}) {
     return ElevatedButton.styleFrom(
-      backgroundColor: AppTheme.textDark,
+      backgroundColor: AppTheme.primaryColor,
       foregroundColor: Colors.white,
       disabledBackgroundColor: AppTheme.neutral200,
       disabledForegroundColor: AppTheme.textMedium,
