@@ -67,6 +67,17 @@ class SkulMateIntakePayload {
       !hasYoutube;
 }
 
+/// Returned when the learner confirms a mode on the intake chat screen.
+class SkulMateIntakeChatResult {
+  final SkulMateIntakePayload payload;
+  final SkulMateIntentMode mode;
+
+  const SkulMateIntakeChatResult({
+    required this.payload,
+    required this.mode,
+  });
+}
+
 /// Recently played game for Continue row.
 class SkulMateContinueItem {
   final String gameId;

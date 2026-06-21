@@ -53,53 +53,47 @@ class _SkulMateYoutubeImportSheetState extends State<SkulMateYoutubeImportSheet>
     return SkulMateSheetScaffold(
       title: copy.youtubeImportTitle,
       maxHeightFactor: 0.52,
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-        child: TextField(
-          controller: _controller,
-          focusNode: _focusNode,
-          keyboardType: TextInputType.url,
-          autocorrect: false,
-          onChanged: (_) => setState(() {}),
-          style: GoogleFonts.poppins(fontSize: 15),
-          decoration: InputDecoration(
-            hintText: 'https://youtube.com/watch?v=…',
-            hintStyle: GoogleFonts.poppins(
-              fontSize: 15,
-              color: AppTheme.textMedium.withValues(alpha: 0.55),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.all(16),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: AppTheme.softBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(
-                color: AppTheme.primaryColor,
-                width: 2,
-              ),
+      body: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        keyboardType: TextInputType.url,
+        autocorrect: false,
+        onChanged: (_) => setState(() {}),
+        style: GoogleFonts.poppins(fontSize: 15),
+        decoration: InputDecoration(
+          hintText: 'https://youtube.com/watch?v=…',
+          hintStyle: GoogleFonts.poppins(
+            fontSize: 15,
+            color: AppTheme.textMedium.withValues(alpha: 0.55),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.all(16),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: AppTheme.softBorder),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(
+              color: AppTheme.primaryColor,
+              width: 2,
             ),
           ),
         ),
       ),
-      footer: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _valid
-                ? () => Navigator.pop(context, _controller.text.trim())
-                : null,
-            style: SkulMateSurfaceStyles.sheetPrimaryButton(enabled: _valid),
-            child: Text(
-              copy.continueLabel,
-              style: GoogleFonts.poppins(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+      footer: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _valid
+              ? () => Navigator.pop(context, _controller.text.trim())
+              : null,
+          style: SkulMateSurfaceStyles.sheetPrimaryButton(enabled: _valid),
+          child: Text(
+            copy.continueLabel,
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),

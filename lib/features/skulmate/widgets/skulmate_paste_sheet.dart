@@ -73,52 +73,46 @@ class _SkulMatePasteSheetState extends State<SkulMatePasteSheet> {
     return SkulMateSheetScaffold(
       title: copy.importFromNotes,
       maxHeightFactor: 0.62,
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-        child: TextField(
-          controller: _notesController,
-          focusNode: _focusNode,
-          maxLines: 8,
-          minLines: 6,
-          onChanged: (_) => setState(() {}),
-          style: GoogleFonts.poppins(fontSize: 15, height: 1.45),
-          decoration: InputDecoration(
-            hintText: copy.pasteNotesHint,
-            hintStyle: GoogleFonts.poppins(
-              fontSize: 15,
-              color: AppTheme.textMedium.withValues(alpha: 0.55),
-              height: 1.45,
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.all(16),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: AppTheme.softBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(
-                color: AppTheme.primaryColor,
-                width: 2,
-              ),
+      body: TextField(
+        controller: _notesController,
+        focusNode: _focusNode,
+        maxLines: 8,
+        minLines: 6,
+        onChanged: (_) => setState(() {}),
+        style: GoogleFonts.poppins(fontSize: 15, height: 1.45),
+        decoration: InputDecoration(
+          hintText: copy.pasteNotesHint,
+          hintStyle: GoogleFonts.poppins(
+            fontSize: 15,
+            color: AppTheme.textMedium.withValues(alpha: 0.55),
+            height: 1.45,
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.all(16),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: AppTheme.softBorder),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(
+              color: AppTheme.primaryColor,
+              width: 2,
             ),
           ),
         ),
       ),
-      footer: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _valid ? _continue : null,
-            style: SkulMateSurfaceStyles.sheetPrimaryButton(enabled: _valid),
-            child: Text(
-              copy.continueLabel,
-              style: GoogleFonts.poppins(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+      footer: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _valid ? _continue : null,
+          style: SkulMateSurfaceStyles.sheetPrimaryButton(enabled: _valid),
+          child: Text(
+            copy.continueLabel,
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),

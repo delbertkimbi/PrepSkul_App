@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/navigation/main_navigation_scope.dart';
 import '../../../core/navigation/student_tab_index.dart';
+import '../services/game_sound_service.dart';
 import '../widgets/skulmate_surface_styles.dart';
-import 'package:flutter/services.dart';
 
 /// Shared navigation helpers for SkulMate game flows.
 class SkulMateNavigation {
@@ -21,6 +24,7 @@ class SkulMateNavigation {
   /// Leave game/results stack and return to SkulMate tab on main shell.
   static void exitToSkulMateHome(BuildContext context) {
     if (!context.mounted) return;
+    unawaited(GameSoundService().stopMusic(force: true));
     Navigator.of(context).popUntil((route) => route.isFirst);
     MainNavigationScope.maybeOf(context)
         ?.switchTab(StudentTabIndex.skulMate);

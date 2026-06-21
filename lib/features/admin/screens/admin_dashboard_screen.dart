@@ -12,6 +12,7 @@ import 'admin_user_detail_screen.dart';
 import 'admin_tutor_request_detail_screen.dart';
 import 'admin_notification_diagnostics_screen.dart';
 import 'admin_recurring_quit_queue_screen.dart';
+import 'admin_skulmate_pricing_screen.dart';
 
 /// Admin Dashboard Screen
 ///
@@ -317,6 +318,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (_) => const AdminRecurringQuitQueueScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveSpacing(
+                      context,
+                      mobile: 8,
+                      tablet: 10,
+                      desktop: 12,
+                    ),
+                  ),
+
+                  _buildActionCard(
+                    icon: PhosphorIcons.sparkle(),
+                    title: 'SkulMate pricing',
+                    subtitle: 'Revision packages, discounts, and free limits',
+                    color: AppTheme.primaryColor,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminSkulmatePricingScreen(),
                         ),
                       );
                     },

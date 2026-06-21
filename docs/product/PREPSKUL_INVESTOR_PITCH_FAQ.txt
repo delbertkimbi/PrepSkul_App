@@ -1,0 +1,462 @@
+================================================================================
+PREPSKUL — ELEVATOR PITCH & INVESTOR FAQ
+================================================================================
+Version: June 2026
+Audience: Investors, partners, accelerators, press
+Tagline: Guiding Every Learner to their full potential.
+
+Note: Examples in this document (e.g. a learner in Form 2 with a literacy gap)
+are illustrations of a common real-world mismatch — enrolled grade vs actual
+capability. They are NOT the definition of our system or our only use case.
+PrepSkul serves exam prep, school catch-up, skills learning, and open revision.
+
+
+--------------------------------------------------------------------------------
+STANDARD ELEVATOR PITCH
+--------------------------------------------------------------------------------
+
+--- 30 seconds ---
+
+PrepSkul brings learning to every learner's level.
+
+We understand where a learner actually is — not just what class they're in —
+what they're trying to achieve, and we design a clear path to get there using
+AI-powered revision and verified human tutors when it matters.
+
+Learners turn their notes, classes, and videos into games and revision paths.
+Parents see real progress. Tutors focus on misconceptions, not repetition.
+
+We're building the navigation layer for learning in Cameroon and beyond:
+know where you are, know what's next, reroute when you get stuck.
+
+--- 60 seconds ---
+
+School tells you what grade you're in. That is enrolled level — what the
+curriculum expects. It is not always what you can actually do today.
+
+PrepSkul closes that gap. We combine three things most products only have one
+of: live tutoring, AI-native revision (SkulMate), and adaptive signals that
+update every time a learner practices.
+
+Onboarding gives us goals and context. Every SkulMate session gives us observed
+performance — accuracy, weak topics, time on task. When the gap is too
+foundational or too personal for software alone, we route to a human tutor.
+
+The result: no learner is stuck on the wrong rung of the ladder. AI handles
+daily practice and recall. Tutors handle breakthrough moments. Parents see
+structure and progress — not vanity screen time.
+
+PrepSkul is the Google Maps for learning — estimate where you are, plot a path
+to where you're going, and recalculate when you struggle.
+
+
+--- 2 minutes (full pitch) ---
+
+THE PROBLEM
+
+Students have notes, classes, and exams — but revision is passive, generic, and
+disconnected from how they actually learn. Parents pay for extra lessons but
+can't see whether their child is improving on the right things. Tutors spend
+time on repetition that software could handle, and not enough on real
+misconceptions.
+
+THE INSIGHT
+
+"Form 5 Chemistry" is a label, not a capability profile. Two learners in the
+same class can need completely different paths. One needs exam drill. Another
+needs foundations. Another needs motivation and structure. Treating them the
+same fails everyone.
+
+WHAT PREPSKUL IS
+
+PrepSkul is a learning platform that meets every learner at their level and
+guides them to their goals with:
+
+  1. SkulMate — AI revision that turns uploads, notes, YouTube, and class
+     sessions into games and practice matched to the learner's context.
+
+  2. Tutor marketplace — verified tutors for live online and in-person sessions
+     when human intervention is the right tool.
+
+  3. Adaptive layer — mastery tracking, weak-topic detection, and rerouting so
+     the path updates as the learner improves — not a static content bucket
+     from signup day.
+
+WHO PAYS
+
+Parents (Cameroon + Francophone Africa first) — they buy confidence, structure,
+and measurable progress toward exams and school success.
+
+WHO USES
+
+Students daily. Tutors as the intervention layer. Schools and partners later.
+
+WHY NOW
+
+LLMs make notes-to-interactive-content cheap. PrepSkul already has sessions,
+games, and a tutor network — a rare combination vs pure revision apps or pure
+marketplaces.
+
+THE ASK / TRACTION HOOK
+
+[Customize per meeting: users, sessions, retention, revenue, pilot schools.]
+
+
+================================================================================
+CORE DEFINITIONS (use these in Q&A)
+================================================================================
+
+"Bring learning to every learner's level" means:
+
+  • Start from real capability, not only class label
+  • Respect the learner's goal (exam, catch-up, skill, curiosity)
+  • Choose the right modality (drill, game, path, live tutor)
+  • Keep updating the path as they practice — living estimate, not static profile
+
+Three types of "level" (do not conflate):
+
+  1. ENROLLED LEVEL — what school/system expects (e.g. Form 2, Term 3)
+  2. CAPABILITY LEVEL — what they can actually do today (reading, fractions,
+     subject mastery)
+  3. GOAL LEVEL — where they want to be (pass GCE, catch up, build confidence)
+
+Three signals we use to understand learners:
+
+  1. DECLARED — onboarding, parent profile, goals, pain points
+  2. OBSERVED — SkulMate performance, mastery scores, session behavior
+  3. HUMAN — tutor session notes, summaries, parent feedback
+
+We are Bayesian, not oracle: onboarding is the starting hypothesis; sessions
+confirm or correct it.
+
+
+================================================================================
+INVESTOR FAQ — HARD QUESTIONS & ANSWERS
+================================================================================
+
+--------------------------------------------------------------------------------
+Q1. What do you mean by "every learner's level"? Isn't that just marketing?
+--------------------------------------------------------------------------------
+
+No. It is a product architecture choice.
+
+"Level" is not one checkbox. We separate enrolled level (grade), capability
+level (what they can do), and goal level (what they're working toward). Content
+and routing follow capability + goal — grade is context, not destiny.
+
+We serve exam students, school catch-up, university prep, skills, and open
+revision. The system adapts to the individual, not a single demographic edge case.
+
+
+--------------------------------------------------------------------------------
+Q2. How do you understand the learner's level?
+--------------------------------------------------------------------------------
+
+Three signals, combined:
+
+  DECLARED (onboarding / parent profile)
+    Class, exam track, subjects, confidence, challenges, goals, learning path.
+
+  OBSERVED (every SkulMate session)
+    Accuracy by topic, mastery score, weak streaks, time on task, retries,
+    which question types fail repeatedly.
+
+  HUMAN (tutor layer)
+    Session summaries, tutor notes, live assessment for gaps software should
+    not pretend to fully diagnose.
+
+Onboarding alone does not "know" their level. It gives us a prior. The first
+few sessions plus tutor touchpoints turn that into a working estimate we keep
+updating.
+
+
+--------------------------------------------------------------------------------
+Q3. What sample questions do you ask? How do you know it's really their level?
+--------------------------------------------------------------------------------
+
+SAMPLE ONBOARDING QUESTIONS (hypothesis builders — not proof):
+
+  Context (not capability proof)
+    • What class or program are you in?
+    • What exam or goal are you working toward, if any?
+    • Which subjects matter most right now?
+
+  Friction / self-reported gaps
+    • In [subject], what usually breaks first?
+      — I don't understand the question
+      — I forget the steps
+      — I make careless mistakes
+      — I run out of time
+    • How confident do you feel in reading / maths / science? (1–5)
+    • What feels "too hard" even when school says you should know it?
+
+  Destination
+    • In the next 4–8 weeks, what would "better" look like?
+    • Catch up, keep up, or get ahead?
+
+  Modality
+    • Do you already have a tutor?
+    • Short games, step-by-step explanation, or live help?
+
+  Placement-lite (roadmap — light diagnostics, not a full psychometric battery)
+    • 60-second reading passage + 2 comprehension questions
+    • 3 maths items with adaptive difficulty
+    • Parent-assisted literacy check for younger learners where needed
+
+HOW WE KNOW IT'S THEIR LEVEL (validation logic):
+
+  1. Converging evidence — self-report + repeated failure on same skill type
+  2. Prediction test — if reading is the blocker, simpler-text items should
+     improve completion and accuracy
+  3. Tutor confirmation — human validates high-stakes or foundational gaps
+  4. Improvement signal — targeted practice moves metrics in 2–4 weeks if
+     our estimate was right
+
+We do not claim three signup questions replace assessment. We claim the system
+gets smarter with every session.
+
+
+--------------------------------------------------------------------------------
+Q4. Is this static onboarding or a dynamic system?
+--------------------------------------------------------------------------------
+
+Both today — honestly.
+
+DYNAMIC (live now):
+  • AI generation calibrated by learner context (class, goals, subjects)
+  • Per-topic mastery updates after every game session
+  • Weak-topic detection and gated resurfacing on home
+  • Adapted explanations when learners struggle (style rotation)
+  • Tutor escalation when AI practice isn't enough
+  • Parent progress view with weak topics and session highlights
+
+BUILDING (roadmap):
+  • Visible learner "you are here" map
+  • Step-by-step Path UI
+  • Scroll feed + spaced repetition ("what to review today")
+  • Fuller placement diagnostics at onboarding
+
+Pitch line: "The adaptive engine is real. The navigation UI is catching up.
+We're not selling a survey — we're selling a loop that recalculates."
+
+
+--------------------------------------------------------------------------------
+Q5. What metrics do you track?
+--------------------------------------------------------------------------------
+
+CAPABILITY (is our level estimate right?)
+  • Accuracy by topic and question type
+  • Mastery score and weak streak per concept
+  • Retry rate, abandon rate, time on task
+  • Gap between enrolled-level content difficulty and observed performance
+
+PROGRESS (are they moving?)
+  • Mastery delta per topic (week over week)
+  • Sessions completed (≥5 min voluntary revision)
+  • Topics moving from "needs work" to "solid"
+  • Streak length and D7/D30 retention
+
+ROUTING (is the path working?)
+  • Weak-topic nudge → replay completion rate
+  • Tutor booking after escalation
+  • Post-tutor improvement on flagged topics
+  • Parent engagement with progress view / digest
+
+OUTCOMES (longer term)
+  • Parent-reported confidence
+  • Exam results where available (slow, partner-dependent)
+
+North star (SkulMate): Weekly active learners with ≥3 self-initiated revision
+sessions of ≥5 minutes each.
+
+
+--------------------------------------------------------------------------------
+Q6. How is this different from Quizlet, Gizmo, or YouTube?
+--------------------------------------------------------------------------------
+
+Pure revision apps give content and games. They rarely have:
+
+  • Live verified tutors on the same platform
+  • Session → revision loop (class/tutor summary → challenge)
+  • Parent-facing progress tied to weak topics, not vanity metrics
+  • Exam/school context (Cameroon GCE, WAEC, BEPC) as background signal
+  • Human escalation when AI hits a wall
+
+PrepSkul is AI + tutors + adaptive routing — not AI alone, not tutors alone.
+
+
+--------------------------------------------------------------------------------
+Q7. Don't you just teach to the test / exam prep only?
+--------------------------------------------------------------------------------
+
+No. Exam tracks are a strong wedge in our market (parents pay for structure),
+but SkulMate supports open revision — notes, YouTube, skills, curiosity.
+
+Curriculum alignment is background-only for learners: we never block off-syllabus
+content or nag them with exam labels in the learner UI. Parents can see exam
+context when it matches the child's profile.
+
+
+--------------------------------------------------------------------------------
+Q8. What if the learner is far below grade level? Can AI fix that?
+--------------------------------------------------------------------------------
+
+AI is strong for practice, recall, and structured revision at the right
+difficulty. It is not a replacement for a human when the gap is foundational
+(literacy, severe catch-up, trauma, disability, complex motivation).
+
+Our model: AI handles daily practice and routing signals; tutors handle
+breakthrough and verification. We route up to humans when confidence is low or
+performance pattern says software alone isn't working.
+
+Illustrative example only: a learner enrolled in Form 2 who struggles with
+reading would not be pushed into advanced chemistry drills. We'd route to
+foundational practice and/or a tutor. That is one scenario — not our whole TAM.
+
+
+--------------------------------------------------------------------------------
+Q9. How do tutors fit? Are you replacing them?
+--------------------------------------------------------------------------------
+
+Tutors are the intervention layer, not the whole product.
+
+  • AI handles repetition, recall, and between-session practice
+  • Tutors handle misconceptions, motivation, accountability, and foundational
+    gaps
+  • SkulMate can generate post-session challenges from tutor summaries
+  • Tutors see student weak topics instead of guessing what to cover
+
+This makes tutors more effective and parents more willing to pay for both
+subscription revision and live sessions.
+
+
+--------------------------------------------------------------------------------
+Q10. What's your moat?
+--------------------------------------------------------------------------------
+
+  1. Combined stack — revision AI + live tutoring + payments + scheduling in
+     one product (rare in Africa edtech)
+  2. Local curriculum context — GCE/WAEC/BEPC/MINESEC as background signal
+  3. Engagement data flywheel — more sessions → better mastery estimates →
+     better routing → better outcomes → more trust
+  4. Parent trust layer — progress parents understand, not gamification theater
+  5. Tutor network — supply side already on platform
+
+
+--------------------------------------------------------------------------------
+Q11. What have you actually built vs what's on the slide?
+--------------------------------------------------------------------------------
+
+BUILT (SkulMate adaptive core — Phase A–C):
+  • SkulMate home, intake, games from uploads/notes/YouTube
+  • Learner context on AI generation (background calibration)
+  • Curriculum matcher (background, never blocks open topics)
+  • Concept mastery graph per topic
+  • Weak-topic reroute nudge (strict gates, dismissible)
+  • Explanation style adaptation on struggle
+  • Parent progress view + tutor-aware messaging
+  • Tutor escalation when no active tutor
+  • Post-session revision from class/tutor content
+
+IN PROGRESS / ROADMAP (Phase D):
+  • Spaced repetition scheduler (SM-2 lite)
+  • Vertical scroll revision feed
+  • Step-by-step Path / lesson planner
+  • Placement-lite diagnostics
+  • Parent weekly digest email (built, needs deploy)
+
+Be direct: "Engine ahead of navigation UI" is credible if you show mastery
+data and parent view working today.
+
+
+--------------------------------------------------------------------------------
+Q12. Who pays and why?
+--------------------------------------------------------------------------------
+
+Primary payer: Parents.
+
+They buy:
+  • Structure — know what child should revise
+  • Confidence — visible progress, not hope
+  • Exam/school improvement — especially GCE/WAEC markets
+  • Right intervention — tutor only when needed
+
+Secondary: Tutors (visibility, less prep), schools/partners (later).
+
+
+--------------------------------------------------------------------------------
+Q13. What's the business model?
+--------------------------------------------------------------------------------
+
+[Customize with current pricing — typical structure:]
+
+  • Tutor session bookings (marketplace take rate)
+  • SkulMate subscription / credits for AI generation (parent-paid)
+  • Future: school licenses, B2B analytics
+
+Revenue anchor shifts over time: sessions today → parent revision subscription
+as SkulMate matures.
+
+
+--------------------------------------------------------------------------------
+Q14. Why Cameroon / Africa first?
+--------------------------------------------------------------------------------
+
+  • Large out-of-school and extra-lessons market
+  • High mobile penetration, painful fragmentation (WhatsApp tutors, PDF notes)
+  • Exam culture (GCE, WAEC, BEPC) creates urgent parent willingness to pay
+  • We understand local curriculum, payment (Mobile Money), and trust dynamics
+
+Expansion: Francophone Africa → broader emerging markets with same pattern.
+
+
+--------------------------------------------------------------------------------
+Q15. What's the biggest risk?
+--------------------------------------------------------------------------------
+
+Be honest:
+
+  1. Execution — adaptive UI must feel seamless, not bolted on
+  2. Data cold start — need engagement before mastery signals are meaningful
+  3. Quality — AI content must be good enough parents trust it
+  4. Tutor supply quality — human layer must stay verified and consistent
+  5. Distribution — parent acquisition cost in price-sensitive markets
+
+Mitigation: engagement loops first (Phase A), prove parent progress view,
+tutor escalation for AI limits, local curriculum depth.
+
+
+================================================================================
+SOUND BITES (when you're stuck in the room)
+================================================================================
+
+  "Grade is context. Capability is signal. Goals are the destination."
+
+  "Onboarding is the prior. Every session is the proof."
+
+  "We're Bayesian, not oracle."
+
+  "AI for practice. Tutors for breakthroughs."
+
+  "Not static buckets — a loop that recalculates."
+
+  "We don't teach Form 2 to Form 2 kids. We teach the learner in front of us."
+
+  "The engine is live. The Maps UI is next."
+
+
+================================================================================
+WHAT NOT TO SAY
+================================================================================
+
+  ✗ "Onboarding tells us their exact level"
+  ✗ "AI replaces tutors"
+  ✗ "We only serve struggling students" (too narrow)
+  ✗ "Form 2 literacy kid is our whole product" (illustration only)
+  ✗ "It's fully adaptive today" (say what's live vs roadmap)
+  ✗ "We guarantee exam passes"
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================

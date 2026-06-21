@@ -8,16 +8,14 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'dart:math';
 import '../models/game_model.dart';
-import '../models/skulmate_character_model.dart';
 import '../models/game_stats_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
-import '../services/character_selection_service.dart';
 import '../services/game_progress_service.dart';
-import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/flashcard_help_sheet.dart';
 import '../widgets/game_standard_widgets.dart';
 import '../widgets/game_settings_sheet.dart';
@@ -58,7 +56,6 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   final GameSoundService _soundService = GameSoundService();
   final TTSService _ttsService = TTSService();
   late ConfettiController _confettiController;
-  dynamic _character; // Will be SkulMateCharacter
   GameStats? _currentStats;
   bool _isTTSEnabled = true;
   bool _gameCompleted = false;
@@ -124,7 +121,6 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       begin: 0,
       end: 0.2,
     ).animate(CurvedAnimation(parent: _swipeController, curve: Curves.easeOut));
-    _loadCharacter();
     _loadStats();
   }
 
@@ -212,13 +208,6 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     });
   }
 
-  Future<void> _loadCharacter() async {
-    final character = await CharacterSelectionService.getSelectedCharacter();
-    safeSetState(() {
-      _character = character;
-    });
-  }
-
   void _flipCard() {
     if (_flipController.isAnimating) return;
 
@@ -263,6 +252,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       context,
       term: resolved.term,
       definition: resolved.definition,
+      gameId: widget.game.id,
     );
   }
 
@@ -500,22 +490,14 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: _openGameSettings,
-                child: CircleAvatar(
-                  radius: 16,
-                  backgroundColor: Colors.white.withOpacity(0.22),
-                  child: ClipOval(
-                    child: SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: SkulMateCharacterWidget(
-                        character: _character ?? SkulMateCharacters.middleMale,
-                        size: 24,
-                        animated: false,
-                        showName: false,
-                      ),
-                    ),
-                  ),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.white.withOpacity(0.22),
+                child: const SkulMateProfileAvatar(
+                  size: 28,
+                  forGameAppBar: true,
                 ),
+              ),
             ),
           ),
         ],

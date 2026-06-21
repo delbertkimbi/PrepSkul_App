@@ -7,6 +7,8 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'add_child_profile_screen.dart';
 
+import '../../skulmate/screens/parent_skulmate_progress_screen.dart';
+
 /// "My children" screen for parents: list, add, edit, delete linked learners (parent_learners).
 class MyChildrenScreen extends StatefulWidget {
   const MyChildrenScreen({Key? key}) : super(key: key);
@@ -182,6 +184,20 @@ class _MyChildrenScreenState extends State<MyChildrenScreen> {
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      IconButton(
+                                        icon: Icon(PhosphorIcons.chartLineUp(), size: 20, color: AppTheme.primaryColor),
+                                        tooltip: 'SkulMate progress',
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => ParentSkulMateProgressScreen(
+                                                initialChildId: learner['id']?.toString(),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
                                       IconButton(
                                         icon: Icon(PhosphorIcons.pencil(), size: 20, color: AppTheme.primaryColor),
                                         onPressed: () => _addOrEditChild(existing: learner),

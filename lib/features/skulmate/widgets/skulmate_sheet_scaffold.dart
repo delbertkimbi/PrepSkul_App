@@ -90,8 +90,17 @@ class SkulMateSheetScaffold extends StatelessWidget {
                 ],
               ),
             ),
-            Flexible(child: body),
-            if (footer != null) footer!,
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: body,
+              ),
+            ),
+            if (footer != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: footer!,
+              ),
           ],
         ),
       ),

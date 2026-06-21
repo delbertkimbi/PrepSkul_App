@@ -26,6 +26,8 @@ import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../support/screens/help_support_screen.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'my_children_screen.dart';
+import 'package:prepskul/core/config/app_config.dart';
+import '../../skulmate/widgets/skulmate_profile_revision_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -773,8 +775,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  // Personal Information Section (from survey)
-                  // Learning information card removed temporarily
+
+                  if (AppConfig.enableSkulMate &&
+                      (widget.userType == 'student' ||
+                          widget.userType == 'learner')) ...[
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal:
+                            ResponsiveHelper.responsiveHorizontalPadding(
+                          context,
+                        ),
+                      ),
+                      child: const SkulMateProfileRevisionCard(),
+                    ),
+                  ],
 
                   // Settings Section (Neumorphic style)
                   Padding(

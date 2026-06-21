@@ -17,7 +17,16 @@ import 'package:prepskul/core/widgets/phone_country_code_picker.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
 class BeautifulLoginScreen extends StatefulWidget {
-  const BeautifulLoginScreen({Key? key}) : super(key: key);
+  final String? initialPhone;
+  final String? initialCountryIso;
+  final String? accountCreatedMessage;
+
+  const BeautifulLoginScreen({
+    Key? key,
+    this.initialPhone,
+    this.initialCountryIso,
+    this.accountCreatedMessage,
+  }) : super(key: key);
 
   @override
   State<BeautifulLoginScreen> createState() => _BeautifulLoginScreenState();
@@ -38,6 +47,41 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         WebSplashService.removeSplash();
       });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyRouteArgs());
+  }
+
+  void _applyRouteArgs() {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final phone = widget.initialPhone ?? args?['phone'] as String?;
+    final countryIso =
+        widget.initialCountryIso ?? args?['countryIso'] as String?;
+    final createdMessage =
+        widget.accountCreatedMessage ?? args?['accountCreatedMessage'] as String?;
+
+    if (phone != null && phone.isNotEmpty) {
+      _phoneController.text = phone;
+    }
+    if (countryIso != null && countryIso.isNotEmpty) {
+      for (final country in PhoneCountry.all) {
+        if (country.isoCode == countryIso) {
+          _selectedCountry = country;
+          break;
+        }
+      }
+    }
+    if (createdMessage != null && createdMessage.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(createdMessage, style: GoogleFonts.poppins()),
+          backgroundColor: AppTheme.accentGreen,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    if (phone != null || countryIso != null) {
+      safeSetState(() {});
     }
   }
 
@@ -145,7 +189,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                             value ?? '',
                                           ),
                                       decoration: InputDecoration(
-                                        hintText: '6 53 30 19 97',
+                                        hintText: t.authPhoneHint,
                                         hintStyle: GoogleFonts.poppins(
                                           color: AppTheme.textLight,
                                           fontSize: 14,
@@ -505,7 +549,9 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
           .maybeSingle();
 
       final effectiveProfile = profile ?? prioritizedProfile;
-      final userRole = effectiveProfile['user_type'] ?? 'learner';
+      final rawRole = effectiveProfile['user_type']?.toString().trim();
+      final userRole =
+          (rawRole != null && rawRole.isNotEmpty) ? rawRole : '';
       final surveyCompleted = effectiveProfile['survey_completed'] ?? false;
 
       await AuthService.saveSession(
@@ -527,7 +573,9 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
             clearStack: true,
           );
         } else {
-          if (userRole == 'tutor') {
+          if (userRole.isEmpty) {
+            NavigationService.resetStackNamed(context, '/role-selection');
+          } else if (userRole == 'tutor') {
             NavigationService.resetStackNamed(context, '/tutor-nav');
           } else if (userRole == 'parent') {
             NavigationService.resetStackNamed(context, '/parent-nav');

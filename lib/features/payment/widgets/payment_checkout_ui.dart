@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
@@ -57,6 +58,8 @@ class PaymentCheckoutUi {
         return 'Bi-weekly';
       case 'monthly':
         return 'Monthly';
+      case 'topup':
+        return 'Revision credits';
       default:
         return plan.isEmpty ? 'Installment' : plan;
     }
@@ -119,16 +122,52 @@ class PaymentCheckoutUi {
     return null;
   }
 
+  static bool _isSkulmateTopup(Map<String, dynamic>? metadata) =>
+      metadata?['is_skulmate_topup'] == true;
+
+  static Widget _brandCircle({
+    required String name,
+    String? url,
+    required double size,
+    Map<String, dynamic>? metadata,
+  }) {
+    if (_isSkulmateTopup(metadata)) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor.withValues(alpha: 0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: PhosphorIcon(
+            PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+            size: size * 0.48,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+      );
+    }
+    return _avatarCircle(name: name, url: url, size: size);
+  }
+
   static Widget _tutorIdentityRow({
     required String name,
     String? avatarUrl,
     bool compact = false,
     bool showRole = true,
+    Map<String, dynamic>? metadata,
   }) {
     final size = compact ? 40.0 : 52.0;
+    final isSkulmate = _isSkulmateTopup(metadata);
     return Row(
       children: [
-        _avatarCircle(name: name, url: avatarUrl, size: size),
+        _brandCircle(
+          name: name,
+          url: avatarUrl,
+          size: size,
+          metadata: metadata,
+        ),
         SizedBox(width: compact ? 10 : 12),
         Expanded(
           child: Column(
@@ -148,7 +187,7 @@ class PaymentCheckoutUi {
               if (showRole) ...[
                 const SizedBox(height: 2),
                 Text(
-                  'Your tutor',
+                  isSkulmate ? 'Revision credits' : 'Your tutor',
                   style: GoogleFonts.poppins(
                     fontSize: compact ? 12 : 13,
                     fontWeight: FontWeight.w500,
@@ -271,25 +310,38 @@ class PaymentCheckoutUi {
           child: Align(
             alignment: Alignment.topCenter,
             child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(m.hPad, 12, m.hPad, 16),
+              padding: EdgeInsets.fromLTRB(
+                m.hPad + (m.size == ScreenSize.mobile ? 8 : 0),
+                m.size == ScreenSize.mobile ? 16 : 12,
+                m.hPad + (m.size == ScreenSize.mobile ? 8 : 0),
+                24,
+              ),
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: m.maxWidth),
                 child: _surfaceCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _amountBlock(context, total, centered: true),
-                      const SizedBox(height: 14),
-                      _divider(),
-                      const SizedBox(height: 12),
-                      _orderSummaryRow(
-                        context: context,
-                        order: order,
-                        onTap: () => _openOrderDetails(context, order),
-                      ),
-                      const SizedBox(height: 14),
-                      _divider(),
-                      const SizedBox(height: 12),
+                      _amountBlock(context, total, centered: true, minimal: true),
+                      if (!_isSkulmateTopupOrder(order)) ...[
+                        const SizedBox(height: 14),
+                        _divider(),
+                        const SizedBox(height: 12),
+                        _orderSummaryRow(
+                          context: context,
+                          order: order,
+                          onTap: () => _openOrderDetails(context, order),
+                        ),
+                        const SizedBox(height: 14),
+                        _divider(),
+                        const SizedBox(height: 12),
+                      ] else ...[
+                        const SizedBox(height: 12),
+                        _skulmateOrderLine(order),
+                        const SizedBox(height: 14),
+                        _divider(),
+                        const SizedBox(height: 12),
+                      ],
                       sectionLabel('Mobile money number'),
                       phoneField,
                       const SizedBox(height: 16),
@@ -319,6 +371,43 @@ class PaymentCheckoutUi {
     );
   }
 
+  static bool _isSkulmateTopupOrder(PaymentCheckoutOrder order) =>
+      order.metadata?['is_skulmate_topup'] == true;
+
+  static Widget _skulmateOrderLine(PaymentCheckoutOrder order) {
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: PhosphorIcon(
+            PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+            color: AppTheme.primaryColor,
+            size: 18,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            order.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+              height: 1.3,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   static Widget _surfaceCard({required Widget child}) {
     return Container(
       width: double.infinity,
@@ -343,6 +432,7 @@ class PaymentCheckoutUi {
     BuildContext context,
     double total, {
     bool centered = false,
+    bool minimal = false,
   }) {
     final m = _CheckoutMetrics(context);
     final align = centered ? CrossAxisAlignment.center : CrossAxisAlignment.start;
@@ -368,30 +458,32 @@ class PaymentCheckoutUi {
             fontSize: m.amountSize,
             fontWeight: FontWeight.w700,
             color: AppTheme.textDark,
-            height: 1.1,
+            height: 1.0,
             letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 10),
-        Wrap(
-          alignment: centered ? WrapAlignment.center : WrapAlignment.start,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            Icon(Icons.lock_outline, size: 14, color: AppTheme.textMedium),
-            Text(
-              'Secure Mobile Money',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppTheme.textMedium,
-                fontWeight: FontWeight.w500,
+        if (!minimal) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            alignment: centered ? WrapAlignment.center : WrapAlignment.start,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              Icon(Icons.lock_outline, size: 14, color: AppTheme.textMedium),
+              Text(
+                'Secure Mobile Money',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppTheme.textMedium,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            Text('·', style: TextStyle(color: AppTheme.textMedium)),
-            ...providerTrustStrip(inline: true),
-          ],
-        ),
+              Text('·', style: TextStyle(color: AppTheme.textMedium)),
+              ...providerTrustStrip(inline: true),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -459,6 +551,7 @@ class PaymentCheckoutUi {
         avatarUrl: isTrial ? null : avatarUrl,
         compact: true,
         showRole: false,
+        metadata: metadata,
       );
     }
 
@@ -479,6 +572,7 @@ class PaymentCheckoutUi {
             name: order.title,
             avatarUrl: avatarUrl,
             compact: false,
+            metadata: metadata,
           ),
         const SizedBox(height: 14),
         Wrap(
@@ -645,10 +739,11 @@ class PaymentCheckoutUi {
               if (!isTrial)
                 Padding(
                   padding: const EdgeInsets.only(right: 10),
-                  child: _avatarCircle(
+                  child: _brandCircle(
                     name: order.title,
                     url: avatarUrl,
                     size: 36,
+                    metadata: metadata,
                   ),
                 ),
               Expanded(
@@ -665,17 +760,19 @@ class PaymentCheckoutUi {
                         color: AppTheme.textDark,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      order.subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppTheme.textMedium,
-                        height: 1.35,
+                    if (order.subtitle.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        order.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppTheme.textMedium,
+                          height: 1.3,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -786,7 +883,7 @@ class PaymentCheckoutUi {
         color: Colors.white,
         border: Border(top: BorderSide(color: AppTheme.softBorder)),
       ),
-      padding: EdgeInsets.fromLTRB(m.hPad, 12, m.hPad, 12),
+      padding: EdgeInsets.fromLTRB(m.hPad, 10, m.hPad, 10),
       child: SafeArea(
         top: false,
         child: Center(
@@ -810,37 +907,40 @@ class PaymentCheckoutUi {
     required String label,
     required VoidCallback? onPressed,
   }) {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: ElevatedButton(
-        onPressed: enabled ? onPressed : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primaryColor,
-          disabledBackgroundColor: AppTheme.softBorder,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+    return ElevatedButton(
+      onPressed: enabled ? onPressed : null,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppTheme.primaryColor,
+        disabledBackgroundColor: AppTheme.softBorder,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        minimumSize: const Size(double.infinity, 50),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: isProcessing
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Text(
-                label,
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
       ),
+      child: isProcessing
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          : Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+              textHeightBehavior: const TextHeightBehavior(
+                applyHeightToFirstAscent: false,
+                applyHeightToLastDescent: false,
+              ),
+            ),
     );
   }
 
@@ -1076,7 +1176,6 @@ class _PaymentMobileMoneyPhoneFieldState
 
   @override
   Widget build(BuildContext context) {
-    final hasValue = widget.controller.text.trim().isNotEmpty;
     final provider = widget.detectedProvider;
 
     return Column(
@@ -1095,7 +1194,7 @@ class _PaymentMobileMoneyPhoneFieldState
             letterSpacing: 0.2,
           ),
           decoration: InputDecoration(
-            hintText: '67XXXXXXX or 69XXXXXXX',
+            hintText: PaymentProviderHelper.phoneFieldHint,
             hintStyle: GoogleFonts.poppins(
               fontSize: 15,
               fontWeight: FontWeight.w400,
@@ -1189,17 +1288,6 @@ class _PaymentMobileMoneyPhoneFieldState
             errorText: widget.errorText,
           ),
         ),
-        if (hasValue) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Saved from your account — tap to pay with a different number',
-            style: GoogleFonts.poppins(
-              fontSize: 11.5,
-              color: AppTheme.textMedium,
-              height: 1.35,
-            ),
-          ),
-        ],
         if (widget.validationHint != null) ...[
           const SizedBox(height: 6),
           Text(

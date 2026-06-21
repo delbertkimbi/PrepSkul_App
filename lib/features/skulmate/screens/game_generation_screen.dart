@@ -11,16 +11,17 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/storage_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
-import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/whatsapp_support_service.dart';
-import 'package:prepskul/core/localization/language_service.dart';
+import '../services/learner_context_service.dart';
 import '../services/skulmate_service.dart';
 import '../models/game_model.dart';
 import 'quiz_game_screen.dart';
 import 'flashcard_game_screen.dart';
+import 'skulmate_scroll_feed_screen.dart';
 import 'matching_game_screen.dart';
 import 'fill_blank_game_screen.dart';
 import 'drag_drop_game_screen.dart';
+import 'puzzle_pieces_game_screen.dart';
 import 'match3_game_screen.dart';
 import 'bubble_pop_game_screen.dart';
 import 'word_search_game_screen.dart';
@@ -28,9 +29,11 @@ import 'crossword_game_screen.dart';
 import 'simulation_game_screen.dart';
 import 'mystery_game_screen.dart';
 import 'escape_room_game_screen.dart';
+import '../utils/skulmate_client_game_policy.dart';
 import '../utils/skulmate_navigation.dart';
 import 'text_input_screen.dart';
-import 'skulmate_plans_screen.dart';
+import '../widgets/skulmate_generation_error_panel.dart';
+import '../widgets/skulmate_paywall_sheet.dart';
 import '../services/game_sound_service.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_mascot_media_widget.dart';
@@ -59,6 +62,9 @@ class GameGenerationScreen extends StatefulWidget {
   /// Multiple images to upload (used when user selects several photos)
   final List<dynamic>? imagesToUpload;
 
+  /// After flashcard generation, open vertical scroll feed instead of full game.
+  final bool openAsScrollFeed;
+
   const GameGenerationScreen({
     Key? key,
     this.fileUrl,
@@ -73,6 +79,7 @@ class GameGenerationScreen extends StatefulWidget {
     this.documentToUpload,
     this.imageToUpload,
     this.imagesToUpload,
+    this.openAsScrollFeed = false,
   }) : super(key: key);
 
   @override
@@ -81,13 +88,8 @@ class GameGenerationScreen extends StatefulWidget {
 
 class _GameGenerationScreenState extends State<GameGenerationScreen>
     with TickerProviderStateMixin {
-  static const List<String> _stableGameTypes = <String>[
-    'quiz',
-    'flashcards',
-    'matching',
-    'fill_blank',
-    'drag_drop',
-  ];
+  static List<String> get _stableGameTypes =>
+      SkulMateClientGamePolicy.releasedApiTypes;
   bool _isGenerating = true;
   bool _generationInFlight = false;
   String _status = 'Generating your game...';
@@ -264,9 +266,11 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         widget.imageUrl != null;
     final hasText = widget.text != null && widget.text!.trim().isNotEmpty;
     if (hasText && !hasDocument && !hasImage) {
-      return const ['quiz', 'flashcards', 'fill_blank', 'matching'];
+      return SkulMateClientGamePolicy.releasedApiTypes
+          .where((t) => t != 'drag_drop' && t != 'puzzle_pieces')
+          .toList(growable: false);
     }
-    return const ['quiz', 'flashcards', 'matching', 'fill_blank', 'drag_drop'];
+    return SkulMateClientGamePolicy.releasedApiTypes;
   }
 
   Future<String?> _promptGameTypeSelection({
@@ -388,6 +392,23 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       return 'typed_notes.txt';
     }
     return null;
+  }
+
+  /// Topic-only intake sends [topic] without [text] so the API can generate from subject.
+  String? _textForGeneration() {
+    final raw = widget.text?.trim();
+    final hasTopic = widget.topic != null && widget.topic!.trim().isNotEmpty;
+    final hasFileSource =
+        widget.documentToUpload != null ||
+        widget.imageToUpload != null ||
+        (widget.imagesToUpload?.isNotEmpty ?? false) ||
+        (widget.fileUrl?.isNotEmpty ?? false) ||
+        (widget.youtubeUrl?.isNotEmpty ?? false);
+
+    if (hasTopic && (raw == null || raw.isEmpty) && !hasFileSource) {
+      return null;
+    }
+    return raw;
   }
 
   Future<void> _generateGame() async {
@@ -514,16 +535,19 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       }
 
       // Pull adaptive learner context from onboarding/survey so we avoid re-asking users.
-      final learnerContext = await _buildLearnerContext();
+      final learnerContext = await LearnerContextService.build(
+        childId: widget.childId,
+      );
 
-      // For auto only: if not playable, retry with a few deterministic types.
-      const fallbackTypes = ['quiz', 'flashcards', 'matching'];
+      // For auto only: if not playable or unreleased, retry with released types.
+      final fallbackTypes = SkulMateClientGamePolicy.autoStableApiTypes;
       _setGenerationStatus('Generating your game...');
       final sourceFileName = _inferSourceFileName();
+      final generationText = _textForGeneration();
       GameModel game = await SkulMateService.generateGame(
         fileUrl: fileUrl ?? widget.fileUrl,
         imageUrl: imageUrl ?? widget.imageUrl,
-        text: widget.text,
+        text: generationText,
         youtubeUrl: widget.youtubeUrl,
         sourceFileName: sourceFileName,
         childId: widget.childId,
@@ -537,7 +561,10 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       // Keep the first ID so we can clean up unusable saved records.
       final firstGeneratedId = game.id;
 
-      if (!game.isPlayable && allowFallback && mounted) {
+      // Retry when auto returns an unreleased client type.
+      if (allowFallback &&
+          SkulMateClientGamePolicy.comingSoonTypes.contains(game.gameType) &&
+          mounted) {
         for (final fallbackType in fallbackTypes) {
           if (fallbackType == requestedGameType) continue;
           _setGenerationStatus('Generating with $fallbackType...');
@@ -545,7 +572,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
             final fallbackGame = await SkulMateService.generateGame(
               fileUrl: fileUrl ?? widget.fileUrl,
               imageUrl: imageUrl ?? widget.imageUrl,
-              text: widget.text,
+              text: generationText,
               youtubeUrl: widget.youtubeUrl,
               sourceFileName: sourceFileName,
               childId: widget.childId,
@@ -556,7 +583,41 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
               learnerContext: learnerContext,
             );
             game = fallbackGame;
-            if (game.isPlayable) break;
+            if (SkulMateClientGamePolicy.isReleasedInClient(game.gameType) &&
+                game.isPlayable) {
+              break;
+            }
+          } catch (fallbackError) {
+            LogService.warning(
+              '🎮 [skulMate] Coming-soon fallback failed for $fallbackType: $fallbackError',
+            );
+          }
+        }
+      }
+
+      if (!game.isPlayable && allowFallback && mounted) {
+        for (final fallbackType in fallbackTypes) {
+          if (fallbackType == requestedGameType) continue;
+          _setGenerationStatus('Generating with $fallbackType...');
+          try {
+            final fallbackGame = await SkulMateService.generateGame(
+              fileUrl: fileUrl ?? widget.fileUrl,
+              imageUrl: imageUrl ?? widget.imageUrl,
+              text: generationText,
+              youtubeUrl: widget.youtubeUrl,
+              sourceFileName: sourceFileName,
+              childId: widget.childId,
+              difficulty: widget.difficulty,
+              topic: widget.topic,
+              numQuestions: widget.numQuestions,
+              gameType: fallbackType,
+              learnerContext: learnerContext,
+            );
+            game = fallbackGame;
+            if (game.isPlayable &&
+                SkulMateClientGamePolicy.isReleasedInClient(game.gameType)) {
+              break;
+            }
           } catch (fallbackError) {
             LogService.warning(
               '🎮 [skulMate] Fallback generation failed for $fallbackType: $fallbackError',
@@ -619,6 +680,34 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
 
       _setGenerationStatus('Game ready!');
 
+      // Block unreleased types from opening after generation.
+      if (SkulMateClientGamePolicy.comingSoonTypes.contains(game.gameType) &&
+          mounted) {
+        LogService.warning(
+          '🎮 [skulMate] Generated unreleased type ${game.gameType.name} (id=${game.id})',
+        );
+        if (game.id.isNotEmpty) {
+          unawaited(
+            SkulMateService.deleteGame(game.id).catchError((e) {
+              LogService.warning(
+                '🎮 [skulMate] Could not delete unreleased generated game: $e',
+              );
+            }),
+          );
+        }
+        safeSetState(() {
+          _isGenerating = false;
+          _errorTitle = 'This game type is not available yet';
+          _errorDetails =
+              'We generated a preview type that is still in development. '
+              'Try again with Auto or pick Quiz, Flashcards, or Matching.';
+          _error = '$_errorTitle\n\n$_errorDetails';
+          _errorRetryable = true;
+          _progress = 0.0;
+        });
+        return;
+      }
+
       // Validate game is playable before routing (avoid showing broken "No answer options" etc.)
       if (!game.isPlayable && mounted) {
         LogService.warning(
@@ -657,7 +746,12 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
             gameScreen = QuizGameScreen(game: game, fromGenerationFlow: true);
             break;
           case GameType.flashcards:
-            gameScreen = FlashcardGameScreen(game: game);
+            gameScreen = widget.openAsScrollFeed
+                ? SkulMateScrollFeedScreen(
+                    seedGame: game,
+                    childId: widget.childId,
+                  )
+                : FlashcardGameScreen(game: game);
             break;
           case GameType.matching:
             gameScreen = MatchingGameScreen(game: game);
@@ -667,6 +761,9 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
             break;
           case GameType.dragDrop:
             gameScreen = DragDropGameScreen(game: game);
+            break;
+          case GameType.puzzlePieces:
+            gameScreen = PuzzlePiecesGameScreen(game: game);
             break;
           case GameType.match3:
             gameScreen = Match3GameScreen(game: game);
@@ -880,50 +977,6 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
     }
   }
 
-  Future<Map<String, dynamic>?> _buildLearnerContext() async {
-    try {
-      final user = SupabaseService.client.auth.currentUser;
-      if (user == null) return null;
-      final context = <String, dynamic>{};
-
-      final survey = await SurveyRepository.getParentSurvey(user.id);
-      if (survey != null) {
-        const preferredKeys = [
-          'student_grade',
-          'class_level',
-          'curriculum',
-          'exam',
-          'exam_type',
-          'target_exam',
-          'subjects',
-          'subject_preferences',
-          'learning_goals',
-          'learning_style',
-          'preferred_language',
-          'language_preference',
-          'student_age_group',
-        ];
-        for (final key in preferredKeys) {
-          final value = survey[key];
-          if (value != null && value.toString().trim().isNotEmpty) {
-            context[key] = value;
-          }
-        }
-      }
-
-      if (widget.childId != null && widget.childId!.isNotEmpty) {
-        context['childId'] = widget.childId;
-      }
-      context['language'] = LanguageService.languageCode;
-      return context.isEmpty ? null : context;
-    } catch (e) {
-      LogService.warning(
-        'Could not build learner context for game generation: $e',
-      );
-      return null;
-    }
-  }
-
   bool _isBillingErrorState() {
     final title = (_errorTitle ?? '').toLowerCase();
     final details = (_errorDetails ?? '').toLowerCase();
@@ -934,51 +987,6 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         combined.contains('not enough credits') ||
         combined.contains('insufficient credits') ||
         combined.contains('top up');
-  }
-
-  Widget _buildErrorDetailsText() {
-    final details = _errorDetails;
-    if (details == null || details.isEmpty) return const SizedBox.shrink();
-    final lower = details.toLowerCase();
-    final key = 'contact support';
-    final index = lower.indexOf(key);
-    if (index < 0) {
-      return Text(
-        details,
-        style: GoogleFonts.poppins(
-          fontSize: 14,
-          color: AppTheme.textMedium,
-          height: 1.5,
-        ),
-        textAlign: TextAlign.center,
-      );
-    }
-    final before = details.substring(0, index);
-    final clickable = details.substring(index, index + key.length);
-    final after = details.substring(index + key.length);
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: before),
-          TextSpan(
-            text: clickable,
-            style: const TextStyle(
-              color: AppTheme.primaryColor,
-              fontWeight: FontWeight.w600,
-              decoration: TextDecoration.underline,
-            ),
-            recognizer: TapGestureRecognizer()..onTap = _contactSupport,
-          ),
-          TextSpan(text: after),
-        ],
-      ),
-      style: GoogleFonts.poppins(
-        fontSize: 14,
-        color: AppTheme.textMedium,
-        height: 1.5,
-      ),
-      textAlign: TextAlign.center,
-    );
   }
 
   IconData _phaseIcon(int index) {
@@ -1342,222 +1350,64 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                     ),
                   ),
                 ] else if (_error != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.softBorder),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.textDark.withValues(alpha: 0.06),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
+                  SkulMateGenerationErrorPanel(
+                    title: _errorTitle ?? 'Something went wrong',
+                    details: _errorDetails,
+                    kind: SkulMateGenerationErrorPanel.kindFromMessage(
+                      '${_errorTitle ?? ''} ${_errorDetails ?? ''}',
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFEF3E2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.info_outline_rounded,
-                            size: 40,
-                            color: const Color(0xFFB45309),
-                          ),
+                    retryable: _errorRetryable,
+                    suggestedGameTypeLabel: _suggestedGameType != null
+                        ? _gameTypeLabel(_suggestedGameType!)
+                        : null,
+                    onPaywall: _isBillingErrorState()
+                        ? () => SkulMatePaywallSheet.show(context)
+                        : null,
+                    onManualText: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              TextInputScreen(childId: widget.childId),
                         ),
-                        const SizedBox(height: 20),
-                        Text(
-                          _errorTitle ?? 'Something went wrong',
-                          style: GoogleFonts.poppins(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        if (_errorDetails != null &&
-                            _errorDetails!.isNotEmpty) ...[
-                          const SizedBox(height: 10),
-                          _buildErrorDetailsText(),
-                        ],
-                        const SizedBox(height: 20),
-                        if (_isBillingErrorState()) ...[
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const SkulmatePlansScreen(),
-                                ),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.primaryColor,
-                                side: BorderSide(
-                                  color: AppTheme.primaryColor.withValues(alpha: 0.6),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 11,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              icon: const Icon(
-                                Icons.account_balance_wallet_rounded,
-                              ),
-                              label: Text(
-                                'See plans',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        TextButton.icon(
-                          onPressed: () {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    TextInputScreen(childId: widget.childId),
-                              ),
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.edit_note_rounded,
-                            size: 20,
-                            color: AppTheme.primaryColor,
-                          ),
-                          label: Text(
-                            'Enter text manually instead',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.primaryColor,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => Navigator.pop(context),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppTheme.primaryColor,
-                                  side: const BorderSide(
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: Text(
-                                  'Back to upload',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (_suggestedGameType != null) ...[
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    final suggested = _suggestedGameType;
-                                    if (suggested == null) return;
-                                    safeSetState(() {
-                                      _overrideGameType = suggested;
-                                      _isGenerating = true;
-                                      _error = null;
-                                      _errorTitle = null;
-                                      _errorDetails = null;
-                                      _errorRetryable = true;
-                                      _progress = 0.0;
-                                      _status =
-                                          'Trying ${_gameTypeLabel(suggested)}...';
-                                    });
-                                    _simulateProgress();
-                                    _generateGame();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF0EA5E9),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: Text(
-                                    'Try ${_gameTypeLabel(_suggestedGameType!)}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                            if (_errorRetryable) ...[
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    safeSetState(() {
-                                      _isGenerating = true;
-                                      _error = null;
-                                      _errorTitle = null;
-                                      _errorDetails = null;
-                                      _errorRetryable = true;
-                                      _progress = 0.0;
-                                      _status = 'Analyzing content...';
-                                    });
-                                    _simulateProgress();
-                                    _generateGame();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryColor,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: Text(
-                                    'Try again',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
+                      );
+                    },
+                    onBack: () => Navigator.pop(context),
+                    onTrySuggested: _suggestedGameType != null
+                        ? () {
+                            final suggested = _suggestedGameType;
+                            if (suggested == null) return;
+                            safeSetState(() {
+                              _overrideGameType = suggested;
+                              _isGenerating = true;
+                              _error = null;
+                              _errorTitle = null;
+                              _errorDetails = null;
+                              _errorRetryable = true;
+                              _progress = 0.0;
+                              _status =
+                                  'Trying ${_gameTypeLabel(suggested)}...';
+                            });
+                            _simulateProgress();
+                            _generateGame();
+                          }
+                        : null,
+                    onRetry: _errorRetryable
+                        ? () {
+                            safeSetState(() {
+                              _isGenerating = true;
+                              _error = null;
+                              _errorTitle = null;
+                              _errorDetails = null;
+                              _errorRetryable = true;
+                              _progress = 0.0;
+                              _status = 'Analyzing content...';
+                            });
+                            _simulateProgress();
+                            _generateGame();
+                          }
+                        : null,
+                    onContactSupport: _contactSupport,
                   ),
                 ] else ...[
                   Container(

@@ -23,6 +23,7 @@ import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import '../../../features/skulmate/screens/parent_skulmate_progress_screen.dart';
 import '../../../features/skulmate/services/skulmate_service.dart';
 import '../../../features/skulmate/models/game_model.dart';
 import '../../../features/skulmate/utils/skulmate_game_launcher.dart';
@@ -67,7 +68,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   List<GameModel> _skulMateGames = [];
   bool _skulMateGamesLoaded = false;
   bool _statsReady = false;
-  bool _carouselReady = false;
+  bool _carouselReady = true;
   WalletSnapshot? _walletSnapshot;
   final ConnectivityService _connectivity = ConnectivityService();
   /// Incremented on pull-to-refresh so NotificationBell (and other keyed widgets) reload
@@ -77,18 +78,36 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   void initState() {
     super.initState();
     _initializeConnectivity();
+    _hydrateSkulMateGamesFromCache();
     _loadUserData();
     _loadSkulMateGamesEarly();
     Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
-      if (_isLoading || !_carouselReady || !_statsReady) {
+      if (_isLoading || !_statsReady) {
         safeSetState(() {
           _isLoading = false;
-          _carouselReady = true;
           _statsReady = true;
         });
       }
     });
+  }
+
+  Future<void> _hydrateSkulMateGamesFromCache() async {
+    if (!AppConfig.enableSkulMate) {
+      if (mounted) safeSetState(() => _skulMateGamesLoaded = true);
+      return;
+    }
+    try {
+      final cached = await SkulMateService.getCachedGames();
+      if (!mounted || cached.isEmpty) return;
+      safeSetState(() {
+        _skulMateGames = cached;
+        _skulMateGamesLoaded = true;
+        _carouselReady = true;
+      });
+    } catch (e) {
+      LogService.debug('Student home cached SkulMate games: $e');
+    }
   }
 
   Future<void> _loadSkulMateGamesEarly() async {
@@ -250,7 +269,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             _upcomingSessions = cachedUpcomingItems;
           }
           _walletSnapshot = cachedWallet;
-          _carouselReady = cachedUpcomingItems.isNotEmpty || cachedWallet != null;
+          _carouselReady = true;
           _statsReady = hasCachedHomeData;
           _isLoading = !hasCachedHomeData;
         });
@@ -554,13 +573,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             .getStudentUpcomingItemsForHome(limit: 50)
             .timeout(const Duration(seconds: 8));
         upcomingSessions = upcomingItems.length;
-        if (mounted && upcomingItems.isNotEmpty) {
-          safeSetState(() {
-            _upcomingSessions = upcomingItems;
-            _upcomingSessionsCount = upcomingSessions;
-            _carouselReady = true;
-          });
-        }
         final userId = SupabaseService.client.auth.currentUser?.id;
         if (userId != null &&
             userId.isNotEmpty &&
@@ -999,113 +1011,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       subtitle: 'Track your child\'s learning journey and improvement',
                       color: AppTheme.primaryColor,
                       onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            title: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryColor.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    PhosphorIcons.trendUp(),
-                                    color: AppTheme.primaryColor,
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    'Learning Progress',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.textDark,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Coming Soon!',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textDark,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  'We\'re building an amazing feature that will help you track your child\'s learning journey, view their progress across subjects, see improvement trends, and celebrate their achievements.',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    color: AppTheme.textMedium,
-                                    height: 1.5,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryColor.withOpacity(0.06),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: AppTheme.primaryColor.withOpacity(0.2),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        PhosphorIcons.info(),
-                                        color: AppTheme.primaryColor,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          'You\'ll be notified when this feature is available!',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 12,
-                                            color: AppTheme.textDark,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppTheme.primaryColor,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                child: Text(
-                                  'Close',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ParentSkulMateProgressScreen(),
                           ),
                         );
                       },

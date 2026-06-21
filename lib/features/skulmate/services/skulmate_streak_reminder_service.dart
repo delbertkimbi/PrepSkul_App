@@ -1,21 +1,32 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/push_notification_service.dart';
+import 'home_goal_line_service.dart';
 import 'game_stats_service.dart';
 
-/// Service for scheduling daily streak reminder notifications.
-/// Uses **local** notifications (not server push); does not require backend.
+/// Daily SkulMate revision reminder — local notification, Duolingo-style timing.
 ///
-/// **Timing:** Reminder fires at the user’s configured **clock time** (default **6:00 PM**
-/// local), not “the time they opened the app yesterday”. Rescheduled when the user opens
-/// SkulMate or finishes a game: if they already played today, today’s reminder is cancelled.
+/// Reminder fires at the **hour:minute of the learner's last SkulMate visit or
+/// game** (updated each time they open SkulMate or finish a game). If they already
+/// played today, the next nudge is scheduled for tomorrow at that time.
 class SkulMateStreakReminderService {
   static const String _enabledKey = 'skulmate_streak_reminder_enabled';
   static const String _hourKey = 'skulmate_streak_reminder_hour';
   static const String _minuteKey = 'skulmate_streak_reminder_minute';
-  static const int _defaultHour = 18; // 6 PM
+  static const int _defaultHour = 18; // first-time fallback only
   static const int _defaultMinute = 0;
+
+  /// Record today's activity time and reschedule the next revision nudge.
+  static Future<void> recordActivityAndReschedule() async {
+    if (kIsWeb) return;
+    final now = DateTime.now();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_hourKey, now.hour.clamp(0, 23));
+    await prefs.setInt(_minuteKey, now.minute.clamp(0, 59));
+    await rescheduleIfNeeded();
+  }
 
   /// Whether streak reminder is enabled
   static Future<bool> isEnabled() async {
@@ -76,13 +87,22 @@ class SkulMateStreakReminderService {
 
       final time = await getReminderTime();
       final streakCount = stats.currentStreak > 0 ? stats.currentStreak : 0;
+      final french = LanguageService.isFrench;
+      final title = french
+          ? 'Qu\'est-ce qu\'on révise aujourd\'hui ?'
+          : 'What shall we revise today?';
+      final body = await HomeGoalLineService.notificationBody(
+        french: french,
+        streakCount: streakCount,
+      );
 
       if (playedToday) {
         // Already played today — skip today's nudge but keep tomorrow's on the calendar.
         await PushNotificationService().scheduleSkulMateStreakReminder(
           hour: time.hour,
           minute: time.minute,
-          streakCount: streakCount,
+          title: title,
+          body: body,
           startFromTomorrow: true,
         );
         LogService.debug(
@@ -94,7 +114,8 @@ class SkulMateStreakReminderService {
       await PushNotificationService().scheduleSkulMateStreakReminder(
         hour: time.hour,
         minute: time.minute,
-        streakCount: streakCount,
+        title: title,
+        body: body,
       );
       LogService.info(
         '🔥 [StreakReminder] Scheduled for ${time.hour}:${time.minute.toString().padLeft(2, '0')}',

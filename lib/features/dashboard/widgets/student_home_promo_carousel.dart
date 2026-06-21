@@ -58,13 +58,13 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
   Timer? _autoTimer;
   int _currentPage = 0;
 
-  bool _loadingSkulMate = true;
   bool _dailyCompleted = false;
   bool _dailyHidden = false;
   int _streak = 0;
   GameModel? _todayGame;
 
   static const _autoPlayInterval = Duration(seconds: 5);
+  static const _autoPlayStartDelay = Duration(seconds: 4);
 
   bool get _isParent => widget.userType == 'parent';
 
@@ -78,24 +78,36 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
   @override
   void didUpdateWidget(StudentHomePromoCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final oldSlideCount = _slidesFor(
+      games: oldWidget.skulMateGames,
+      nextSession: oldWidget.nextSession,
+      upcomingCount: oldWidget.upcomingSessionsCount,
+      wallet: oldWidget.wallet,
+    ).length;
+
     if (oldWidget.skulMateGames != widget.skulMateGames ||
         oldWidget.nextSession?.id != widget.nextSession?.id ||
         oldWidget.upcomingSessionsCount != widget.upcomingSessionsCount ||
-        oldWidget.userType != widget.userType) {
-      _loadSkulMateState();
+        oldWidget.userType != widget.userType ||
+        oldWidget.isReady != widget.isReady) {
+      _loadSkulMateState(reload: true);
     }
-    if (oldWidget.isReady != widget.isReady) {
+
+    final newSlideCount = _slides.length;
+    if (oldSlideCount != newSlideCount && _pageController.hasClients) {
+      _currentPage = 0;
+      _pageController.jumpToPage(0);
+      _startAutoPlay();
+    } else if (oldWidget.isReady != widget.isReady) {
       _startAutoPlay();
     }
   }
 
-  Future<void> _loadSkulMateState() async {
+  Future<void> _loadSkulMateState({bool reload = false}) async {
     if (!AppConfig.enableSkulMate) {
-      if (mounted) setState(() => _loadingSkulMate = false);
       _startAutoPlay();
       return;
     }
-    setState(() => _loadingSkulMate = true);
     final completed = await DailyChallengeService.isCompletedToday();
     final hidden = await DailyChallengeService.isHiddenToday();
     final streak = await DailyChallengeService.getDailyStreak();
@@ -108,39 +120,47 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
       _dailyHidden = hidden;
       _streak = streak;
       _todayGame = today;
-      _loadingSkulMate = false;
     });
     _startAutoPlay();
   }
 
-  List<_HomeSlide> get _slides {
+  List<_HomeSlide> _slidesFor({
+    required List<GameModel> games,
+    required UpcomingSessionItem? nextSession,
+    required int upcomingCount,
+    required WalletSnapshot? wallet,
+  }) {
     final slides = <_HomeSlide>[];
 
-    if (AppConfig.enableSkulMate &&
-        !_loadingSkulMate &&
-        !(_dailyCompleted && _dailyHidden)) {
-      slides.add(_PromoHomeSlide(_skulMateSlide()));
+    if (AppConfig.enableSkulMate && !(_dailyCompleted && _dailyHidden)) {
+      slides.add(_PromoHomeSlide(_skulMateSlideForGames(games)));
     }
 
-    final paidAhead = widget.wallet?.paidSessionsAhead ?? 0;
-    final hasUpcomingSignal = widget.nextSession != null ||
-        widget.upcomingSessionsCount > 0 ||
-        paidAhead > 0;
+    final paidAhead = wallet?.paidSessionsAhead ?? 0;
+    final hasUpcomingSignal =
+        nextSession != null || upcomingCount > 0 || paidAhead > 0;
 
-    if (widget.nextSession != null) {
-      slides.add(_PromoHomeSlide(_sessionSlide(widget.nextSession!)));
+    if (nextSession != null) {
+      slides.add(_PromoHomeSlide(_sessionSlide(nextSession)));
     } else if (!hasUpcomingSignal) {
       slides.add(_PromoHomeSlide(_bookTutorSlide()));
     }
 
     if (widget.onOpenWallet != null) {
       slides.add(
-        _WalletHomeSlide(wallet: widget.wallet ?? WalletSnapshot.empty),
+        _WalletHomeSlide(wallet: wallet ?? WalletSnapshot.empty),
       );
     }
 
     return slides;
   }
+
+  List<_HomeSlide> get _slides => _slidesFor(
+        games: widget.skulMateGames,
+        nextSession: widget.nextSession,
+        upcomingCount: widget.upcomingSessionsCount,
+        wallet: widget.wallet,
+      );
 
   String _gameTypeLabel(GameType type) {
     switch (type) {
@@ -207,9 +227,9 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
         : 'Jump into quick games between lessons.';
   }
 
-  _PromoSlide _skulMateSlide() {
+  _PromoSlide _skulMateSlideForGames(List<GameModel> games) {
     final hasDaily = _todayGame != null && !_dailyCompleted;
-    final noGames = widget.skulMateGames.isEmpty;
+    final noGames = games.isEmpty;
 
     if (hasDaily) {
       return _PromoSlide(
@@ -306,16 +326,21 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
   void _startAutoPlay() {
     _autoTimer?.cancel();
     final count = _slides.length;
-    if (count <= 1) return;
+    if (count <= 1 || !widget.isReady) return;
 
-    _autoTimer = Timer.periodic(_autoPlayInterval, (_) {
+    _autoTimer = Timer(_autoPlayStartDelay, () {
       if (!mounted || !_pageController.hasClients) return;
-      final next = (_currentPage + 1) % count;
-      _pageController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 480),
-        curve: Curves.easeOutCubic,
-      );
+      _autoTimer = Timer.periodic(_autoPlayInterval, (_) {
+        if (!mounted || !_pageController.hasClients) return;
+        final slideCount = _slides.length;
+        if (slideCount <= 1) return;
+        final next = (_currentPage + 1) % slideCount;
+        _pageController.animateToPage(
+          next,
+          duration: const Duration(milliseconds: 480),
+          curve: Curves.easeOutCubic,
+        );
+      });
     });
   }
 
