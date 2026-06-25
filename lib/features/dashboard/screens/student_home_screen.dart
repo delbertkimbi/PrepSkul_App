@@ -5,7 +5,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../../core/navigation/main_navigation_scope.dart';
 import '../../../core/navigation/student_tab_index.dart';
 import '../../../core/utils/safe_set_state.dart';
@@ -952,7 +952,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     children: [
                       Expanded(
                         child: _buildStatCard(
-                          icon: PhosphorIcons.graduationCap(),
+                          icon: PhosphorIcons.graduationCap,
                           label: AppLocalizations.of(context)!.activeTutors,
                           value: '$_activeTutorsCount',
                           color: AppTheme.primaryColor,
@@ -968,7 +968,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                             ),
                       Expanded(
                         child: _buildStatCard(
-                          icon: PhosphorIcons.calendar(),
+                          icon: PhosphorIcons.calendar,
                           label: AppLocalizations.of(context)!.sessions,
                           value: '$_allTimeSessionsCount',
                           color: AppTheme.primaryColor,
@@ -983,7 +983,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   _buildSectionTitle(AppLocalizations.of(context)!.quickActions),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                   _buildActionCard(
-                    icon: PhosphorIcons.calendarCheck(),
+                    icon: PhosphorIcons.calendarCheck,
                     title: AppLocalizations.of(context)!.mySessions,
                     subtitle: 'View upcoming sessions',
                     color: AppTheme.primaryColor,
@@ -994,7 +994,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
                   _buildActionCard(
-                    icon: PhosphorIcons.creditCard(),
+                    icon: PhosphorIcons.creditCard,
                     title: AppLocalizations.of(context)!.paymentHistory,
                     subtitle: 'View and manage your payments',
                     color: AppTheme.primaryColor,
@@ -1006,7 +1006,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   if (_userType == 'parent') ...[
                     SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                     _buildActionCard(
-                      icon: PhosphorIcons.trendUp(),
+                      icon: PhosphorIcons.trendUp,
                       title: 'Learning Progress',
                       subtitle: 'Track your child\'s learning journey and improvement',
                       color: AppTheme.primaryColor,
@@ -1223,7 +1223,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 const SizedBox(width: 8),
               ],
               Icon(
-                PhosphorIcons.caretRight(),
+                PhosphorIcons.caretRight,
                 size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18),
                 color: AppTheme.textLight,
               ),

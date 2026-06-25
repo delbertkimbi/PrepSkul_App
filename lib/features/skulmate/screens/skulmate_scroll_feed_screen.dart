@@ -7,13 +7,13 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 
+import '../adaptive/skulmate_genui_surface_view.dart';
 import '../l10n/skulmate_copy.dart';
 import '../models/game_model.dart';
 import '../models/scroll_feed_item.dart';
 import '../services/scroll_feed_service.dart';
 import '../services/spaced_repetition_service.dart';
 import '../utils/sm2_lite.dart';
-import '../widgets/skulmate_surface_styles.dart';
 
 /// D2 — vertical swipe revision feed (bounded session, due queue first).
 class SkulMateScrollFeedScreen extends StatefulWidget {
@@ -250,7 +250,7 @@ class _SkulMateScrollFeedScreenState extends State<SkulMateScrollFeedScreen> {
                     });
                   },
                   itemCount: _queue.length,
-                  itemBuilder: (context, i) => _ScrollCard(
+                  itemBuilder: (context, i) => SkulMateGenuiScrollCard(
                     item: _queue[i],
                     flipped: i == _index && _flipped,
                     onFlip: () {
@@ -261,123 +261,6 @@ class _SkulMateScrollFeedScreenState extends State<SkulMateScrollFeedScreen> {
                     copy: copy,
                   ),
                 ),
-    );
-  }
-}
-
-class _ScrollCard extends StatelessWidget {
-  final ScrollFeedItem item;
-  final bool flipped;
-  final VoidCallback onFlip;
-  final VoidCallback onKnew;
-  final VoidCallback onAgain;
-  final SkulMateCopy copy;
-
-  const _ScrollCard({
-    required this.item,
-    required this.flipped,
-    required this.onFlip,
-    required this.onKnew,
-    required this.onAgain,
-    required this.copy,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-      child: Column(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: onFlip,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: SkulMateSurfaceStyles.chipCard().copyWith(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                alignment: Alignment.center,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (item.gameTitle != null) ...[
-                        Text(
-                          item.gameTitle!,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.textMedium,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      Text(
-                        flipped ? item.definition : item.term,
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
-                          fontSize: flipped ? 18 : 22,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textDark,
-                          height: 1.35,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        flipped ? copy.scrollTapTerm : copy.scrollTapReveal,
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: AppTheme.textLight,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onAgain,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: AppTheme.softBorder),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: Text(
-                    copy.scrollAgain,
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: onKnew,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: Text(
-                    copy.scrollGotIt,
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

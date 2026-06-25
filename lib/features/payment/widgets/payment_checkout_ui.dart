@@ -1,7 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
@@ -141,7 +141,7 @@ class PaymentCheckoutUi {
         ),
         child: Center(
           child: PhosphorIcon(
-            PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+            PhosphorIcons.sparkleFill,
             size: size * 0.48,
             color: AppTheme.primaryColor,
           ),
@@ -385,7 +385,7 @@ class PaymentCheckoutUi {
             borderRadius: BorderRadius.circular(10),
           ),
           child: PhosphorIcon(
-            PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+            PhosphorIcons.sparkleFill,
             color: AppTheme.primaryColor,
             size: 18,
           ),

@@ -28,7 +28,7 @@ import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/debouncer.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 
@@ -1290,7 +1290,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   ],
                 ),
                 child: Icon(
-                  PhosphorIcons.check(PhosphorIconsStyle.fill),
+                  PhosphorIcons.checkFill,
                   size: ResponsiveHelper.responsiveIconSize(context, mobile: 12, tablet: 14, desktop: 16),
                   color: Colors.white,
                 ),

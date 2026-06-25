@@ -689,6 +689,7 @@ class AuthService {
         // End Google OAuth loading overlay even if deep-link navigation handled elsewhere.
         isGoogleSignInInProgress = false;
         if (user != null) {
+          await syncOAuthProfile(user);
           await _handleSupabaseSignedIn(user);
         }
       } else if (event == AuthChangeEvent.tokenRefreshed) {
@@ -755,6 +756,84 @@ class AuthService {
     }
   }
 
+  /// Sync Google/OAuth profile fields (email, name, avatar) into profiles.
+  /// Only fills missing fields — does not overwrite user-uploaded avatars.
+  static Future<void> syncOAuthProfile(User user) async {
+    try {
+      final metadata = user.userMetadata ?? {};
+      final oauthEmail = user.email?.trim();
+      final oauthName = (metadata['full_name'] ?? metadata['name'])?.toString().trim();
+      final oauthAvatar =
+          (metadata['avatar_url'] ?? metadata['picture'])?.toString().trim();
+
+      if ((oauthEmail == null || oauthEmail.isEmpty) &&
+          (oauthName == null || oauthName.isEmpty) &&
+          (oauthAvatar == null || oauthAvatar.isEmpty)) {
+        return;
+      }
+
+      final existing = await SupabaseService.client
+          .from('profiles')
+          .select('email, full_name, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      final existingEmail = existing?['email']?.toString().trim() ?? '';
+      final existingName = existing?['full_name']?.toString().trim() ?? '';
+      final existingAvatar = existing?['avatar_url']?.toString().trim() ?? '';
+
+      final emailToUse = existingEmail.isNotEmpty
+          ? existingEmail
+          : (oauthEmail ?? '');
+      final nameToUse = (existingName.isNotEmpty &&
+              existingName != 'User' &&
+              existingName != 'Student')
+          ? existingName
+          : (oauthName?.isNotEmpty == true
+              ? oauthName!
+              : (emailToUse.isNotEmpty ? emailToUse.split('@').first : 'PrepSkul User'));
+      final avatarToUse =
+          existingAvatar.isNotEmpty ? existingAvatar : (oauthAvatar ?? '');
+
+      if (existing == null) {
+        await ProfileBootstrapService.upsertProfile(
+          userId: user.id,
+          fullName: nameToUse,
+          email: emailToUse.isNotEmpty ? emailToUse : null,
+          avatarUrl: avatarToUse.isNotEmpty ? avatarToUse : null,
+        );
+        LogService.info('[AUTH] Created profile from OAuth metadata');
+        return;
+      }
+
+      final updates = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      if (existingEmail.isEmpty && emailToUse.isNotEmpty) {
+        updates['email'] = emailToUse;
+      }
+      if ((existingName.isEmpty ||
+              existingName == 'User' ||
+              existingName == 'Student') &&
+          nameToUse.isNotEmpty) {
+        updates['full_name'] = nameToUse;
+      }
+      if (existingAvatar.isEmpty && avatarToUse.isNotEmpty) {
+        updates['avatar_url'] = avatarToUse;
+      }
+
+      if (updates.length <= 1) return;
+
+      await SupabaseService.client
+          .from('profiles')
+          .update(updates)
+          .eq('id', user.id);
+      LogService.info('[AUTH] Synced OAuth profile fields for user ${user.id}');
+    } catch (e) {
+      LogService.warning('[AUTH] OAuth profile sync failed: $e');
+    }
+  }
+
   static Future<void> completeEmailVerification(User user) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -773,7 +852,12 @@ class AuthService {
       final fullName =
           pendingName ??
           user.userMetadata?['full_name']?.toString() ??
+          user.userMetadata?['name']?.toString() ??
           (email.isNotEmpty ? email : 'PrepSkul User');
+      final avatarUrl = (user.userMetadata?['avatar_url'] ??
+              user.userMetadata?['picture'])
+          ?.toString()
+          .trim();
 
       await ProfileBootstrapService.upsertProfile(
         userId: user.id,
@@ -781,6 +865,7 @@ class AuthService {
         email: email,
         phoneNumber: null,
         userType: role,
+        avatarUrl: avatarUrl?.isNotEmpty == true ? avatarUrl : null,
         surveyCompleted: false,
       );
 

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -173,8 +173,10 @@ class _SkulMateGamesScreenState extends State<SkulMateGamesScreen> {
     }
     if (_selectedFilter != null) {
       filtered = filtered.where((game) {
-        final type = game.gameType.toString();
+        final type = game.gameType.name;
         if (_selectedFilter == 'fill_blank') return type == 'fillBlank';
+        if (_selectedFilter == 'drag_drop') return type == 'dragDrop';
+        if (_selectedFilter == 'puzzle_pieces') return type == 'puzzlePieces';
         return type == _selectedFilter;
       }).toList();
     }
@@ -260,7 +262,7 @@ class _SkulMateGamesScreenState extends State<SkulMateGamesScreen> {
                     SliverFillRemaining(
                       hasScrollBody: false,
                       child: EmptyStateWidget(
-                        icon: PhosphorIcons.gameController(),
+                        icon: PhosphorIcons.gameController,
                         title: copy.isFrench ? 'Aucun jeu' : 'No games yet',
                         message: copy.isFrench
                             ? 'Importe des notes depuis l\'accueil SkulMate.'
@@ -399,6 +401,24 @@ class _FilterChips extends StatelessWidget {
             label: copy.isFrench ? 'Flashcards' : 'Flashcards',
             selected: selectedFilter == 'flashcards',
             onTap: () => onFilter('flashcards'),
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: copy.isFrench ? 'Association' : 'Matching',
+            selected: selectedFilter == 'matching',
+            onTap: () => onFilter('matching'),
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: copy.isFrench ? 'Texte à trous' : 'Fill blank',
+            selected: selectedFilter == 'fill_blank',
+            onTap: () => onFilter('fill_blank'),
+          ),
+          const SizedBox(width: 8),
+          _chip(
+            label: copy.isFrench ? 'Puzzle' : 'Puzzle',
+            selected: selectedFilter == 'puzzle_pieces',
+            onTap: () => onFilter('puzzle_pieces'),
           ),
         ],
       ),

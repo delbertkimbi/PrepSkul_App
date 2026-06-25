@@ -260,15 +260,15 @@ class _SkulMatePathOverviewScreenState extends State<SkulMatePathOverviewScreen>
     final active = lesson.currentStep;
 
     return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Text(
+        padding: const EdgeInsets.all(20),
+        children: [
+            Text(
           lesson.topic,
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
         const SizedBox(height: 8),
         Text(
           copy.isFrench
@@ -277,23 +277,23 @@ class _SkulMatePathOverviewScreenState extends State<SkulMatePathOverviewScreen>
           style: GoogleFonts.poppins(
             color: AppTheme.textMedium,
             fontSize: 13,
-          ),
-        ),
-        const SizedBox(height: 16),
+              ),
+            ),
+          const SizedBox(height: 16),
         ...List.generate(lesson.steps.length, (i) {
           final step = lesson.steps[i];
           final isActive = i == active && !step.isCompleted;
           final isDone = step.isCompleted;
 
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
                 onTap: isActive ? () => _onStepTap(i) : null,
                 borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
+              child: Container(
+                padding: const EdgeInsets.all(16),
                   decoration: SkulMateSurfaceStyles.neumorphicCard().copyWith(
                     border: isActive
                         ? Border.all(
@@ -302,10 +302,10 @@ class _SkulMatePathOverviewScreenState extends State<SkulMatePathOverviewScreen>
                           )
                         : null,
                   ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 16,
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
                         backgroundColor: isDone
                             ? AppTheme.primaryColor.withValues(alpha: 0.18)
                             : AppTheme.primaryColor.withValues(alpha: 0.12),
@@ -316,22 +316,22 @@ class _SkulMatePathOverviewScreenState extends State<SkulMatePathOverviewScreen>
                                 color: AppTheme.primaryColor,
                               )
                             : Text(
-                                '${i + 1}',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w700,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
+                        '${i + 1}',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryColor,
+                        ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               step.title,
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
                               ),
                             ),
                             if (step.body != null &&
@@ -356,10 +356,10 @@ class _SkulMatePathOverviewScreenState extends State<SkulMatePathOverviewScreen>
                     ],
                   ),
                 ),
+                ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
         if (lesson.isComplete) ...[
           const SizedBox(height: 8),
           Container(

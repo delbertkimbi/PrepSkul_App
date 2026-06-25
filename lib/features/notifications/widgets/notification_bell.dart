@@ -4,7 +4,7 @@ import 'dart:async';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/notifications/screens/notification_list_screen.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/widgets/icon_badge_pulse.dart';
 
 /// Notification Bell Widget
@@ -71,7 +71,7 @@ class _NotificationBellState extends State<NotificationBell> {
   @override
   Widget build(BuildContext context) {
     final icon = PhosphorIcon(
-      PhosphorIcons.bell(),
+      PhosphorIcons.bell,
       color: widget.iconColor ?? AppTheme.textDark,
       size: 22,
     );

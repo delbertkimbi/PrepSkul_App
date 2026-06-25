@@ -1018,6 +1018,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
         // Route directly using the single source of truth to avoid auth-screen
         // flash and duplicate profile lookups during OAuth return.
         if (user != null) {
+          await AuthService.syncOAuthProfile(user);
           final navService = NavigationService();
           if (navService.isReady) {
             final routeResult = await navService.determineInitialRoute();

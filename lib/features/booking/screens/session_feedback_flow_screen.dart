@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/supabase_service.dart';
@@ -444,7 +444,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  PhosphorIcons.info(),
+                  PhosphorIcons.info,
                   size: 64,
                   color: AppTheme.textLight,
                 ),
@@ -494,7 +494,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
+          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
           onPressed: _exitFeedbackFlow,
         ),
       ),
@@ -665,7 +665,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
             ),
             child: Center(
               child: isCompleted
-                  ? Icon(PhosphorIcons.check(), color: Colors.white, size: 16)
+                  ? Icon(PhosphorIcons.check, color: Colors.white, size: 16)
                   : Text(
                       '${step + 1}',
                       style: GoogleFonts.poppins(
@@ -1645,7 +1645,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         child: Row(
           children: [
             Icon(
-              isOnline ? PhosphorIcons.monitor() : PhosphorIcons.mapPin(),
+              isOnline ? PhosphorIcons.monitor : PhosphorIcons.mapPin,
               size: 18,
               color: isOnline ? AppTheme.accentBlue : AppTheme.accentGreen,
             ),

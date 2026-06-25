@@ -30,7 +30,7 @@ import 'package:prepskul/features/booking/widgets/next_session_hero_card.dart';
 import 'package:prepskul/features/booking/widgets/collapsible_session_details.dart';
 import 'package:prepskul/features/booking/models/upcoming_session_item.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 /// Session Detail Screen
 ///
@@ -582,7 +582,7 @@ class SessionDetailScreen extends StatelessWidget {
             backgroundColor: Colors.white,
             elevation: 0,
             leading: IconButton(
-              icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
+              icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
               onPressed: () => Navigator.pop(context),
             ),
             title: Text(
@@ -729,7 +729,7 @@ class SessionDetailScreen extends StatelessWidget {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () => _navigateToChat(context, session),
-                        icon: Icon(PhosphorIcons.chatCircleDots(), size: 20, color: AppTheme.primaryColor),
+                        icon: Icon(PhosphorIcons.chatCircleDots, size: 20, color: AppTheme.primaryColor),
                         label: Text(
                           'Message tutor',
                           style: GoogleFonts.poppins(
@@ -758,7 +758,7 @@ class SessionDetailScreen extends StatelessWidget {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () => _navigateToChat(context, session),
-                      icon: Icon(PhosphorIcons.chatCircleDots(), size: 20, color: AppTheme.primaryColor),
+                      icon: Icon(PhosphorIcons.chatCircleDots, size: 20, color: AppTheme.primaryColor),
                       label: Text(
                         'Message Tutor',
                         style: GoogleFonts.poppins(
@@ -792,7 +792,7 @@ class SessionDetailScreen extends StatelessWidget {
                             role: role,
                           );
                         },
-                        icon: Icon(PhosphorIcons.warning(), size: 20, color: Colors.orange),
+                        icon: Icon(PhosphorIcons.warning, size: 20, color: Colors.orange),
                         label: Text(
                           'Something wrong? Report issue',
                           style: GoogleFonts.poppins(
@@ -821,7 +821,7 @@ class SessionDetailScreen extends StatelessWidget {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () => _navigateToChat(context, session),
-                      icon: Icon(PhosphorIcons.chatCircleDots(), size: 20, color: AppTheme.primaryColor),
+                      icon: Icon(PhosphorIcons.chatCircleDots, size: 20, color: AppTheme.primaryColor),
                       label: Text(
                         'Message Tutor',
                         style: GoogleFonts.poppins(
@@ -857,7 +857,7 @@ class SessionDetailScreen extends StatelessWidget {
                               role: role,
                             );
                           },
-                          icon: Icon(PhosphorIcons.warning(), size: 20, color: Colors.orange),
+                          icon: Icon(PhosphorIcons.warning, size: 20, color: Colors.orange),
                           label: Text(
                             'Something wrong? Report issue',
                             style: GoogleFonts.poppins(
@@ -889,7 +889,7 @@ class SessionDetailScreen extends StatelessWidget {
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           onPressed: () => _showRescheduleDialog(context, sessionId, scheduledDate, scheduledTime),
-                          icon: Icon(PhosphorIcons.calendarPlus(), size: 20, color: AppTheme.primaryColor),
+                          icon: Icon(PhosphorIcons.calendarPlus, size: 20, color: AppTheme.primaryColor),
                           label: Text(
                             'Request reschedule',
                             style: GoogleFonts.poppins(
@@ -1095,7 +1095,7 @@ class _JoinVideoButtonWithCountdownState extends State<_JoinVideoButtonWithCount
             ),
           ElevatedButton.icon(
             onPressed: canJoin ? widget.onJoin : null,
-            icon: Icon(PhosphorIcons.videoCamera(), size: 20),
+            icon: Icon(PhosphorIcons.videoCamera, size: 20),
             label: Text(
               inProgress ? 'Join Session' : 'Join Video Session',
               style: GoogleFonts.poppins(
@@ -1175,7 +1175,7 @@ class _TutorCheckInLineState extends State<_TutorCheckInLine> {
       ),
       child: Row(
         children: [
-          Icon(PhosphorIcons.checkCircle(), size: 18, color: AppTheme.accentGreen),
+          Icon(PhosphorIcons.checkCircle, size: 18, color: AppTheme.accentGreen),
           const SizedBox(width: 8),
           Text(
             'Tutor checked in at $formatted',
@@ -1229,7 +1229,7 @@ class _OnsiteConfirmStartCardState extends State<_OnsiteConfirmStartCard> {
         ),
         child: Row(
           children: [
-            Icon(PhosphorIcons.checkCircle(), color: AppTheme.accentGreen, size: 24),
+            Icon(PhosphorIcons.checkCircle, color: AppTheme.accentGreen, size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -1265,7 +1265,7 @@ class _OnsiteConfirmStartCardState extends State<_OnsiteConfirmStartCard> {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _loading ? null : () => _confirmStart(),
-              icon: _loading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(PhosphorIcons.check(), size: 18),
+              icon: _loading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(PhosphorIcons.check, size: 18),
               label: Text(_loading ? 'Confirming...' : 'Confirm start', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
@@ -1343,7 +1343,7 @@ class _OnsiteConfirmEndCardState extends State<_OnsiteConfirmEndCard> {
         ),
         child: Row(
           children: [
-            Icon(PhosphorIcons.checkCircle(), color: AppTheme.accentGreen, size: 24),
+            Icon(PhosphorIcons.checkCircle, color: AppTheme.accentGreen, size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -1379,7 +1379,7 @@ class _OnsiteConfirmEndCardState extends State<_OnsiteConfirmEndCard> {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _loading ? null : () => _confirmEnd(),
-              icon: _loading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(PhosphorIcons.check(), size: 18),
+              icon: _loading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(PhosphorIcons.check, size: 18),
               label: Text(_loading ? 'Confirming...' : 'Confirm end', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,

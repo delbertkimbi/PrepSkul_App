@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
@@ -60,7 +60,7 @@ class _SkulMateProfileRevisionCardState
           Row(
             children: [
               PhosphorIcon(
-                PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                PhosphorIcons.sparkleFill,
                 color: AppTheme.primaryColor,
                 size: 18,
               ),

@@ -9,7 +9,7 @@ import '../models/skulmate_intake_models.dart';
 import 'skulmate_sheet_scaffold.dart';
 import 'skulmate_surface_styles.dart';
 
-/// Post-intake mode picker (Play · Scroll · Path · Drill · Sheet).
+/// Post-intake mode picker (Play · Drill · Scroll · Path).
 class SkulMateIntentSheet extends StatefulWidget {
   final SkulMateIntakePayload payload;
   final SkulMateCopy copy;
@@ -41,12 +41,10 @@ class SkulMateIntentSheet extends StatefulWidget {
     SkulMateIntentMode.scroll,
     SkulMateIntentMode.path,
     SkulMateIntentMode.drill,
-    SkulMateIntentMode.sheet,
   ];
 
-  static bool isComingSoonMode(SkulMateIntentMode mode) {
-    return mode == SkulMateIntentMode.sheet;
-  }
+  /// Sheet and other unreleased modes stay off the picker until shipped.
+  static bool isComingSoonMode(SkulMateIntentMode mode) => false;
 
   @override
   State<SkulMateIntentSheet> createState() => _SkulMateIntentSheetState();

@@ -162,15 +162,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
     if (!_hasLoadedOnce) return;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final stillOnRequests =
           MainNavigationScope.maybeOf(context)?.selectedIndex ==
               StudentTabIndex.requests;
       if (stillOnRequests && !_isNavigating) {
-        _loadRequests();
-      }
-    });
+          _loadRequests();
+        }
+      });
   }
 
   @override
@@ -397,14 +397,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       List<TrialSession> trials = [];
       try {
         trials = await TrialSessionService.getStudentTrialSessions();
-        LogService.success('Loaded ${trials.length} trial sessions');
-
-        if (trials.isNotEmpty && userId != null) {
-          final trialsJson = trials.map((t) => t.toJson()).toList();
-          await OfflineCacheService.cacheTrialSessions(userId, trialsJson);
-        }
-
-        for (var trial in trials) {
+      LogService.success('Loaded ${trials.length} trial sessions');
+      
+      if (trials.isNotEmpty && userId != null) {
+        final trialsJson = trials.map((t) => t.toJson()).toList();
+        await OfflineCacheService.cacheTrialSessions(userId, trialsJson);
+      }
+      
+      for (var trial in trials) {
           LogService.debug(
             'Trial ${trial.id}: status=${trial.status}, paymentStatus=${trial.paymentStatus}',
           );
@@ -957,10 +957,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           : LayoutBuilder(
               builder: (context, constraints) {
                 return RefreshIndicator(
-                  onRefresh: () async {
-                    await _loadRequests();
-                    if (mounted) safeSetState(() {});
-                  },
+              onRefresh: () async {
+                await _loadRequests();
+                if (mounted) safeSetState(() {});
+              },
                   child: _wrapTabScrollable(
                     _buildSelectedTabContent(context, _selectedFilter),
                     constraints.maxHeight,
@@ -1041,52 +1041,52 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     if (filteredRequests.isEmpty) {
       return _scrollableMinHeight(
         _searchQuery.isNotEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No results found',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        color: Colors.grey[600],
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No results found',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Try a different search term',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Try a different search term',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  ],
-                ),
-              )
+                    )
             : _buildRequestTutorCard(
                 context,
-                title: t.myRequestsEmptyTitle,
-                subtitle:
-                    'Tell us what you\'re looking for and we\'ll find the perfect match for you',
-                showButton: true,
+        title: t.myRequestsEmptyTitle,
+        subtitle:
+            'Tell us what you\'re looking for and we\'ll find the perfect match for you',
+        showButton: true,
               ),
       );
     }
 
     return ListView.builder(
-      controller: _scrollController,
+                  controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      itemCount: filteredRequests.length,
+                  itemCount: filteredRequests.length,
       itemBuilder: (ctx, index) {
-        final item = filteredRequests[index];
-        final isHighlighted = _highlightRequestId != null &&
+                    final item = filteredRequests[index];
+        final isHighlighted = _highlightRequestId != null && 
             ((item.type == 'booking' && item.booking?.id == _highlightRequestId) ||
-                (item.type == 'trial' && item.trial?.id == _highlightRequestId) ||
-                (item.type == 'custom' && item.custom?.id == _highlightRequestId));
-
+             (item.type == 'trial' && item.trial?.id == _highlightRequestId) ||
+             (item.type == 'custom' && item.custom?.id == _highlightRequestId));
+        
         if (item.type == 'booking') {
           return _buildBookingRequestCard(context, item.booking!,
               isHighlighted: isHighlighted);
@@ -1116,9 +1116,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       return _scrollableMinHeight(
         _buildEmptyState(
           context,
-          icon: Icons.pending_outlined,
-          title: t.myRequestsNoPendingTitle,
-          subtitle: t.myRequestsNoPendingSubtitle,
+        icon: Icons.pending_outlined,
+        title: t.myRequestsNoPendingTitle,
+        subtitle: t.myRequestsNoPendingSubtitle,
         ),
       );
     }
@@ -1150,10 +1150,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       return _scrollableMinHeight(
         _buildRequestTutorCard(
           context,
-          title: t.myRequestsEmptyTitle,
-          subtitle:
-              'Tell us what you\'re looking for and we\'ll find the perfect match for you',
-          showButton: true,
+        title: t.myRequestsEmptyTitle,
+        subtitle:
+            'Tell us what you\'re looking for and we\'ll find the perfect match for you',
+        showButton: true,
         ),
       );
     }
@@ -1180,10 +1180,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       return _scrollableMinHeight(
         _buildEmptyState(
           context,
-          icon: Icons.quiz_outlined,
-          title: t.myRequestsNoTrialsTitle,
-          subtitle:
-              'Request a trial session from a tutor\'s profile to get started',
+        icon: Icons.quiz_outlined,
+        title: t.myRequestsNoTrialsTitle,
+        subtitle:
+            'Request a trial session from a tutor\'s profile to get started',
         ),
       );
     }
@@ -1210,9 +1210,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       return _scrollableMinHeight(
         _buildEmptyState(
           context,
-          icon: Icons.book_outlined,
-          title: t.myRequestsNoBookingsTitle,
-          subtitle: t.myRequestsNoBookingsSubtitle,
+        icon: Icons.book_outlined,
+        title: t.myRequestsNoBookingsTitle,
+        subtitle: t.myRequestsNoBookingsSubtitle,
         ),
       );
     }
@@ -1789,7 +1789,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final t = AppLocalizations.of(context)!;
     final statusColor = _getStatusColor(request.status);
     final border = isHighlighted
-        ? Border.all(color: AppTheme.primaryColor, width: 1.5)
+            ? Border.all(color: AppTheme.primaryColor, width: 1.5)
         : null;
 
     return _buildNeomorphicCard(
@@ -2234,13 +2234,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
-                    children: [
+                children: [
                       Expanded(
                         child: _buildModernInfoItem(
-                          Icons.calendar_today_outlined,
-                          session.formattedDate,
+                        Icons.calendar_today_outlined,
+                    session.formattedDate,
                         ),
-                      ),
+                  ),
                       Container(
                         width: 1,
                         height: 20,
@@ -2248,8 +2248,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       ),
                       Expanded(
                         child: _buildCompactInfoItem(
-                          Icons.access_time_outlined,
-                          session.formattedTime,
+                        Icons.access_time_outlined,
+                    session.formattedTime,
                         ),
                       ),
                       Expanded(
@@ -2257,7 +2257,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           Icons.access_time_outlined,
                           session.formattedTime,
                         ),
-                      ),
+                  ),
                       Container(
                         width: 1,
                         height: 20,
@@ -2265,13 +2265,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       ),
                       Expanded(
                         child: _buildModernInfoItem(
-                          session.location == 'online'
-                              ? Icons.video_call_outlined
-                              : Icons.location_on_outlined,
-                          session.location == 'online' ? 'Online' : 'On-site',
+                        session.location == 'online' 
+                            ? Icons.video_call_outlined 
+                            : Icons.location_on_outlined,
+                    session.location == 'online' ? 'Online' : 'On-site',
                         ),
-                      ),
-                    ],
+                  ),
+                ],
                   ),
                 ),
 
@@ -4620,10 +4620,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     if (items.isEmpty) {
       return _scrollableMinHeight(
         _buildEmptyState(
-          context,
-          icon: Icons.history,
-          title: 'No past requests',
-          subtitle: 'You have no requests from the last 30 days.',
+        context,
+        icon: Icons.history,
+        title: 'No past requests',
+        subtitle: 'You have no requests from the last 30 days.',
         ),
       );
     }

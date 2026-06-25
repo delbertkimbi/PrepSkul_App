@@ -68,9 +68,9 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
           await SkulmateTopupService.createTopupPaymentRequest(
         packageName: '${plan.title} · ${plan.credits} credits',
         planId: plan.id,
-        credits: plan.credits,
-        amountXaf: plan.amountXaf,
-      );
+            credits: plan.credits,
+            amountXaf: plan.amountXaf,
+          );
 
       if (!mounted) return;
       final paid = await Navigator.push<bool>(
@@ -115,27 +115,27 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SkulMateSurfaceStyles.lightStatusBarOverlay,
       child: Scaffold(
-        backgroundColor: AppTheme.softBackground,
-        appBar: AppBar(
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
+      backgroundColor: AppTheme.softBackground,
+      appBar: AppBar(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
           backgroundColor: AppTheme.softBackground,
           systemOverlayStyle: SkulMateSurfaceStyles.lightStatusBarOverlay,
           iconTheme: const IconThemeData(color: AppTheme.textDark),
-          title: Text(
+        title: Text(
             copy.revisionPlansTitle,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textDark,
           ),
         ),
-        body: ListView(
+      ),
+      body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
+        children: [
             if (_loadingStatus || snapshot == null)
               const _StatusCardSkeleton()
             else
@@ -153,12 +153,12 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
               snapshot != null && snapshot.hasCredits
                   ? copy.plansTopUpHeading
                   : copy.plansChooseHeading,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
-              ),
-            ),
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
             const SizedBox(height: 10),
             for (final plan in _plans) ...[
               SkulMatePlanCard(
@@ -243,10 +243,10 @@ class _StatusCard extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: _tierBadgeColor(tier),
-                ),
+                        ),
+                      ),
               ),
-            ),
-          ],
+            ],
         ],
       ),
     );

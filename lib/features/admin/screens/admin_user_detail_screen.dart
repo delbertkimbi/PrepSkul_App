@@ -5,7 +5,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Admin User Detail Screen
@@ -96,7 +96,7 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: PhosphorIcon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
+          icon: PhosphorIcon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -166,7 +166,7 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
                               onPressed: () {
                                 _openWebAdmin();
                               },
-                              icon: PhosphorIcon(PhosphorIcons.arrowSquareOut(), color: Colors.white),
+                              icon: PhosphorIcon(PhosphorIcons.arrowSquareOut, color: Colors.white),
                               label: Text(
                                 'View in Admin Dashboard',
                                 style: GoogleFonts.poppins(

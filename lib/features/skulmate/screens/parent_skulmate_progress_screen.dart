@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/parent_learners_service.dart';
@@ -225,25 +225,25 @@ class _ParentSkulMateProgressScreenState
       childAspectRatio: 1.45,
       children: [
         _statCard(
-          icon: PhosphorIcons.fire(),
+          icon: PhosphorIcons.fire,
           label: _isFrench ? 'Série' : 'Streak',
           value: '${snapshot.streakDays}',
           subtitle: _isFrench ? 'jours' : 'days',
         ),
         _statCard(
-          icon: PhosphorIcons.clock(),
+          icon: PhosphorIcons.clock,
           label: _isFrench ? '7 derniers jours' : 'Last 7 days',
           value: '${snapshot.revisionMinutesLast7Days}',
           subtitle: _isFrench ? 'minutes' : 'minutes',
         ),
         _statCard(
-          icon: PhosphorIcons.gameController(),
+          icon: PhosphorIcons.gameController,
           label: _isFrench ? 'Sessions' : 'Sessions',
           value: '${snapshot.sessionsLast7Days}',
           subtitle: _isFrench ? 'cette semaine' : 'this week',
         ),
         _statCard(
-          icon: PhosphorIcons.target(),
+          icon: PhosphorIcons.target,
           label: _isFrench ? 'Précision' : 'Accuracy',
           value: snapshot.accuracyLast7Days != null
               ? '${snapshot.accuracyLast7Days}%'
@@ -307,7 +307,7 @@ class _ParentSkulMateProgressScreenState
         children: [
           Row(
             children: [
-              Icon(PhosphorIcons.chartLineUp(), color: color, size: 22),
+              Icon(PhosphorIcons.chartLineUp, color: color, size: 22),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -494,7 +494,7 @@ class _ParentSkulMateProgressScreenState
         children: [
           Row(
             children: [
-              Icon(PhosphorIcons.chalkboardTeacher(), size: 18, color: AppTheme.primaryColor),
+              Icon(PhosphorIcons.chalkboardTeacher, size: 18, color: AppTheme.primaryColor),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -537,7 +537,7 @@ class _ParentSkulMateProgressScreenState
       ),
       child: Row(
         children: [
-          Icon(PhosphorIcons.calendar(), size: 18, color: AppTheme.primaryColor),
+          Icon(PhosphorIcons.calendar, size: 18, color: AppTheme.primaryColor),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -589,7 +589,7 @@ class _ParentSkulMateProgressScreenState
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () => Navigator.pushNamed(context, '/my-sessions'),
-              icon: Icon(PhosphorIcons.calendarCheck()),
+              icon: Icon(PhosphorIcons.calendarCheck),
               label: Text(
                 _isFrench ? 'Voir les séances' : 'View sessions',
                 style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
@@ -621,7 +621,7 @@ class _ParentSkulMateProgressScreenState
             MaterialPageRoute(builder: (_) => const FindTutorsScreen()),
           );
         },
-        icon: Icon(PhosphorIcons.chalkboardTeacher()),
+        icon: Icon(PhosphorIcons.chalkboardTeacher),
         label: Text(
           _isFrench ? 'Trouver un tuteur' : 'Find a tutor',
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
@@ -647,7 +647,7 @@ class _ParentSkulMateProgressScreenState
       ),
       child: Column(
         children: [
-          Icon(PhosphorIcons.gameController(), size: 40, color: AppTheme.primaryColor),
+          Icon(PhosphorIcons.gameController, size: 40, color: AppTheme.primaryColor),
           const SizedBox(height: 10),
           Text(
             _isFrench

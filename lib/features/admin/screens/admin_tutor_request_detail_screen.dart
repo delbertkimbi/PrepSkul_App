@@ -4,7 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Admin Tutor Request Detail Screen
@@ -79,7 +79,7 @@ class _AdminTutorRequestDetailScreenState extends State<AdminTutorRequestDetailS
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: PhosphorIcon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
+          icon: PhosphorIcon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -152,7 +152,7 @@ class _AdminTutorRequestDetailScreenState extends State<AdminTutorRequestDetailS
                               onPressed: () {
                                 _openWebAdmin();
                               },
-                              icon: PhosphorIcon(PhosphorIcons.arrowSquareOut(), color: Colors.white),
+                              icon: PhosphorIcon(PhosphorIcons.arrowSquareOut, color: Colors.white),
                               label: Text(
                                 'Review in Admin Dashboard',
                                 style: GoogleFonts.poppins(
@@ -202,7 +202,7 @@ class _AdminTutorRequestDetailScreenState extends State<AdminTutorRequestDetailS
               borderRadius: BorderRadius.circular(10),
             ),
             child: PhosphorIcon(
-              PhosphorIcons.graduationCap(),
+              PhosphorIcons.graduationCap,
               color: Colors.white,
               size: ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 28, desktop: 32),
             ),

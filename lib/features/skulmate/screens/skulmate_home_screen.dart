@@ -7,11 +7,12 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 
 import '../l10n/skulmate_copy.dart';
+import '../models/skulmate_intake_models.dart';
 import '../models/game_model.dart';
 import '../services/game_sound_service.dart';
+import '../services/skulmate_intake_coordinator.dart';
 import '../services/skulmate_service.dart';
 import '../services/skulmate_streak_reminder_service.dart';
-import '../widgets/skulmate_continue_row.dart';
 import '../widgets/skulmate_hero_mascot.dart';
 import '../widgets/skulmate_home_games_row.dart';
 import '../widgets/skulmate_home_top_bar.dart';
@@ -92,10 +93,15 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   }
 
   Future<void> _submitTopic() async {
-    await submitTypedTopic(
+    final trimmed = _topicController.text.trim();
+    if (trimmed.isEmpty) return;
+    await SkulMateIntakeCoordinator.start(
       context,
-      _topicController.text,
-      childId: widget.childId,
+      SkulMateIntakePayload(
+        source: SkulMateIntakeSource.typedTopic,
+        topicHint: trimmed,
+        childId: widget.childId,
+      ),
     );
     _topicController.clear();
     await _loadGames();
@@ -165,9 +171,6 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                           SkulMateNextStopCard(
                             games: _games,
                             childId: widget.childId,
-                          ),
-                          SkulMateContinueRow(
-                            games: _games,
                           ),
                           SkulMateRerouteNudge(
                             games: _games,

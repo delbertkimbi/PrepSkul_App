@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 import '../../skulmate/models/skulmate_revision_plan.dart';
 import '../../skulmate/services/skulmate_pricing_service.dart';
@@ -98,7 +98,7 @@ class _AdminSkulmatePricingScreenState extends State<AdminSkulmatePricingScreen>
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: PhosphorIcon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
+          icon: PhosphorIcon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(

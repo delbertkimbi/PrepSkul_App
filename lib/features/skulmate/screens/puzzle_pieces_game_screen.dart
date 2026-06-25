@@ -19,6 +19,32 @@ import '../widgets/game_standard_widgets.dart';
 import '../widgets/skulmate_mascot_media_widget.dart';
 import 'game_results_screen.dart';
 
+Offset _parsePuzzlePosition(Map<String, dynamic> pieceData) {
+  const boardW = 280.0;
+  const boardH = 380.0;
+
+  final pos = pieceData['correctPosition'];
+  if (pos is Map) {
+    final x = (pos['x'] as num?)?.toDouble();
+    final y = (pos['y'] as num?)?.toDouble();
+    if (x != null && y != null) {
+      if (x <= 1.0 && y <= 1.0) {
+        return Offset(x * boardW, y * boardH);
+      }
+      return Offset(x, y);
+    }
+  }
+  final legacyX = (pieceData['correctX'] as num?)?.toDouble();
+  final legacyY = (pieceData['correctY'] as num?)?.toDouble();
+  if (legacyX != null && legacyY != null) {
+    if (legacyX <= 1.0 && legacyY <= 1.0) {
+      return Offset(legacyX * boardW, legacyY * boardH);
+    }
+    return Offset(legacyX, legacyY);
+  }
+  return const Offset(140, 190);
+}
+
 /// Puzzle Pieces game screen
 class PuzzlePiecesGameScreen extends StatefulWidget {
   final GameModel game;
@@ -111,16 +137,14 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
       }
       if (item.puzzlePieces != null) {
         for (final pieceData in item.puzzlePieces!) {
+          final position = _parsePuzzlePosition(pieceData);
           _pieces.add(
             PuzzlePiece(
               id:
                   pieceData['id']?.toString() ??
                   Random().nextInt(1000).toString(),
               text: pieceData['text'] as String? ?? 'Piece',
-              correctPosition: Offset(
-                (pieceData['correctPosition']?['x'] as num?)?.toDouble() ?? 0.5,
-                (pieceData['correctPosition']?['y'] as num?)?.toDouble() ?? 0.5,
-              ),
+              correctPosition: position,
               rotation: (pieceData['rotation'] as num?)?.toDouble() ?? 0.0,
               currentPosition: Offset(
                 Random().nextDouble() * 200 + 50,

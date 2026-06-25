@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/premium_promo_card_shell.dart';
 import 'package:prepskul/features/dashboard/models/wallet_snapshot.dart';
@@ -57,13 +57,13 @@ class WalletHomePromoCard extends StatelessWidget {
               _balanceRow(
                 label: 'Session credits',
                 value: wallet.sessionCredits,
-                icon: PhosphorIcons.calendarCheck(PhosphorIconsStyle.fill),
+                icon: PhosphorIcons.calendarCheckFill,
               ),
               const SizedBox(height: 10),
               _balanceRow(
                 label: 'SkulMate credits',
                 value: wallet.skulMateCredits,
-                icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                icon: PhosphorIcons.sparkleFill,
               ),
               const Spacer(),
               Row(

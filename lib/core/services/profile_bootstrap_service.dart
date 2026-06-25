@@ -23,6 +23,7 @@ class ProfileBootstrapService {
     String? email,
     String? phoneNumber,
     String? userType,
+    String? avatarUrl,
     bool surveyCompleted = false,
   }) async {
     final session = SupabaseService.client.auth.currentSession;
@@ -46,6 +47,7 @@ class ProfileBootstrapService {
         if (email != null && email.isNotEmpty) 'email': email,
         'phoneNumber': phoneNumber,
         if (userType != null && userType.isNotEmpty) 'userType': userType,
+        if (avatarUrl != null && avatarUrl.isNotEmpty) 'avatarUrl': avatarUrl,
         'surveyCompleted': surveyCompleted,
       }),
     );
@@ -65,6 +67,7 @@ class ProfileBootstrapService {
     String? email,
     String? phoneNumber,
     String? userType,
+    String? avatarUrl,
     bool surveyCompleted = false,
   }) async {
     final payload = <String, dynamic>{
@@ -73,6 +76,7 @@ class ProfileBootstrapService {
       'full_name': fullName,
       'phone_number': phoneNumber,
       'user_type': userType,
+      if (avatarUrl != null && avatarUrl.isNotEmpty) 'avatar_url': avatarUrl,
       'survey_completed': surveyCompleted,
       'is_admin': false,
       'updated_at': DateTime.now().toIso8601String(),
@@ -96,6 +100,7 @@ class ProfileBootstrapService {
         email: email,
         phoneNumber: phoneNumber,
         userType: userType,
+        avatarUrl: avatarUrl,
         surveyCompleted: surveyCompleted,
       );
     }

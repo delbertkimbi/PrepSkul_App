@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:prepskul/core/navigation/main_navigation_scope.dart';
-import 'package:prepskul/core/navigation/student_tab_index.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
@@ -27,19 +25,6 @@ class SkulMateHomeTopBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Row(
         children: [
-          _PillButton(
-            icon: Icons.arrow_back_ios_new_rounded,
-            label: copy.isFrench ? 'Accueil' : 'Home',
-            onTap: () {
-              final nav = MainNavigationScope.maybeOf(context);
-              if (nav != null) {
-                nav.switchTab(StudentTabIndex.home);
-              } else if (context.mounted) {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              }
-            },
-          ),
-          const SizedBox(width: 8),
           _PillButton(
             icon: Icons.history_rounded,
             label: copy.history,

@@ -18,7 +18,7 @@ import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 /// Payment History Screen
 ///
@@ -441,7 +441,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft(), color: Colors.white),
+          icon: Icon(PhosphorIcons.arrowLeft, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -474,7 +474,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
               color: Colors.orange[50],
               child: Row(
                 children: [
-                  Icon(PhosphorIcons.info(), color: Colors.orange[800], size: 18),
+                  Icon(PhosphorIcons.info, color: Colors.orange[800], size: 18),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -739,7 +739,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(PhosphorIcons.calendar(), size: 16, color: Colors.grey[600]),
+                  Icon(PhosphorIcons.calendar, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 8),
                   Text(
                     'Due: ${_formatDate(dueDate)}',
@@ -1070,24 +1070,24 @@ Widget _buildStatusBadge(BuildContext context, String status) {
       case 'pending':
         color = Colors.orange;
         label = t.paymentHistoryStatusPending;
-        icon = PhosphorIcons.clock();
+        icon = PhosphorIcons.clock;
         break;
       case 'failed':
         color = Colors.red;
         label = t.paymentHistoryStatusFailed;
-        icon = PhosphorIcons.warning();
+        icon = PhosphorIcons.warning;
         break;
       case 'unpaid':
       case 'expired':
         color = Colors.red;
         label = 'Expired';
-        icon = PhosphorIcons.xCircle();
+        icon = PhosphorIcons.xCircle;
         break;
 
       default:
         color = Colors.grey;
         label = status.toUpperCase();
-        icon = PhosphorIcons.info();
+        icon = PhosphorIcons.info;
     }
 
     return Container(
@@ -1120,7 +1120,7 @@ Widget _buildStatusBadge(BuildContext context, String status) {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(PhosphorIcons.creditCard(), size: 64, color: Colors.grey[400]),
+          Icon(PhosphorIcons.creditCard, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
             message,

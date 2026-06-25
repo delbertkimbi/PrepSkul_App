@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 /// Expandable session details section (Preply progressive disclosure).
@@ -46,7 +46,7 @@ class _CollapsibleSessionDetailsState extends State<CollapsibleSessionDetails> {
                   ),
                   const Spacer(),
                   Icon(
-                    _expanded ? PhosphorIcons.caretUp() : PhosphorIcons.caretDown(),
+                    _expanded ? PhosphorIcons.caretUp : PhosphorIcons.caretDown,
                     size: 18,
                     color: AppTheme.textMedium,
                   ),

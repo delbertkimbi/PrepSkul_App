@@ -138,9 +138,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
         icon: const Icon(Icons.person_add_rounded),
         tooltip: copy.addFriendTitle,
         color: AppTheme.primaryColor,
-        onPressed: () async {
-          final result = await Navigator.push<bool>(
-            context,
+            onPressed: () async {
+              final result = await Navigator.push<bool>(
+                context,
             MaterialPageRoute(builder: (_) => const AddFriendScreen()),
           );
           if (result == true) _loadFriends();

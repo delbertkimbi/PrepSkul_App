@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 
@@ -141,7 +141,7 @@ class _SkulMateNextStopCardState extends State<SkulMateNextStopCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
-              PhosphorIcons.mapPin(),
+              PhosphorIcons.mapPin,
               color: AppTheme.primaryColor,
               size: 22,
             ),

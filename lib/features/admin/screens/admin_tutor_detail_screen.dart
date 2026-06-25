@@ -5,7 +5,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Admin Tutor Detail Screen
@@ -71,7 +71,7 @@ class _AdminTutorDetailScreenState extends State<AdminTutorDetailScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: PhosphorIcon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
+          icon: PhosphorIcon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -156,7 +156,7 @@ class _AdminTutorDetailScreenState extends State<AdminTutorDetailScreen> {
                                   // Navigate to web admin dashboard for approval
                                   _openWebAdmin();
                                 },
-                                icon: PhosphorIcon(PhosphorIcons.checkCircle(), color: Colors.white),
+                                icon: PhosphorIcon(PhosphorIcons.checkCircle, color: Colors.white),
                                 label: Text(
                                   'Review in Dashboard',
                                   style: GoogleFonts.poppins(

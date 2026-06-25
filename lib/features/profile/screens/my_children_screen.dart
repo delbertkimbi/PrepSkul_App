@@ -4,7 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/parent_learners_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'add_child_profile_screen.dart';
 
 import '../../skulmate/screens/parent_skulmate_progress_screen.dart';
@@ -143,7 +143,7 @@ class _MyChildrenScreenState extends State<MyChildrenScreen> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(PhosphorIcons.users(), size: 56, color: Colors.grey[400]),
+                              Icon(PhosphorIcons.users, size: 56, color: Colors.grey[400]),
                               const SizedBox(height: 12),
                               Text(
                                 'No children added yet',
@@ -177,7 +177,7 @@ class _MyChildrenScreenState extends State<MyChildrenScreen> {
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                   leading: CircleAvatar(
                                     backgroundColor: AppTheme.primaryColor.withOpacity(0.2),
-                                    child: Icon(PhosphorIcons.user(), color: AppTheme.primaryColor),
+                                    child: Icon(PhosphorIcons.user, color: AppTheme.primaryColor),
                                   ),
                                   title: Text(name, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                                   subtitle: level.isNotEmpty ? Text(level, style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600])) : null,
@@ -185,7 +185,7 @@ class _MyChildrenScreenState extends State<MyChildrenScreen> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
-                                        icon: Icon(PhosphorIcons.chartLineUp(), size: 20, color: AppTheme.primaryColor),
+                                        icon: Icon(PhosphorIcons.chartLineUp, size: 20, color: AppTheme.primaryColor),
                                         tooltip: 'SkulMate progress',
                                         onPressed: () {
                                           Navigator.push(
@@ -199,11 +199,11 @@ class _MyChildrenScreenState extends State<MyChildrenScreen> {
                                         },
                                       ),
                                       IconButton(
-                                        icon: Icon(PhosphorIcons.pencil(), size: 20, color: AppTheme.primaryColor),
+                                        icon: Icon(PhosphorIcons.pencil, size: 20, color: AppTheme.primaryColor),
                                         onPressed: () => _addOrEditChild(existing: learner),
                                       ),
                                       IconButton(
-                                        icon: Icon(PhosphorIcons.trash(), size: 20, color: Colors.red[400]),
+                                        icon: Icon(PhosphorIcons.trash, size: 20, color: Colors.red[400]),
                                         onPressed: () => _deleteChild(learner),
                                       ),
                                     ],

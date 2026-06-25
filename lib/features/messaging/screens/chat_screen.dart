@@ -6,7 +6,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'dart:async';
 import '../services/chat_service.dart';
 import '../services/conversation_lifecycle_service.dart';
@@ -987,7 +987,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
+          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
@@ -1086,7 +1086,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ),
         actions: [
           PopupMenuButton<String>(
-            icon: Icon(PhosphorIcons.dotsThreeVertical(), color: AppTheme.textDark),
+            icon: Icon(PhosphorIcons.dotsThreeVertical, color: AppTheme.textDark),
             onSelected: (value) {
               if (value == 'archive') {
                 _handleArchiveAction();
@@ -1229,7 +1229,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(PhosphorIcons.x(), size: 18),
+                    icon: Icon(PhosphorIcons.x, size: 18),
                     color: Colors.red[700],
                     onPressed: () {
                       setState(() {
@@ -1288,7 +1288,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(PhosphorIcons.x(), size: 18, color: AppTheme.textLight),
+                    icon: Icon(PhosphorIcons.x, size: 18, color: AppTheme.textLight),
                     onPressed: () {
                       safeSetState(() {
                         _replyingToMessage = null;
@@ -1374,7 +1374,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                     child: IconButton(
                       icon: PhosphorIcon(
-                        PhosphorIcons.paperPlaneTilt(),
+                        PhosphorIcons.paperPlaneTilt,
                         color: _hasText ? Colors.white : Colors.white.withOpacity(0.5),
                         size: 18,
                       ),
@@ -1595,14 +1595,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       case MessageStatus.sending:
         // Like WhatsApp: show checkmark immediately, no progress indicator
         return PhosphorIcon(
-          PhosphorIcons.check(),
+          PhosphorIcons.check,
           size: 12,
           color: Colors.white.withOpacity(0.7),
         );
       
       case MessageStatus.sent:
         return PhosphorIcon(
-          PhosphorIcons.check(),
+          PhosphorIcons.check,
           size: 12,
           color: Colors.white.withOpacity(0.7),
         );
@@ -1615,13 +1615,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             children: [
               PhosphorIcon(
-                PhosphorIcons.check(),
+                PhosphorIcons.check,
                 size: 14,
                 color: Colors.white.withOpacity(0.7),
               ),
               const SizedBox(width: 2),
               PhosphorIcon(
-                PhosphorIcons.check(),
+                PhosphorIcons.check,
                 size: 14,
                 color: Colors.white.withOpacity(0.7),
               ),
@@ -1640,7 +1640,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               Positioned(
                 left: 0,
                 child: PhosphorIcon(
-                  PhosphorIcons.check(),
+                  PhosphorIcons.check,
                   size: 12,
                   color: Colors.blue[400]!,
                 ),
@@ -1648,7 +1648,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               Positioned(
                 left: 6, // Overlap slightly for WhatsApp-like appearance
                 child: PhosphorIcon(
-                  PhosphorIcons.check(),
+                  PhosphorIcons.check,
                   size: 12,
                   color: Colors.blue[400]!,
                 ),

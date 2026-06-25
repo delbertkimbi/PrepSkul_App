@@ -7,7 +7,7 @@ import 'package:prepskul/core/services/notification_analytics_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 /// Notification Item Widget
 /// 
@@ -84,28 +84,28 @@ class _NotificationItemState extends State<NotificationItem> {
       case 'booking_request':
       case 'booking_accepted':
       case 'booking_rejected':
-        return PhosphorIcons.bookOpen();
+        return PhosphorIcons.bookOpen;
       case 'trial_request':
       case 'trial_accepted':
       case 'trial_rejected':
-        return PhosphorIcons.graduationCap();
+        return PhosphorIcons.graduationCap;
       case 'payment_received':
       case 'payment_successful':
       case 'payment_failed':
-        return PhosphorIcons.creditCard();
+        return PhosphorIcons.creditCard;
       case 'session_completed':
       case 'session_reminder':
       case 'session_starting_soon':
-        return PhosphorIcons.clock();
+        return PhosphorIcons.clock;
       case 'profile_approved':
-        return PhosphorIcons.checkCircle();
+        return PhosphorIcons.checkCircle;
       case 'profile_rejected':
       case 'profile_improvement':
-        return PhosphorIcons.pencil();
+        return PhosphorIcons.pencil;
       case 'review_received':
-        return PhosphorIcons.star();
+        return PhosphorIcons.star;
       default:
-        return PhosphorIcons.bell();
+        return PhosphorIcons.bell;
     }
   }
 
@@ -363,7 +363,7 @@ class _NotificationItemState extends State<NotificationItem> {
           child: Padding(
             padding: const EdgeInsets.only(right: 20),
             child: Icon(
-              PhosphorIcons.trash(),
+              PhosphorIcons.trash,
               color: Colors.white,
             ),
           ),

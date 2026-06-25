@@ -2,7 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/booking/models/upcoming_session_item.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
@@ -198,7 +198,7 @@ class NextSessionHeroCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isOnsite ? PhosphorIcons.mapPin() : PhosphorIcons.videoCamera(),
+                      isOnsite ? PhosphorIcons.mapPin : PhosphorIcons.videoCamera,
                       size: 18,
                     ),
                     const SizedBox(width: 8),

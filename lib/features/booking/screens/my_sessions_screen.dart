@@ -50,7 +50,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'session_detail_screen.dart';
@@ -956,7 +956,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             builder: (context) => AlertDialog(
               title: Row(
                 children: [
-                  Icon(PhosphorIcons.calendar(), color: AppTheme.primaryColor),
+                  Icon(PhosphorIcons.calendar, color: AppTheme.primaryColor),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -1304,7 +1304,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final isOnline = location == 'online';
     final color = isOnline ? AppTheme.primaryColor : AppTheme.accentGreen;
     final label = isOnline ? 'ONLINE' : 'ON-SITE';
-    final icon = isOnline ? PhosphorIcons.videoCamera() : PhosphorIcons.mapPin();
+    final icon = isOnline ? PhosphorIcons.videoCamera : PhosphorIcons.mapPin;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -1397,7 +1397,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    PhosphorIcons.star(),
+                    PhosphorIcons.star,
                     size: 20,
                     color: AppTheme.primaryColor,
                   ),
@@ -1460,7 +1460,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    PhosphorIcons.caretRight(),
+                    PhosphorIcons.caretRight,
                     size: 14,
                     color: AppTheme.primaryColor,
                   ),
@@ -1724,7 +1724,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         Row(
                           children: [
                             Icon(
-                              PhosphorIcons.bookOpen(),
+                              PhosphorIcons.bookOpen,
                               size: 12,
                               color: Colors.grey[600],
                             ),
@@ -1765,7 +1765,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(
-                          icon: Icon(PhosphorIcons.chatCircleDots(), size: 20),
+                          icon: Icon(PhosphorIcons.chatCircleDots, size: 20),
                           color: AppTheme.primaryColor,
                           tooltip: 'Message Tutor',
                           onPressed: () => _navigateToChatFromSession(context, session),
@@ -1794,7 +1794,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       child: Row(
                         children: [
                           Icon(
-                            PhosphorIcons.playCircle(),
+                            PhosphorIcons.playCircle,
                             color: AppTheme.accentGreen,
                             size: 18,
                           ),
@@ -1834,7 +1834,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       children: [
                         Row(
                           children: [
-                            Icon(PhosphorIcons.calendar(), size: 14, color: Colors.grey[600]),
+                            Icon(PhosphorIcons.calendar, size: 14, color: Colors.grey[600]),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
@@ -1851,7 +1851,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         const SizedBox(height: 5),
                         Row(
                           children: [
-                            Icon(PhosphorIcons.clock(), size: 14, color: Colors.grey[600]),
+                            Icon(PhosphorIcons.clock, size: 14, color: Colors.grey[600]),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
@@ -1886,7 +1886,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               Row(
                 children: [
                   Icon(
-                    location == 'online' ? PhosphorIcons.videoCamera() : PhosphorIcons.mapPin(),
+                    location == 'online' ? PhosphorIcons.videoCamera : PhosphorIcons.mapPin,
                     size: 14,
                     color: Colors.grey[600],
                   ),
@@ -1907,7 +1907,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(PhosphorIcons.mapPinSimple(), size: 13, color: Colors.grey[500]),
+                    Icon(PhosphorIcons.mapPinSimple, size: 13, color: Colors.grey[500]),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -2028,7 +2028,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           child: ElevatedButton.icon(
                             onPressed: () => _joinAgoraSession(sessionId),
                             icon: Icon(
-                              PhosphorIcons.videoCamera(),
+                              PhosphorIcons.videoCamera,
                               size: 18,
                             ),
                             label: Text(
@@ -2074,7 +2074,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   child: Row(
                     children: [
                       Icon(
-                        hasFeedback ? PhosphorIcons.checkCircle() : PhosphorIcons.chatCircle(),
+                        hasFeedback ? PhosphorIcons.checkCircle : PhosphorIcons.chatCircle,
                         color: hasFeedback ? Colors.green[700] : AppTheme.primaryColor,
                         size: 20,
                       ),
@@ -2154,7 +2154,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                 message: 'Starting a challenge requires an internet connection.',
                               )
                           : () => _openSkulMateChallenge(session),
-                      icon: Icon(PhosphorIcons.gameController(), size: 18),
+                      icon: Icon(PhosphorIcons.gameController, size: 18),
                       label: const Text('Start Challenge'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
@@ -2429,7 +2429,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(PhosphorIcons.info(), color: AppTheme.primaryColor, size: 24),
+            Icon(PhosphorIcons.info, color: AppTheme.primaryColor, size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -2539,7 +2539,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                         _joinAgoraSession(sessionId);
                                       }
                                     : null,
-                                icon: Icon(PhosphorIcons.videoCamera(), size: 18),
+                                icon: Icon(PhosphorIcons.videoCamera, size: 18),
                                 label: Text(
                                   status == 'in_progress' ? 'Join Session' : 'Join Video Session',
                                   style: GoogleFonts.poppins(),
@@ -2564,7 +2564,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         Navigator.pop(context);
                         _navigateToChatFromSession(context, session);
                       },
-                      icon: Icon(PhosphorIcons.chatCircleDots(), size: 18, color: AppTheme.primaryColor),
+                      icon: Icon(PhosphorIcons.chatCircleDots, size: 18, color: AppTheme.primaryColor),
                       label: Text(
                         'Message Tutor',
                         style: GoogleFonts.poppins(
@@ -2590,7 +2590,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           );
                         },
                         icon: Icon(
-                          PhosphorIcons.stopCircle(),
+                          PhosphorIcons.stopCircle,
                           size: 18,
                           color: Colors.red[700],
                         ),
@@ -2675,7 +2675,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             // Check if we can pop - if not, navigate to dashboard instead
             if (Navigator.of(context).canPop()) {
               return IconButton(
-                icon: Icon(PhosphorIcons.arrowLeft()),
+                icon: Icon(PhosphorIcons.arrowLeft),
                 color: Colors.white,
                 onPressed: () {
                   // Simply pop - don't trigger any auth checks
@@ -2685,7 +2685,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             } else {
               // Can't pop — replace with the correct main shell (never wipe auth stack).
               return IconButton(
-                icon: Icon(PhosphorIcons.arrowLeft()),
+                icon: Icon(PhosphorIcons.arrowLeft),
                 color: Colors.white,
                 onPressed: () {
                   Navigator.of(context).pushReplacementNamed(_mainNavRoute);
@@ -2832,7 +2832,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              PhosphorIcons.calendar(),
+                              PhosphorIcons.calendar,
                               size: 64,
                               color: Colors.grey[400],
                             ),

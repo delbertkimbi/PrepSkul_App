@@ -11,7 +11,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'dart:async';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 /// Notification List Screen
 ///
@@ -386,7 +386,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
+          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -399,7 +399,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(PhosphorIcons.gear(), color: AppTheme.textDark),
+            icon: Icon(PhosphorIcons.gear, color: AppTheme.textDark),
             onPressed: () {
               // Use root navigator to avoid nested navigation issues
               Navigator.of(context, rootNavigator: false).push(

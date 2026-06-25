@@ -6,7 +6,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:intl/intl.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 
 /// Tutor Trial Card - Shows ONE trial session.
 /// If trial has multiple learners (learnerLabels), shows all learners in the same card.
@@ -139,7 +139,7 @@ class _TutorGroupTrialCardState extends State<TutorGroupTrialCard> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    _hasMultipleLearners ? PhosphorIcons.users() : PhosphorIcons.user(),
+                    _hasMultipleLearners ? PhosphorIcons.users : PhosphorIcons.user,
                     color: AppTheme.primaryColor,
                     size: 20,
                   ),
@@ -194,7 +194,7 @@ class _TutorGroupTrialCardState extends State<TutorGroupTrialCard> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
                     children: [
-                      Icon(PhosphorIcons.user(), size: 16, color: AppTheme.primaryColor),
+                      Icon(PhosphorIcons.user, size: 16, color: AppTheme.primaryColor),
                       const SizedBox(width: 8),
                       Text(
                         name,
@@ -205,16 +205,16 @@ class _TutorGroupTrialCardState extends State<TutorGroupTrialCard> {
                 )),
             const SizedBox(height: 12),
             // Subject and details
-            _buildInfoRow(PhosphorIcons.book(), 'Subject', widget.trial.subject),
+            _buildInfoRow(PhosphorIcons.book, 'Subject', widget.trial.subject),
             const SizedBox(height: 8),
-            _buildInfoRow(PhosphorIcons.clock(), 'Duration', '${widget.trial.durationMinutes} minutes'),
+            _buildInfoRow(PhosphorIcons.clock, 'Duration', '${widget.trial.durationMinutes} minutes'),
             if (widget.trial.trialGoal != null) ...[
               const SizedBox(height: 8),
-              _buildInfoRow(PhosphorIcons.target(), 'Goal', widget.trial.trialGoal!),
+              _buildInfoRow(PhosphorIcons.target, 'Goal', widget.trial.trialGoal!),
             ],
             if (widget.trial.learnerChallenges != null && widget.trial.learnerChallenges!.isNotEmpty) ...[
               const SizedBox(height: 8),
-              _buildInfoRow(PhosphorIcons.warning(), 'Challenges', widget.trial.learnerChallenges!),
+              _buildInfoRow(PhosphorIcons.warning, 'Challenges', widget.trial.learnerChallenges!),
             ],
             // Action buttons (only for pending)
             if (isPending) ...[
@@ -226,7 +226,7 @@ class _TutorGroupTrialCardState extends State<TutorGroupTrialCard> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: _isProcessing ? null : _handleDecline,
-                      icon: Icon(PhosphorIcons.x(), size: 18),
+                      icon: Icon(PhosphorIcons.x, size: 18),
                       label: const Text('Decline'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.red,
@@ -238,7 +238,7 @@ class _TutorGroupTrialCardState extends State<TutorGroupTrialCard> {
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: _isProcessing ? null : _handleAccept,
-                      icon: Icon(PhosphorIcons.check(), size: 18),
+                      icon: Icon(PhosphorIcons.check, size: 18),
                       label: const Text('Accept'),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                     ),
@@ -252,7 +252,7 @@ class _TutorGroupTrialCardState extends State<TutorGroupTrialCard> {
                   labelText: 'Reason for decline (required)',
                   hintText: 'e.g. Schedule conflict, not available for this subject',
                   border: const OutlineInputBorder(),
-                  prefixIcon: Icon(PhosphorIcons.note(), color: Colors.grey[600]),
+                  prefixIcon: Icon(PhosphorIcons.note, color: Colors.grey[600]),
                 ),
                 maxLines: 2,
               ),
@@ -267,7 +267,7 @@ class _TutorGroupTrialCardState extends State<TutorGroupTrialCard> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(PhosphorIcons.info(), size: 18, color: Colors.red[700]),
+                    Icon(PhosphorIcons.info, size: 18, color: Colors.red[700]),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

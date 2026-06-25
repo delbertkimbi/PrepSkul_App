@@ -35,15 +35,21 @@ class SkulMateIntakeAnalysis {
     final hasResolvedYoutube =
         payload.hasYoutube && resolvedText != null && resolvedText!.isNotEmpty;
 
+    // Keep friendly topicLabel for chat UI only — do not push auto filenames into hints.
+    final explicitTopicHint = payload.topicHint?.trim();
+    final explicitTitle = payload.title?.trim();
+
     return SkulMateIntakePayload(
       source: payload.source,
       files: payload.files,
       filesWeb: payload.filesWeb,
       images: payload.images,
       text: text,
-      topicHint: payload.topicHint ?? topicLabel,
+      topicHint: isTopicOnly
+          ? (explicitTopicHint ?? topicLabel)
+          : explicitTopicHint,
       youtubeUrl: hasResolvedYoutube ? null : payload.youtubeUrl,
-      title: payload.title ?? topicLabel,
+      title: explicitTitle,
       childId: payload.childId,
     );
   }

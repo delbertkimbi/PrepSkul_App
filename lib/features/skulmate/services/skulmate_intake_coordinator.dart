@@ -151,7 +151,15 @@ class SkulMateIntakeCoordinator {
     if (!context.mounted) return;
 
     final gameType = presetGameType ?? contextResult?.gameType;
-    final topic = contextResult?.topic ?? payload.topicHint ?? payload.title;
+    final String? topic;
+    if (contextResult?.topic != null &&
+        contextResult!.topic!.trim().isNotEmpty) {
+      topic = contextResult.topic!.trim();
+    } else if (payload.hasTopicOnly) {
+      topic = payload.topicHint?.trim();
+    } else {
+      topic = null;
+    }
 
     dynamic document;
     if (kIsWeb && payload.filesWeb != null && payload.filesWeb!.isNotEmpty) {

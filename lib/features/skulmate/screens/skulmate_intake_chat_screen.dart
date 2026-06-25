@@ -32,7 +32,6 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
     SkulMateIntentMode.drill,
     SkulMateIntentMode.scroll,
     SkulMateIntentMode.path,
-    SkulMateIntentMode.sheet,
   ];
 
   static const _selectedGreen = Color(0xFF22C55E);

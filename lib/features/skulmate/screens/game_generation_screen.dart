@@ -422,6 +422,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
     try {
       String? fileUrl = widget.fileUrl;
       String? imageUrl = widget.imageUrl;
+      List<String>? fileUrls;
+      List<String>? sourceFileNames;
       var requestedGameType =
           (_overrideGameType ?? widget.gameType ?? 'auto').toLowerCase();
       final compatibleTypes = _compatibleGameTypesForCurrentInput();
@@ -505,6 +507,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         // Prefer imagesToUpload when multiple; otherwise single imageToUpload
         if (hasImages) {
           final urls = <String>[];
+          final names = <String>[];
           for (int i = 0; i < widget.imagesToUpload!.length; i++) {
             if (i > 0) {
               _setGenerationStatus(
@@ -517,9 +520,16 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
               documentType: 'skulmate_notes',
             );
             urls.add(url);
+            final picked = widget.imagesToUpload![i];
+            if (picked is XFile) {
+              names.add(picked.name);
+            } else {
+              names.add('image_${i + 1}.jpg');
+            }
           }
           imageUrl = urls.first;
-          // TODO: API could accept multiple image URLs for richer content
+          fileUrls = urls;
+          sourceFileNames = names;
         } else if (hasSingleImage) {
           imageUrl = await StorageService.uploadDocument(
             userId: user.id,
@@ -546,10 +556,12 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       final generationText = _textForGeneration();
       GameModel game = await SkulMateService.generateGame(
         fileUrl: fileUrl ?? widget.fileUrl,
+        fileUrls: fileUrls,
         imageUrl: imageUrl ?? widget.imageUrl,
         text: generationText,
         youtubeUrl: widget.youtubeUrl,
         sourceFileName: sourceFileName,
+        sourceFileNames: sourceFileNames,
         childId: widget.childId,
         gameType: requestedGameType,
         difficulty: widget.difficulty,
@@ -571,10 +583,12 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           try {
             final fallbackGame = await SkulMateService.generateGame(
               fileUrl: fileUrl ?? widget.fileUrl,
+              fileUrls: fileUrls,
               imageUrl: imageUrl ?? widget.imageUrl,
               text: generationText,
               youtubeUrl: widget.youtubeUrl,
               sourceFileName: sourceFileName,
+              sourceFileNames: sourceFileNames,
               childId: widget.childId,
               difficulty: widget.difficulty,
               topic: widget.topic,
@@ -602,10 +616,12 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           try {
             final fallbackGame = await SkulMateService.generateGame(
               fileUrl: fileUrl ?? widget.fileUrl,
+              fileUrls: fileUrls,
               imageUrl: imageUrl ?? widget.imageUrl,
               text: generationText,
               youtubeUrl: widget.youtubeUrl,
               sourceFileName: sourceFileName,
+              sourceFileNames: sourceFileNames,
               childId: widget.childId,
               difficulty: widget.difficulty,
               topic: widget.topic,
@@ -1364,47 +1380,47 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                         ? () => SkulMatePaywallSheet.show(context)
                         : null,
                     onManualText: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              TextInputScreen(childId: widget.childId),
-                        ),
-                      );
-                    },
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    TextInputScreen(childId: widget.childId),
+                              ),
+                            );
+                          },
                     onBack: () => Navigator.pop(context),
                     onTrySuggested: _suggestedGameType != null
                         ? () {
-                            final suggested = _suggestedGameType;
-                            if (suggested == null) return;
-                            safeSetState(() {
-                              _overrideGameType = suggested;
-                              _isGenerating = true;
-                              _error = null;
-                              _errorTitle = null;
-                              _errorDetails = null;
-                              _errorRetryable = true;
-                              _progress = 0.0;
-                              _status =
-                                  'Trying ${_gameTypeLabel(suggested)}...';
-                            });
-                            _simulateProgress();
-                            _generateGame();
+                                    final suggested = _suggestedGameType;
+                                    if (suggested == null) return;
+                                    safeSetState(() {
+                                      _overrideGameType = suggested;
+                                      _isGenerating = true;
+                                      _error = null;
+                                      _errorTitle = null;
+                                      _errorDetails = null;
+                                      _errorRetryable = true;
+                                      _progress = 0.0;
+                                      _status =
+                                          'Trying ${_gameTypeLabel(suggested)}...';
+                                    });
+                                    _simulateProgress();
+                                    _generateGame();
                           }
                         : null,
                     onRetry: _errorRetryable
                         ? () {
-                            safeSetState(() {
-                              _isGenerating = true;
-                              _error = null;
-                              _errorTitle = null;
-                              _errorDetails = null;
-                              _errorRetryable = true;
-                              _progress = 0.0;
-                              _status = 'Analyzing content...';
-                            });
-                            _simulateProgress();
-                            _generateGame();
+                                    safeSetState(() {
+                                      _isGenerating = true;
+                                      _error = null;
+                                      _errorTitle = null;
+                                      _errorDetails = null;
+                                      _errorRetryable = true;
+                                      _progress = 0.0;
+                                      _status = 'Analyzing content...';
+                                    });
+                                    _simulateProgress();
+                                    _generateGame();
                           }
                         : null,
                     onContactSupport: _contactSupport,

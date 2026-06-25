@@ -6,7 +6,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/notifications/widgets/notification_bell.dart';
 import 'package:prepskul/features/messaging/widgets/message_icon_badge.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'admin_tutor_detail_screen.dart';
 import 'admin_user_detail_screen.dart';
 import 'admin_tutor_request_detail_screen.dart';
@@ -134,7 +134,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             _buildStatCard(
                               'Pending Tutors',
                               '${_stats?['pending_tutors'] ?? 0}',
-                              PhosphorIcons.userCircle(),
+                              PhosphorIcons.userCircle,
                               Colors.orange,
                               onTap: () {
                                 // Navigate to pending tutors list
@@ -155,7 +155,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             _buildStatCard(
                               'Total Users',
                               '${_stats?['total_users'] ?? 0}',
-                              PhosphorIcons.users(),
+                              PhosphorIcons.users,
                               AppTheme.primaryColor,
                             ),
                             SizedBox(
@@ -169,7 +169,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             _buildStatCard(
                               'Active Sessions',
                               '${_stats?['active_sessions'] ?? 0}',
-                              PhosphorIcons.videoCamera(),
+                              PhosphorIcons.videoCamera,
                               Colors.green,
                             ),
                           ],
@@ -180,7 +180,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               child: _buildStatCard(
                                 'Pending Tutors',
                                 '${_stats?['pending_tutors'] ?? 0}',
-                                PhosphorIcons.userCircle(),
+                                PhosphorIcons.userCircle,
                                 Colors.orange,
                                 onTap: () {
                                   Navigator.pushNamed(
@@ -202,7 +202,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               child: _buildStatCard(
                                 'Total Users',
                                 '${_stats?['total_users'] ?? 0}',
-                                PhosphorIcons.users(),
+                                PhosphorIcons.users,
                                 AppTheme.primaryColor,
                               ),
                             ),
@@ -218,7 +218,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               child: _buildStatCard(
                                 'Active Sessions',
                                 '${_stats?['active_sessions'] ?? 0}',
-                                PhosphorIcons.videoCamera(),
+                                PhosphorIcons.videoCamera,
                                 Colors.green,
                               ),
                             ),
@@ -255,7 +255,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
 
                   _buildActionCard(
-                    icon: PhosphorIcons.userCircle(),
+                    icon: PhosphorIcons.userCircle,
                     title: 'Pending Tutors',
                     subtitle: 'Review tutor applications',
                     color: Colors.orange,
@@ -273,7 +273,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
 
                   _buildActionCard(
-                    icon: PhosphorIcons.users(),
+                    icon: PhosphorIcons.users,
                     title: 'All Users',
                     subtitle: 'View and manage users',
                     color: AppTheme.primaryColor,
@@ -291,7 +291,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
 
                   _buildActionCard(
-                    icon: PhosphorIcons.clipboardText(),
+                    icon: PhosphorIcons.clipboardText,
                     title: 'Tutor Requests',
                     subtitle: 'Review tutor matching requests',
                     color: Colors.blue,
@@ -309,7 +309,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
 
                   _buildActionCard(
-                    icon: PhosphorIcons.scales(),
+                    icon: PhosphorIcons.scales,
                     title: 'Recurring Quit Review',
                     subtitle: 'Handle refund/intervention requests',
                     color: const Color(0xFF8A4DFF),
@@ -332,7 +332,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
 
                   _buildActionCard(
-                    icon: PhosphorIcons.sparkle(),
+                    icon: PhosphorIcons.sparkle,
                     title: 'SkulMate pricing',
                     subtitle: 'Revision packages, discounts, and free limits',
                     color: AppTheme.primaryColor,
@@ -355,7 +355,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
 
                   _buildActionCard(
-                    icon: PhosphorIcons.bellRinging(),
+                    icon: PhosphorIcons.bellRinging,
                     title: 'Notification Diagnostics',
                     subtitle: 'Check push, queue, and delivery health',
                     color: const Color(0xFF2A5AA3),
@@ -558,7 +558,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
             PhosphorIcon(
-              PhosphorIcons.caretRight(),
+              PhosphorIcons.caretRight,
               size: ResponsiveHelper.responsiveIconSize(
                 context,
                 mobile: 14,

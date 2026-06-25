@@ -5,7 +5,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../features/tutor/screens/tutor_home_screen.dart';
 import '../../features/dashboard/screens/student_home_screen.dart'
     show StudentHomeScreen;
@@ -159,27 +159,27 @@ class _MainNavigationState extends State<MainNavigation>
     final t = AppLocalizations.of(context)!;
     return [
       NavigationRailDestination(
-        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)),
-        selectedIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(PhosphorIcons.houseBold),
+        selectedIcon: PhosphorIcon(PhosphorIcons.houseFill),
         label: Text(t.navHome),
       ),
       NavigationRailDestination(
-        icon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.bold)),
+        icon: PhosphorIcon(PhosphorIcons.envelopeBold),
         selectedIcon: PhosphorIcon(
-          PhosphorIcons.envelope(PhosphorIconsStyle.fill),
+          PhosphorIcons.envelopeFill,
         ),
         label: Text(t.navRequests),
       ),
       NavigationRailDestination(
-        icon: PhosphorIcon(PhosphorIcons.graduationCap(PhosphorIconsStyle.bold)),
+        icon: PhosphorIcon(PhosphorIcons.graduationCapBold),
         selectedIcon: PhosphorIcon(
-          PhosphorIcons.graduationCap(PhosphorIconsStyle.fill),
+          PhosphorIcons.graduationCapFill,
         ),
         label: Text(t.navSessions),
       ),
       NavigationRailDestination(
-        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)),
-        selectedIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(PhosphorIcons.userBold),
+        selectedIcon: PhosphorIcon(PhosphorIcons.userFill),
         label: Text(t.navProfile),
       ),
     ];
@@ -215,34 +215,34 @@ class _MainNavigationState extends State<MainNavigation>
     return [
       BottomNavigationBarItem(
         icon: PhosphorIcon(
-          PhosphorIcons.house(PhosphorIconsStyle.bold),
+          PhosphorIcons.houseBold,
         ), // Thicker for unselected
-        activeIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
+        activeIcon: PhosphorIcon(PhosphorIcons.houseFill),
         label: t.navHome,
       ),
       BottomNavigationBarItem(
         icon: PhosphorIcon(
-          PhosphorIcons.envelope(PhosphorIconsStyle.bold),
+          PhosphorIcons.envelopeBold,
         ), // Thicker for unselected
         activeIcon: PhosphorIcon(
-          PhosphorIcons.envelope(PhosphorIconsStyle.fill),
+          PhosphorIcons.envelopeFill,
         ),
         label: t.navRequests,
       ),
       BottomNavigationBarItem(
         icon: PhosphorIcon(
-          PhosphorIcons.graduationCap(PhosphorIconsStyle.bold),
+          PhosphorIcons.graduationCapBold,
         ), // Thicker for unselected
         activeIcon: PhosphorIcon(
-          PhosphorIcons.graduationCap(PhosphorIconsStyle.fill),
+          PhosphorIcons.graduationCapFill,
         ),
         label: t.navSessions,
       ),
       BottomNavigationBarItem(
         icon: PhosphorIcon(
-          PhosphorIcons.user(PhosphorIconsStyle.bold),
+          PhosphorIcons.userBold,
         ), // Thicker for unselected
-        activeIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
+        activeIcon: PhosphorIcon(PhosphorIcons.userFill),
         label: t.navProfile,
       ),
     ];
@@ -253,13 +253,13 @@ class _MainNavigationState extends State<MainNavigation>
     final t = AppLocalizations.of(context)!;
     final items = <BottomNavigationBarItem>[
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)),
-        activeIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(PhosphorIcons.houseBold),
+        activeIcon: PhosphorIcon(PhosphorIcons.houseFill),
         label: t.navHome,
       ),
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)),
-        activeIcon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(PhosphorIcons.magnifyingGlassBold),
+        activeIcon: PhosphorIcon(PhosphorIcons.magnifyingGlassFill),
         label: t.navFindTutors,
       ),
     ];
@@ -267,8 +267,8 @@ class _MainNavigationState extends State<MainNavigation>
     if (AppConfig.enableSkulMate) {
       items.add(
         BottomNavigationBarItem(
-          icon: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold)),
-          activeIcon: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill)),
+          icon: PhosphorIcon(PhosphorIcons.sparkleBold),
+          activeIcon: PhosphorIcon(PhosphorIcons.sparkleFill),
           label: t.navSkulMate,
         ),
       );
@@ -276,13 +276,13 @@ class _MainNavigationState extends State<MainNavigation>
 
     items.addAll([
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.clipboardText(PhosphorIconsStyle.bold)),
-        activeIcon: PhosphorIcon(PhosphorIcons.clipboardText(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(PhosphorIcons.clipboardTextBold),
+        activeIcon: PhosphorIcon(PhosphorIcons.clipboardTextFill),
         label: t.navRequests,
       ),
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)),
-        activeIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(PhosphorIcons.userBold),
+        activeIcon: PhosphorIcon(PhosphorIcons.userFill),
         label: t.navProfile,
       ),
     ]);
