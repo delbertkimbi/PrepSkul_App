@@ -3,12 +3,17 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import '../models/game_model.dart';
+import '../models/revision_deck_model.dart';
+import 'revision_deck_service.dart';
+import 'deck_game_projector.dart';
 import 'concept_mastery_service.dart';
+import 'learner_intelligence_service.dart';
 import 'spaced_repetition_service.dart';
 import 'learner_context_service.dart';
 
@@ -48,6 +53,33 @@ class ExplainVideo {
   }
 }
 
+/// Multimodal image understanding for intake preview.
+class UnderstandImagesResult {
+  final String topicLabel;
+  final String summary;
+  final List<String> concepts;
+  final double confidence;
+
+  UnderstandImagesResult({
+    required this.topicLabel,
+    required this.summary,
+    required this.concepts,
+    required this.confidence,
+  });
+
+  factory UnderstandImagesResult.fromJson(Map<String, dynamic> json) {
+    return UnderstandImagesResult(
+      topicLabel: json['topicLabel'] as String? ?? '',
+      summary: json['summary'] as String? ?? '',
+      concepts: (json['concepts'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
 /// Service for interacting with skulMate API and database
 class SkulMateService {
   static const String _gamesCachePrefix = 'skulmate_games_cache_v1_';
@@ -64,9 +96,12 @@ class SkulMateService {
   // Endpoint is relative to apiBaseUrl (which already includes /api)
   static const String _generateEndpoint = '/skulmate/generate';
   static const String _youtubeTranscriptEndpoint = '/skulmate/youtube-transcript';
+  static const String _understandImagesEndpoint = '/skulmate/understand-images';
   static const String _challengeFromSessionEndpoint =
       '/skulmate/challenge/from-session';
   static const String _explainEndpoint = '/skulmate/explain';
+  static const String _illustrationEndpoint = '/skulmate/generate-illustration';
+  static const String _appendDeckCardsEndpoint = '/skulmate/deck/append-cards';
   static const String _pricingUsageEndpoint = '/skulmate/pricing-usage';
 
   /// Camera/gallery picks often use opaque names like scaled_<uuid>.jpg.
@@ -194,6 +229,72 @@ class SkulMateService {
     );
   }
 
+  /// Understand a bundle of uploaded image URLs before game generation.
+  static Future<UnderstandImagesResult> understandImages({
+    required List<String> fileUrls,
+    List<String>? sourceFileNames,
+  }) async {
+    final session = SupabaseService.client.auth.currentSession;
+    final token = session?.accessToken;
+    final url = '$_apiBaseUrl$_understandImagesEndpoint';
+
+    final body = <String, dynamic>{
+      'fileUrls': fileUrls,
+      if (sourceFileNames != null && sourceFileNames.isNotEmpty)
+        'sourceFileNames': sourceFileNames,
+    };
+
+    final response = await _postWithRetry(
+      url: url,
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
+    );
+
+    Map<String, dynamic>? decoded;
+    try {
+      decoded = jsonDecode(response.body) as Map<String, dynamic>?;
+    } catch (_) {}
+
+    final errorCode = decoded?['errorCode']?.toString();
+    if (response.statusCode >= 400) {
+      final mapped = _mapUnderstandErrorCode(errorCode, decoded?['error']?.toString());
+      if (mapped != null) throw mapped;
+      throw Exception(
+        decoded?['error']?.toString() ??
+            'Image understanding failed (${response.statusCode})',
+      );
+    }
+
+    return UnderstandImagesResult.fromJson(decoded ?? {});
+  }
+
+  static Exception? _mapUnderstandErrorCode(String? code, String? message) {
+    if (code == null || code.isEmpty) return null;
+    switch (code) {
+      case 'IMAGE_BUNDLE_TOO_LARGE':
+        return Exception(
+          message ??
+              'Too many photos for this game.\n\n'
+              'Remove extras or upgrade for a higher limit.',
+        );
+      case 'IMAGE_PROVIDER_UNAVAILABLE':
+        return Exception(
+          'Image processing is temporarily unavailable right now.\n\n'
+          'You can still pick a mode and generate — we will try again on the server.',
+        );
+      case 'IMAGE_PROVIDER_AUTH':
+        return Exception(
+          'Image processing is temporarily unavailable due to a server configuration issue.\n\n'
+          'You can still pick a mode and generate — we will try again on the server.',
+        );
+      default:
+        return null;
+    }
+  }
+
   /// Fetches captions server-side, then sends as [text] so older /generate APIs work.
   static Future<String?> _fetchYoutubeTranscriptText(String youtubeUrl) async {
     final session = SupabaseService.client.auth.currentSession;
@@ -211,8 +312,9 @@ class SkulMateService {
 
     if (response.statusCode == 404) {
       throw Exception(
-        'Could not reach the caption service for this video.\n\n'
-        'Try again later, or paste notes manually.',
+        'YouTube caption service is not available yet.\n\n'
+        'You can still try generating — we will fetch captions on the server. '
+        'Or tap "Enter text manually" and paste notes from the video.',
       );
     }
 
@@ -228,6 +330,13 @@ class SkulMateService {
     }
 
     final jsonBody = jsonDecode(response.body) as Map<String, dynamic>;
+    final source = jsonBody['source'] as String? ?? '';
+    if (source == 'metadata') {
+      throw Exception(
+        'Could not read video captions — only the title and description were available.\n\n'
+        'Try a video with subtitles/CC turned on, or tap "Enter text manually".',
+      );
+    }
     final transcript = jsonBody['transcript'] as String? ?? '';
     if (transcript.trim().length < 50) {
       throw Exception(
@@ -354,7 +463,7 @@ class SkulMateService {
 
   /// Generate game from file URL or text
   /// Uses HTTP API endpoint (Next.js API route)
-  static Future<GameModel> generateGame({
+  static Future<SkulMateGenerateResult> generateGame({
     String? fileUrl,
     List<String>? fileUrls,
     String? imageUrl,
@@ -388,7 +497,7 @@ class SkulMateService {
   }
 
   /// Generate game using HTTP directly (primary method)
-  static Future<GameModel> generateGameHttp({
+  static Future<SkulMateGenerateResult> generateGameHttp({
     String? fileUrl,
     List<String>? fileUrls,
     String? imageUrl,
@@ -466,6 +575,31 @@ class SkulMateService {
             'This YouTube video has no usable captions.\n\n'
             'Try a video with subtitles turned on, or tap "Enter text manually" to paste notes from the video.',
           );
+        case 'YOUTUBE_NO_CAPTIONS':
+          return Exception(
+            'This video has no captions available.\n\n'
+            'Try a different video with subtitles turned on, or tap "Enter text manually" to paste notes from the video.',
+          );
+        case 'GAME_TYPE_NOT_SHIPPED':
+          return Exception(
+            'That game type is not available yet.\n\n'
+            'Choose Auto or pick Quiz, Flashcards, Matching, Fill Blank, Drag & Drop, or Puzzle.',
+          );
+        case 'EXTRACTION_TOO_SHORT':
+          return Exception(
+            'We could not understand enough from this file.\n\n'
+            'Try clearer photos, enter text manually, or upload a PDF/DOCX/TXT file with readable content.',
+          );
+        case 'FILE_DOWNLOAD_FAILED':
+          return Exception(
+            'We could not access your uploaded file.\n\n'
+            'Please try uploading again, or use "Enter text manually".',
+          );
+        case 'IMAGE_BUNDLE_TOO_LARGE':
+          return Exception(
+            'Too many photos for this game.\n\n'
+            'Remove extras in Import photos, or upgrade for a higher limit.',
+          );
         default:
           return null;
       }
@@ -512,12 +646,18 @@ class SkulMateService {
           effectiveYoutubeUrl != null &&
           effectiveYoutubeUrl.isNotEmpty) {
         LogService.info('🎮 [skulMate] Resolving YouTube captions…');
-        final transcript = await resolveYoutubeTranscript(effectiveYoutubeUrl);
-        effectiveText = transcript;
-        effectiveYoutubeUrl = null;
-        LogService.info(
-          '🎮 [skulMate] YouTube transcript ready (${transcript.length} chars)',
-        );
+        try {
+          final transcript = await resolveYoutubeTranscript(effectiveYoutubeUrl);
+          effectiveText = transcript;
+          effectiveYoutubeUrl = null;
+          LogService.info(
+            '🎮 [skulMate] YouTube transcript ready (${transcript.length} chars)',
+          );
+        } catch (e) {
+          LogService.warning(
+            '🎮 [skulMate] Client caption fetch failed; passing youtubeUrl to API: $e',
+          );
+        }
       }
 
       if ((effectiveText == null || effectiveText.trim().isEmpty) &&
@@ -536,8 +676,12 @@ class SkulMateService {
       final hasFileSource =
           fileUrl != null || (fileUrls != null && fileUrls.isNotEmpty) || imageUrl != null;
       final trimmedTopic = topic?.trim();
+      final hasYoutubeSource =
+          (effectiveYoutubeUrl != null && effectiveYoutubeUrl.isNotEmpty) ||
+          (youtubeUrl != null && youtubeUrl.isNotEmpty);
       final includeTopic = trimmedTopic != null &&
           trimmedTopic.isNotEmpty &&
+          !hasYoutubeSource &&
           (!hasFileSource || !_isAutoGeneratedFileName(trimmedTopic));
 
       final requestBody = {
@@ -899,7 +1043,32 @@ class SkulMateService {
       LogService.success(
         '🎮 [skulMate] Game generated: ${game.title}${gameId != null && gameId.isNotEmpty ? " (ID: $gameId)" : " (No ID - not saved to DB)"}',
       );
-      return game;
+
+      RevisionDeckModel? deck;
+      final deckRaw = data['deck'];
+      if (deckRaw is Map) {
+        deck = RevisionDeckModel.fromJson(Map<String, dynamic>.from(deckRaw));
+        if (gameId != null && gameId.isNotEmpty) {
+          deck = RevisionDeckModel(
+            id: gameId,
+            title: deck.title,
+            topicLabel: deck.topicLabel,
+            sourceType: deck.sourceType,
+            notes: deck.notes,
+            knowledgeUnits: deck.knowledgeUnits,
+            cards: deck.cards,
+            conceptCheckCardIds: deck.conceptCheckCardIds,
+            linkedGameId: gameId,
+            gameType: deck.gameType,
+          );
+        }
+        LogService.info(
+          '🎮 [skulMate] Revision deck parsed: ${deck.cards.length} cards',
+        );
+        RevisionDeckService.cacheDeck(deck);
+      }
+
+      return SkulMateGenerateResult(game: game, deck: deck);
     } catch (e) {
       // Log the full error for debugging
       LogService.error('🎮 [skulMate] Full error details: ${e.toString()}');
@@ -1019,6 +1188,113 @@ class SkulMateService {
     }
   }
 
+  /// Append AI-generated cards to an existing revision deck.
+  static Future<DeckAppendResult> appendDeckCards({
+    required String gameId,
+    int count = 6,
+    String? childId,
+  }) async {
+    final session = SupabaseService.client.auth.currentSession;
+    final token = session?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Authentication error: Please log in and try again.');
+    }
+
+    final url = '$_apiBaseUrl$_appendDeckCardsEndpoint';
+    final response = await _postWithRetry(
+      url: url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'gameId': gameId,
+        'count': count,
+      }),
+    );
+
+    Map<String, dynamic>? decoded;
+    try {
+      decoded = jsonDecode(response.body) as Map<String, dynamic>?;
+    } catch (_) {}
+
+    if (response.statusCode >= 400) {
+      final code = decoded?['errorCode']?.toString();
+      if (code == 'SOURCE_TOO_SHORT') {
+        throw Exception(
+          decoded?['error']?.toString() ??
+              'Not enough source material to generate more cards. Re-import longer notes.',
+        );
+      }
+      if (code == 'GAME_NOT_FOUND') {
+        throw Exception('This deck could not be found. Try refreshing your library.');
+      }
+      if (code == 'INSUFFICIENT_CREDITS') {
+        throw Exception(
+          decoded?['error']?.toString() ??
+              'Generating more cards needs SkulMate credits. Choose a plan to continue.',
+        );
+      }
+      throw Exception(
+        decoded?['error']?.toString() ??
+            'Could not generate more cards (${response.statusCode}).',
+      );
+    }
+
+    final deckRaw = decoded?['deck'];
+    final gameRaw = decoded?['game'];
+    if (deckRaw is! Map || gameRaw is! Map) {
+      throw Exception('Unexpected response while generating more cards.');
+    }
+
+    final deck = RevisionDeckModel.fromJson(
+      Map<String, dynamic>.from(deckRaw),
+    );
+    final gameMap = Map<String, dynamic>.from(gameRaw);
+    final items = (gameMap['items'] as List<dynamic>? ?? const [])
+        .map((item) => GameItem.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
+    final metadata = GameMetadata.fromJson(
+      Map<String, dynamic>.from(gameMap['metadata'] as Map? ?? const {}),
+    );
+
+    final userId = SupabaseService.client.auth.currentUser?.id ?? '';
+    final game = GameModel(
+      id: gameId,
+      userId: userId,
+      childId: childId,
+      title: gameMap['title']?.toString() ?? deck.title,
+      gameType: GameType.fromString(
+        gameMap['gameType']?.toString() ?? deck.gameType,
+      ),
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      items: items,
+      metadata: metadata,
+    );
+
+    final linkedDeck = RevisionDeckModel(
+      id: gameId,
+      title: deck.title,
+      topicLabel: deck.topicLabel,
+      sourceType: deck.sourceType,
+      notes: deck.notes,
+      knowledgeUnits: deck.knowledgeUnits,
+      cards: deck.cards,
+      conceptCheckCardIds: deck.conceptCheckCardIds,
+      linkedGameId: gameId,
+      gameType: deck.gameType,
+    );
+    RevisionDeckService.cacheDeck(linkedDeck);
+    await patchCachedGame(game);
+
+    return DeckAppendResult(
+      deck: linkedDeck,
+      game: game,
+      addedCount: (decoded?['addedCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   /// Fetch games for current user with pagination
   ///
   /// [childId] - Optional child ID to filter games
@@ -1044,7 +1320,8 @@ class SkulMateService {
             skulmate_game_data (
               game_content,
               metadata
-            )
+            ),
+            generation_context
           ''')
           .eq('user_id', userId)
           .eq('is_deleted', false);
@@ -1126,6 +1403,31 @@ class SkulMateService {
             metadata: metadata,
           ),
         );
+
+        final contextMap = asMap(gameData['generation_context']);
+        final deckRaw = contextMap?['revisionDeck'];
+        if (deckRaw is Map) {
+          try {
+            final deck = RevisionDeckModel.fromJson(
+              Map<String, dynamic>.from(deckRaw),
+            );
+            RevisionDeckService.cacheDeck(
+              RevisionDeckModel(
+                id: gameData['id'] as String,
+                title: deck.title,
+                topicLabel: deck.topicLabel,
+                sourceType: deck.sourceType,
+                notes: deck.notes,
+                knowledgeUnits: deck.knowledgeUnits,
+                cards: deck.cards,
+                conceptCheckCardIds: deck.conceptCheckCardIds,
+                linkedGameId: gameData['id'] as String,
+                gameType: deck.gameType,
+                librarySaved: deck.librarySaved,
+              ),
+            );
+          } catch (_) {}
+        }
       }
 
       // Check if there are more games
@@ -1161,6 +1463,7 @@ class SkulMateService {
 
   /// Instant local games list (for home / history while network loads).
   static Future<List<GameModel>> getCachedGames({String? childId}) async {
+    if (!SupabaseService.isClientAvailable) return const [];
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) return const [];
     return _readCachedGames(userId: userId, childId: childId);
@@ -1179,17 +1482,118 @@ class SkulMateService {
     }
   }
 
+  /// Fetch or generate an educational illustration for puzzle/matching heroes.
+  /// Skips network when offline; only call when needsImage + imagePrompt are set.
+  static Future<String?> fetchIllustration({
+    required String prompt,
+    String? gameId,
+    String? topic,
+  }) async {
+    final trimmed = prompt.trim();
+    if (trimmed.isEmpty) return null;
+
+    try {
+      final connectivity = ConnectivityService();
+      await connectivity.initialize();
+      if (!connectivity.isOnline) return null;
+
+      final session = SupabaseService.client.auth.currentSession;
+      final token = session?.accessToken;
+      if (token == null) return null;
+
+      final url = '$_apiBaseUrl$_illustrationEndpoint';
+      final httpResponse = await _makePostRequest(
+        url,
+        {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        jsonEncode({
+          'prompt': trimmed,
+          if (gameId != null && gameId.isNotEmpty) 'gameId': gameId,
+          if (topic != null && topic.isNotEmpty) 'topic': topic,
+        }),
+      ).timeout(const Duration(seconds: 55));
+
+      if (httpResponse.statusCode != 200) {
+        LogService.warning(
+          '🎮 [skulMate] fetchIllustration HTTP ${httpResponse.statusCode}: '
+          '${httpResponse.body.length > 200 ? httpResponse.body.substring(0, 200) : httpResponse.body}',
+        );
+        return null;
+      }
+      final body = jsonDecode(httpResponse.body) as Map<String, dynamic>;
+      final imageUrl = body['imageUrl'] as String?;
+      return imageUrl?.trim().isNotEmpty == true ? imageUrl : null;
+    } catch (e) {
+      LogService.debug('🎮 [skulMate] fetchIllustration failed: $e');
+      return null;
+    }
+  }
+
+  /// Patch saved puzzle game with generated hero imageUrl.
+  static Future<void> persistPuzzleHeroImage({
+    required String gameId,
+    required String imageUrl,
+    String? imagePrompt,
+  }) async {
+    if (gameId.isEmpty || imageUrl.trim().isEmpty) return;
+    try {
+      final row = await SupabaseService.client
+          .from('skulmate_game_data')
+          .select('id, game_content')
+          .eq('game_id', gameId)
+          .maybeSingle();
+      if (row == null) return;
+
+      final rawContent = row['game_content'];
+      if (rawContent is! List || rawContent.isEmpty) return;
+
+      final content = <Map<String, dynamic>>[];
+      for (final item in rawContent) {
+        if (item is Map) {
+          content.add(Map<String, dynamic>.from(item));
+        }
+      }
+      if (content.isEmpty) return;
+
+      content[0] = {
+        ...content[0],
+        'imageUrl': imageUrl,
+        'needsImage': true,
+        if (imagePrompt != null && imagePrompt.trim().isNotEmpty)
+          'imagePrompt': imagePrompt.trim(),
+      };
+
+      await SupabaseService.client
+          .from('skulmate_game_data')
+          .update({'game_content': content})
+          .eq('id', row['id'] as String);
+      LogService.debug('🧩 [Puzzle] Persisted hero imageUrl for game $gameId');
+    } catch (e) {
+      LogService.warning('🧩 [Puzzle] Could not persist hero image: $e');
+    }
+  }
+
   /// Result from explainFlashcard API
   static Future<ExplainResult> explainFlashcard({
     required String term,
     required String definition,
     String? gameId,
+    String? childId,
+    String? activeDeckTitle,
+    String? deckStudyMode,
     bool weakTopicReroute = false,
   }) async {
     try {
       final session = SupabaseService.client.auth.currentSession;
       final token = session?.accessToken;
-      final learnerContext = await LearnerContextService.build();
+      final learnerContext = await LearnerIntelligenceService.build(
+        childId: childId,
+        gameId: gameId,
+        activeDeckTitle: activeDeckTitle,
+        deckStudyMode: deckStudyMode,
+      );
 
       final url = '$_apiBaseUrl$_explainEndpoint';
       final httpResponse =
@@ -1495,6 +1899,34 @@ class SkulMateService {
     return '$_gamesCacheUpdatedPrefix${userId}_$suffix';
   }
 
+  /// Updates one game in the local library cache (e.g. after deck append).
+  static Future<void> patchCachedGame(GameModel game) async {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final existing = await _readCachedGames(userId: userId, childId: game.childId);
+      if (existing.isEmpty) return;
+
+      final merged = existing
+          .map((cached) => cached.id == game.id ? game : cached)
+          .toList();
+      if (!merged.any((cached) => cached.id == game.id)) return;
+
+      await prefs.setString(
+        _gamesCacheKey(userId, game.childId),
+        jsonEncode(merged.map((g) => g.toJson()).toList()),
+      );
+      await prefs.setString(
+        _gamesCacheUpdatedKey(userId, game.childId),
+        DateTime.now().toIso8601String(),
+      );
+    } catch (e) {
+      LogService.warning('🎮 [skulMate] Could not patch cached game: $e');
+    }
+  }
+
   static Future<void> _mergeGamesIntoCache({
     required String userId,
     required String? childId,
@@ -1511,7 +1943,6 @@ class SkulMateService {
           ..addAll(pageGames);
       } else {
         if (merged.length < offset) {
-          // If cache is shorter, append best-effort.
           merged.addAll(pageGames);
         } else {
           for (var i = 0; i < pageGames.length; i++) {

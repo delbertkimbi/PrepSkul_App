@@ -6,9 +6,9 @@ import '../l10n/skulmate_copy.dart';
 import '../screens/challenges_screen.dart';
 import '../screens/friends_screen.dart';
 import '../screens/skulmate_games_screen.dart';
+import '../screens/skulmate_progress_screen.dart';
 import '../screens/leaderboard_screen.dart';
 import 'skulmate_history_sheet.dart';
-import 'skulmate_progress_sheet.dart';
 import 'skulmate_surface_styles.dart';
 
 /// Gizmo-style top pills: History (left) · More menu (right).
@@ -86,7 +86,12 @@ class SkulMateHomeTopBar extends StatelessWidget {
           ),
         );
       case 'progress':
-        SkulMateProgressSheet.show(context, childId: childId);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SkulMateProgressScreen(childId: childId),
+          ),
+        );
       case 'leaderboard':
         Navigator.push(
           context,

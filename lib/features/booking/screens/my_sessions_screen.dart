@@ -32,6 +32,7 @@ import 'package:prepskul/features/sessions/services/location_checkin_service.dar
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import '../../../core/localization/app_localizations.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
@@ -109,6 +110,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   final ConnectivityService _connectivity = ConnectivityService();
   // Cache tutor info for trial sessions (tutorId -> {full_name, avatar_url})
   final Map<String, Map<String, dynamic>> _tutorInfoCache = {};
+  String? _userSurveyAddress;
   
   // Timer for countdown updates
   Timer? _countdownTimer;
@@ -146,11 +148,34 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
     _initializeConnectivity();
     _loadSessions();
+    _loadUserSurveyAddress();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkCalendarConnection();
       _startCountdownTimer();
       _loadMainNavRoute();
     });
+  }
+
+  Future<void> _loadUserSurveyAddress() async {
+    try {
+      final profile = await AuthService.getUserProfile();
+      if (profile == null) return;
+      final userType = profile['user_type'] as String?;
+      final userId = profile['id'] as String?;
+      if (userId == null) return;
+      Map<String, dynamic>? survey;
+      if (userType == 'student' || userType == 'learner') {
+        survey = await SurveyRepository.getStudentSurvey(userId);
+      } else if (userType == 'parent') {
+        survey = await SurveyRepository.getParentSurvey(userId);
+      }
+      final address = GeocodingHelper.formatSurveyAddress(survey);
+      if (mounted) {
+        setState(() => _userSurveyAddress = address);
+      }
+    } catch (e) {
+      LogService.debug('Could not load survey address for session maps: $e');
+    }
   }
 
   Future<void> _loadMainNavRoute() async {
@@ -1924,10 +1949,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     ),
                   ],
                 ),
-                if (onsiteAddress?.trim().isNotEmpty == true) ...[
+                if (onsiteAddress?.trim().isNotEmpty == true &&
+                    GeocodingHelper.shouldShowMapForSession(
+                      sessionAddress: onsiteAddress!,
+                      userAddress: _userSurveyAddress,
+                    )) ...[
                   const SizedBox(height: 8),
                   SessionCardMapPreview(
-                    address: onsiteAddress!,
+                    address: onsiteAddress,
                     coordinates: onsiteCoordinates,
                     locationDescription: locationDescription,
                   ),

@@ -274,10 +274,13 @@ class _GameResultsScreenState extends State<GameResultsScreen>
             ? IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: () {
-                  SkulMateNavigation.exitToSkulMateHome(context);
+                  unawaited(SkulMateNavigation.exitToSkulMateHome(context));
                 },
               )
-            : null,
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.pop(context),
+              ),
       ),
       body: Stack(
         children: [
@@ -440,10 +443,23 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          SkulMateNavigation.exitToSkulMateHome(context);
+                          if (widget.fromGenerationFlow) {
+                            unawaited(
+                              SkulMateNavigation.exitToSkulMateHome(context),
+                            );
+                          } else {
+                            Navigator.pop(context);
+                          }
                         },
-                        icon: const Icon(Icons.dashboard_customize_rounded, size: 18),
-                        label: const Text('Dashboard'),
+                        icon: Icon(
+                          widget.fromGenerationFlow
+                              ? Icons.dashboard_customize_rounded
+                              : Icons.check_rounded,
+                          size: 18,
+                        ),
+                        label: Text(
+                          widget.fromGenerationFlow ? 'Dashboard' : 'Done',
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
                           foregroundColor: Colors.white,

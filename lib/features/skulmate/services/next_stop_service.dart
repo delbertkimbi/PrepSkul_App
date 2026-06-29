@@ -12,7 +12,7 @@ import 'spaced_repetition_service.dart';
 class NextStopService {
   NextStopService._();
 
-  static const _dismissPrefix = 'skulmate_next_stop_dismiss_';
+  static const _dismissPrefix = 'skulmate_next_stop_dismissed_';
 
   static Future<NextStopSuggestion?> evaluate({
     required List<GameModel> games,
@@ -79,6 +79,9 @@ class NextStopService {
           gameId: item.gameId,
           title: item.title,
           subtitle: item.subtitle,
+          progressPercent: item.progressPercent,
+          currentIndex: item.currentIndex,
+          totalItems: item.totalItems,
         );
       }
     }
@@ -88,25 +91,22 @@ class NextStopService {
 
   static Future<void> dismiss(NextStopSuggestion suggestion) async {
     final prefs = await SharedPreferences.getInstance();
-    final key = switch (suggestion.kind) {
+    await prefs.setBool('$_dismissPrefix${_dismissKey(suggestion)}', true);
+  }
+
+  static String _dismissKey(NextStopSuggestion suggestion) {
+    return switch (suggestion.kind) {
       NextStopKind.dueReview => 'due_${suggestion.gameId}',
       NextStopKind.weakTopic => 'weak_${suggestion.topicId ?? suggestion.gameId}',
+      NextStopKind.fromSession =>
+        'session_${suggestion.sessionId ?? suggestion.gameId}',
       NextStopKind.continueGame => 'continue_${suggestion.gameId}',
-      NextStopKind.fromSession => 'session_${suggestion.sessionId ?? suggestion.gameId}',
     };
-    await prefs.setString(
-      '$_dismissPrefix$key',
-      DateTime.now().add(const Duration(hours: 12)).toIso8601String(),
-    );
   }
 
   static Future<bool> _isDismissed(String key) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('$_dismissPrefix$key');
-    if (raw == null) return false;
-    final until = DateTime.tryParse(raw);
-    if (until == null) return false;
-    return DateTime.now().isBefore(until);
+    return prefs.getBool('$_dismissPrefix$key') ?? false;
   }
 
   static GameModel? _gameById(List<GameModel> games, String id) {

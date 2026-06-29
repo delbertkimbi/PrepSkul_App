@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -13,12 +14,16 @@ import '../services/game_sound_service.dart';
 import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/game_rules_service.dart';
+import '../services/game_audio_lifecycle.dart';
 import '../services/game_progress_service.dart';
+import '../l10n/skulmate_copy.dart';
 import '../widgets/game_settings_sheet.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/skulmate_companion_banner.dart';
 import '../widgets/game_standard_widgets.dart';
+import '../widgets/matching_playfield.dart';
+import '../widgets/skulmate_game_surface.dart';
 import '../utils/skulmate_navigation.dart';
 import 'game_results_screen.dart';
 
@@ -75,8 +80,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   bool _isProcessing = false;
   bool _isTTSEnabled = true;
   int _hintsRemaining = 3; // Peek at a pair (limited uses)
-  Timer? _matchFlyerTimer;
-  String? _matchFlyerText;
   String? _mascotReaction;
   CompanionTone _mascotReactionTone = CompanionTone.neutral;
   bool _mascotCelebrate = false;
@@ -84,17 +87,31 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   static const int _maxPairsPerScreen = 5;
   final List<GameItem> _allPairs = [];
   List<GameItem> _currentRoundPairs = [];
-  final Map<int, int> _roundAssignments = {};
-  final Set<int> _roundCorrectPairIds = {};
+  final Set<int> _matchedInRound = {};
+  bool _roundCompleting = false;
+  String _feedbackMessage = '';
+  GameFeedbackTone _feedbackTone = GameFeedbackTone.neutral;
+  int? _flashWrongRightId;
+  int? _celebratePairId;
+  int _lastXpBurst = 0;
+  int _edgeFlashTrigger = 0;
+  bool _edgeFlashSuccess = true;
+  int _matchPulseTrigger = 0;
+  Timer? _feedbackTimer;
   List<int> _rightColumnPairIds = [];
   int? _activeLeftPairId;
   int _currentRoundStart = 0;
   int _completedPairs = 0;
-  bool _showRoundResult = false;
   static const int _roundCountdownSeconds = 50;
   int _roundRemainingSeconds = _roundCountdownSeconds;
   Timer? _roundTimer;
+  Timer? _leftTermSpeakTimer;
+  int? _pendingLeftSpeakPairId;
   bool _gameCompleted = false;
+  bool _awaitingSectionContinue = false;
+  String _sectionContinueMessage = '';
+  bool _xpPopupVisible = false;
+  bool _isLeaving = false;
 
   @override
   void initState() {
@@ -124,9 +141,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       }
     }
     _loadStats();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showHowToPlayIfFirstTime();
-    });
   }
 
   Future<void> _initializeAudio() async {
@@ -140,13 +154,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     }
     // Use the Mystery ambient track for a stronger premium vibe.
     await _soundService.playMusicForGame(GameType.mystery);
-    if (_isTTSEnabled && _currentRoundPairs.isNotEmpty) {
-      unawaited(
-        _ttsService.speak(
-          'Section 1. Match each term on the left to the correct meaning on the right.',
-        ),
-      );
-    }
   }
 
   Future<void> _loadStats() async {
@@ -177,170 +184,220 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   }
 
   void _loadCurrentRound() {
+    if (_isLeaving || !mounted) return;
     final end = min(_currentRoundStart + _maxPairsPerScreen, _allPairs.length);
     _currentRoundPairs = _allPairs.sublist(_currentRoundStart, end);
     _rightColumnPairIds = List<int>.generate(
       _currentRoundPairs.length,
       (i) => _currentRoundStart + i,
     )..shuffle(Random());
-    _roundAssignments.clear();
-    _roundCorrectPairIds.clear();
+    _matchedInRound.clear();
     _activeLeftPairId = null;
-    _showRoundResult = false;
+    _cancelPendingLeftTermSpeak();
+    _roundCompleting = false;
+    _feedbackMessage = '';
+    _flashWrongRightId = null;
     _startRoundCountdown();
     unawaited(_soundService.ensureMusicForGame(GameType.mystery));
-    if (_isTTSEnabled && _currentRoundPairs.isNotEmpty) {
       unawaited(_ttsService.stop());
-      final section = _roundNumber();
-      unawaited(
-        _ttsService.speak(
-          'Section $section. Tap a term on the left, then tap its correct match on the right.',
-          ),
-        );
-      }
     }
 
   void _onSelectLeft(int pairId) {
-    if (_showRoundResult) return;
-    if (_isTTSEnabled) {
-      unawaited(_ttsService.stop());
+    if (_roundCompleting || _awaitingSectionContinue || _matchedInRound.contains(pairId)) {
+      return;
     }
     unawaited(_soundService.registerUserGesture());
-    unawaited(_soundService.playMatchingTap());
-    unawaited(_soundService.ensureMusicForGame(GameType.mystery));
+
+    if (_activeLeftPairId == pairId) {
+      _cancelPendingLeftTermSpeak();
+      unawaited(_soundService.playMatchingTap(quiet: _isTTSEnabled));
+      if (_isTTSEnabled) unawaited(_ttsService.stop());
+      safeSetState(() => _activeLeftPairId = null);
+      return;
+    }
+
+    unawaited(_soundService.playMatchingTap(quiet: _isTTSEnabled));
+    safeSetState(() => _activeLeftPairId = pairId);
+    _scheduleLeftTermSpeak(pairId);
+  }
+
+  void _cancelPendingLeftTermSpeak() {
+    _leftTermSpeakTimer?.cancel();
+    _leftTermSpeakTimer = null;
+    _pendingLeftSpeakPairId = null;
+    _ttsService.cancelDebouncedSpeak();
+  }
+
+  void _scheduleLeftTermSpeak(int pairId) {
+    if (!_isTTSEnabled) return;
+    _pendingLeftSpeakPairId = pairId;
+    _leftTermSpeakTimer?.cancel();
+    _leftTermSpeakTimer = Timer(const Duration(milliseconds: 550), () {
+      final pendingId = _pendingLeftSpeakPairId;
+      if (!mounted || pendingId == null || _activeLeftPairId != pendingId) {
+        return;
+      }
+      unawaited(_speakLeftTerm(pendingId));
+    });
+  }
+
+  Future<void> _speakLeftTerm(int pairId) async {
+    if (!_isTTSEnabled || _activeLeftPairId != pairId) return;
+    final text = _leftLabelForPair(pairId);
+    if (text.isEmpty) return;
+    await _soundService.duckBgmForSpeech();
+    await _ttsService.speak(text, interrupt: false);
+  }
+
+  void _showFeedback(String message, GameFeedbackTone tone) {
+    _feedbackTimer?.cancel();
     safeSetState(() {
-      _activeLeftPairId = pairId;
+      _feedbackMessage = message;
+      _feedbackTone = tone;
+    });
+    _feedbackTimer = Timer(const Duration(milliseconds: 2200), () {
+      if (mounted) safeSetState(() => _feedbackMessage = '');
     });
   }
 
   void _onSelectRight(int rightPairId) {
-    if (_showRoundResult || _activeLeftPairId == null) return;
+    if (_roundCompleting || _awaitingSectionContinue || _activeLeftPairId == null) return;
+    if (_matchedInRound.contains(rightPairId)) return;
+    final leftPairId = _activeLeftPairId!;
+    if (_matchedInRound.contains(leftPairId)) return;
+
+    _cancelPendingLeftTermSpeak();
+    unawaited(_soundService.registerUserGesture());
+    unawaited(_soundService.playMatchingTap(quiet: _isTTSEnabled));
+      _moves++;
+
+    if (leftPairId == rightPairId) {
+      if (_isTTSEnabled) {
+        unawaited(_ttsService.stop());
+      }
+      _handleCorrectMatch(leftPairId);
+    } else {
+      _currentStreak = 0;
+      HapticFeedback.mediumImpact();
     if (_isTTSEnabled) {
       unawaited(_ttsService.stop());
     }
-    unawaited(_soundService.registerUserGesture());
-    unawaited(_soundService.playMatchingTap());
-    unawaited(_soundService.ensureMusicForGame(GameType.mystery));
+      unawaited(_soundService.playIncorrect());
+      final copy = SkulMateCopy.read(context);
+      safeSetState(() {
+        _flashWrongRightId = rightPairId;
+        _activeLeftPairId = null;
+        _edgeFlashSuccess = false;
+        _edgeFlashTrigger++;
+      });
+      _showFeedback(copy.matchingTryAgain, GameFeedbackTone.error);
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) safeSetState(() => _flashWrongRightId = null);
+      });
+    }
+  }
+
+  void _handleCorrectMatch(int pairId) {
+    _matchedInRound.add(pairId);
+    _completedPairs++;
+    _score++;
+    _currentStreak++;
+    _xpEarned += _currentStreak >= 3 ? 20 : 15;
+    _lastXpBurst = _currentStreak >= 3 ? 20 : 15;
+    _edgeFlashSuccess = true;
+    _edgeFlashTrigger++;
+    _matchPulseTrigger++;
+    HapticFeedback.mediumImpact();
+    unawaited(_soundService.playMatch());
+    unawaited(_soundService.playCorrect());
+
     safeSetState(() {
-      final leftPairId = _activeLeftPairId!;
-      final previousLeftForRight = _roundAssignments.entries
-          .where((e) => e.value == rightPairId)
-          .map((e) => e.key)
-          .toList();
-      for (final prevLeft in previousLeftForRight) {
-        _roundAssignments.remove(prevLeft);
-      }
-      _roundAssignments[leftPairId] = rightPairId;
-      _moves++;
       _activeLeftPairId = null;
+      _celebratePairId = pairId;
+      _feedbackMessage = '';
+      _xpPopupVisible = true;
+    });
+
+    Future.delayed(const Duration(milliseconds: 720), () {
+      if (mounted) {
+        safeSetState(() {
+          _celebratePairId = null;
+          _xpPopupVisible = false;
+        });
+      }
+    });
+
+    final newProgress = _completedPairs / _allPairs.length.clamp(1, 9999);
+    _progressAnimation = Tween<double>(
+      begin: _progressAnimation.value,
+      end: newProgress,
+    ).animate(
+      CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+    );
+    _progressController.forward(from: 0);
+
+    if (_matchedInRound.length == _currentRoundPairs.length) {
+      _handleRoundComplete();
+    }
+  }
+
+  void _handleRoundComplete() {
+    if (_roundCompleting) return;
+    _roundCompleting = true;
+    _roundTimer?.cancel();
+    unawaited(_soundService.playMatchingSuccess());
+    _confettiController.play();
+    final copy = SkulMateCopy.read(context);
+    final message = copy.matchingSectionComplete;
+    safeSetState(() {
+      _awaitingSectionContinue = true;
+      _sectionContinueMessage = message;
+      _feedbackMessage = message;
+      _feedbackTone = GameFeedbackTone.success;
+      _xpPopupVisible = false;
+      _mascotReaction = null;
+      _mascotCelebrate = false;
     });
   }
 
-  void _checkCurrentRound() {
-    _roundTimer?.cancel();
-    if (_isTTSEnabled) {
-      unawaited(_ttsService.stop());
-    }
-    unawaited(_soundService.registerUserGesture());
-    unawaited(_soundService.playClick());
-    if (_roundAssignments.length < _currentRoundPairs.length) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Match all left items with right outcomes first.',
-            style: GoogleFonts.poppins(fontSize: 13),
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    _roundCorrectPairIds.clear();
-    for (final pairId in _roundAssignments.keys) {
-      if (_roundAssignments[pairId] == pairId) {
-        _roundCorrectPairIds.add(pairId);
-      }
-    }
-    final allCorrect = _roundCorrectPairIds.length == _currentRoundPairs.length;
+  void _onSectionContinue() {
+    if (!_awaitingSectionContinue) return;
+    unawaited(_ttsService.stop());
     safeSetState(() {
-      _showRoundResult = true;
+      _awaitingSectionContinue = false;
+      _sectionContinueMessage = '';
+      _feedbackMessage = '';
+      _mascotReaction = null;
+      _mascotCelebrate = false;
     });
-    final originalCorrectCount = _roundCorrectPairIds.length;
-    _score += originalCorrectCount;
-    _xpEarned += originalCorrectCount * 15;
-    _completedPairs += _currentRoundPairs.length;
-
-    if (!allCorrect) {
-      // Show corrections inline on each matched card.
-      for (final pairId in List<int>.from(_roundAssignments.keys)) {
-        _roundAssignments[pairId] = pairId;
-      }
-    }
-
-    if (allCorrect) {
-      unawaited(_soundService.playMatchingSuccess());
-      _showMascotReaction(
-        'Perfect set. Move to the next section.',
-        tone: CompanionTone.success,
-        celebrate: true,
-      );
-      if (_isTTSEnabled) {
-        unawaited(
-          Future<void>.delayed(
-            const Duration(milliseconds: 140),
-            () => _ttsService.speak('Perfect set. Continue to the next section.'),
-          ),
-        );
-      }
-    } else {
-      unawaited(_soundService.playMatchingWrong());
-      _showMascotReaction(
-        'Corrections are now shown inline on the cards.',
-        tone: CompanionTone.warning,
-      );
-      if (_isTTSEnabled) {
-        unawaited(
-          Future<void>.delayed(const Duration(milliseconds: 140), () {
-            return _ttsService.speak(
-              'Not fully correct yet. I have shown the corrected matches on the cards.',
-            );
-          }),
-        );
-      }
-    }
+    _nextRoundOrFinish();
   }
 
   void _nextRoundOrFinish() {
     _roundTimer?.cancel();
+    _awaitingSectionContinue = false;
+    _sectionContinueMessage = '';
     if (_completedPairs >= _allPairs.length) {
-      _finishGame();
+      unawaited(_finishGame());
       return;
     }
     _currentRoundStart += _maxPairsPerScreen;
     if (_currentRoundStart >= _allPairs.length) {
-      _finishGame();
+      unawaited(_finishGame());
       return;
     }
     safeSetState(_loadCurrentRound);
-  }
-
-  void _retryRound() {
-    safeSetState(() {
-      _showRoundResult = false;
-      _activeLeftPairId = null;
-    });
-    _soundService.playClick();
   }
 
   void _startRoundCountdown() {
     _roundTimer?.cancel();
     _roundRemainingSeconds = _roundCountdownSeconds;
     _roundTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
+      if (!mounted || _isLeaving) {
         timer.cancel();
         return;
       }
-      if (_showRoundResult) {
+      if (_roundCompleting) {
         timer.cancel();
         return;
       }
@@ -360,77 +417,87 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   }
 
   void _onRoundTimeout() {
-    if (_showRoundResult || _currentRoundPairs.isEmpty) return;
-    final roundPairIds = List<int>.generate(
-      _currentRoundPairs.length,
-      (i) => _currentRoundStart + i,
-    );
-    safeSetState(() {
-      for (final pairId in roundPairIds) {
-        _roundAssignments[pairId] = pairId;
+    if (_roundCompleting || _currentRoundPairs.isEmpty) return;
+    _roundCompleting = true;
+    _roundTimer?.cancel();
+    for (var i = 0; i < _currentRoundPairs.length; i++) {
+      final pairId = _currentRoundStart + i;
+      if (!_matchedInRound.contains(pairId)) {
+        _matchedInRound.add(pairId);
+        _completedPairs++;
       }
-      _roundCorrectPairIds.clear();
-      _showRoundResult = true;
-      _completedPairs += _currentRoundPairs.length;
-    });
+    }
     unawaited(_soundService.playCountdownBuzzer());
-    unawaited(
-      Future<void>.delayed(const Duration(milliseconds: 90), _soundService.playMatchingWrong),
+    final copy = SkulMateCopy.read(context);
+    final message = copy.matchingTimeUpContinue;
+    safeSetState(() {
+      _awaitingSectionContinue = true;
+      _sectionContinueMessage = message;
+      _feedbackMessage = message;
+      _feedbackTone = GameFeedbackTone.error;
+    });
+    _showFeedback(message, GameFeedbackTone.error);
+  }
+
+  List<int> _roundLeftPairIds() => List<int>.generate(
+        _currentRoundPairs.length,
+        (i) => _currentRoundStart + i,
+      );
+
+  Widget _buildMatchingBoard() {
+    return MatchingPlayfield(
+      leftPairIds: _roundLeftPairIds(),
+      rightPairIds: _rightColumnPairIds,
+      leftLabel: _leftLabelForPair,
+      rightLabel: _rightLabelForPair,
+      matchedPairIds: _matchedInRound,
+      activeLeftPairId: _activeLeftPairId,
+      flashWrongRightId: _flashWrongRightId,
+      celebratePairId: _celebratePairId,
+      connectedLabel: _celebratePairId != null
+          ? SkulMateCopy.of(context).matchingConnected
+          : null,
+      onLeftTap: _onSelectLeft,
+      onRightTap: _onSelectRight,
     );
-    _showMascotReaction(
-      'Time up for this section. Corrections are shown, continue to next.',
-      tone: CompanionTone.warning,
+  }
+
+  Widget _buildSectionActionArea() {
+    if (_awaitingSectionContinue) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _onSectionContinue,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: Text(
+            SkulMateCopy.of(context).matchingContinueButton,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
+    if (_roundCompleting) {
+      return const SizedBox.shrink();
+    }
+    return Text(
+      SkulMateCopy.of(context).matchingTapHint,
+      textAlign: TextAlign.center,
+      style: GoogleFonts.plusJakartaSans(
+        fontSize: 12.5,
+        color: AppTheme.textMedium,
+        fontStyle: FontStyle.italic,
+      ),
     );
-    if (_isTTSEnabled) {
-      unawaited(_ttsService.speak('Time up. Corrections are shown. Continue to next section.'));
-    }
-  }
-
-  Color _leftTileColor(int pairId) {
-    if (!_showRoundResult) {
-      return _activeLeftPairId == pairId
-          ? const Color(0xFFDBEAFE)
-          : const Color(0xFFEFF6FF);
-    }
-    return _roundCorrectPairIds.contains(pairId)
-        ? AppTheme.accentGreen.withOpacity(0.10)
-        : const Color(0xFFEFF6FF);
-  }
-
-  Color _leftTileBorder(int pairId) {
-    if (!_showRoundResult) {
-      return _activeLeftPairId == pairId
-          ? const Color(0xFF2563EB)
-          : const Color(0xFF60A5FA);
-    }
-    return _roundCorrectPairIds.contains(pairId)
-        ? AppTheme.accentGreen.withOpacity(0.65)
-        : const Color(0xFF60A5FA);
-  }
-
-  Color _rightTileColor(int pairId) {
-    if (!_showRoundResult) {
-      final selected = _roundAssignments.values.contains(pairId);
-      return selected
-          ? const Color(0xFFFEF3C7)
-          : const Color(0xFFFFFBEB);
-    }
-    final isCorrectTarget = _roundCorrectPairIds.contains(pairId);
-    return isCorrectTarget
-        ? AppTheme.accentGreen.withOpacity(0.10)
-        : const Color(0xFFFFFBEB);
-  }
-
-  Color _rightTileBorder(int pairId) {
-    if (!_showRoundResult) {
-      final selected = _roundAssignments.values.contains(pairId);
-      return selected
-          ? const Color(0xFFF59E0B)
-          : const Color(0xFFFBBF24);
-    }
-    return _roundCorrectPairIds.contains(pairId)
-        ? AppTheme.accentGreen.withOpacity(0.65)
-        : const Color(0xFFFBBF24);
   }
 
   String _rightLabelForPair(int pairId) {
@@ -456,191 +523,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     return (_completedPairs / _allPairs.length).clamp(0.0, 1.0);
   }
 
-  bool _isRightChosenByAnotherLeft(int rightPairId, int leftPairId) {
-    return _roundAssignments.entries.any(
-      (e) => e.key != leftPairId && e.value == rightPairId,
-    );
-  }
-
-  Widget _buildMatchingColumns() {
-    final roundPairIds = List<int>.generate(
-      _currentRoundPairs.length,
-      (i) => _currentRoundStart + i,
-    );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            children: roundPairIds.map((pairId) {
-              final assignedRight = _roundAssignments[pairId];
-              final wasCorrect = _roundCorrectPairIds.contains(pairId);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => _onSelectLeft(pairId),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _leftTileColor(pairId),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _leftTileBorder(pairId),
-                        width: _activeLeftPairId == pairId ? 1.8 : 1.2,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _leftLabelForPair(pairId),
-                          style: GoogleFonts.poppins(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                        if (assignedRight != null) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Text(
-                                '-> ',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  _rightLabelForPair(
-                                    _showRoundResult ? pairId : assignedRight,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                ),
-                              ),
-                              if (_showRoundResult)
-                                Icon(
-                                  wasCorrect
-                                      ? Icons.check_circle_rounded
-                                      : Icons.info_outline_rounded,
-                                  size: 14,
-                                  color: wasCorrect
-                                      ? AppTheme.accentGreen
-                                      : AppTheme.primaryColor,
-                                ),
-                            ],
-                          ),
-                          if (_showRoundResult && !wasCorrect)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                'corrected',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF1D4ED8),
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            children: _rightColumnPairIds.map((pairId) {
-              final wasCorrect = _roundCorrectPairIds.contains(pairId);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: _activeLeftPairId == null
-                      ? null
-                      : () {
-                          if (_activeLeftPairId == null) return;
-                          if (_isRightChosenByAnotherLeft(pairId, _activeLeftPairId!)) {
-                            unawaited(_soundService.playMatchingWrong());
-                          }
-                          _onSelectRight(pairId);
-                        },
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _rightTileColor(pairId),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: _rightTileBorder(pairId),
-                            width: 1.2,
-                          ),
-                        ),
-                        child: Text(
-                          _rightLabelForPair(pairId),
-                          style: GoogleFonts.poppins(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                      ),
-                      if (_showRoundResult)
-                        Positioned(
-                          right: 8,
-                          top: 8,
-                          child: Icon(
-                            wasCorrect
-                                ? Icons.check_circle_rounded
-                                : Icons.cancel_rounded,
-                            size: 16,
-                            color: wasCorrect
-                                ? AppTheme.accentGreen
-                                : const Color(0xFFDC2626),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSectionActionArea() {
-    final allAssigned = _roundAssignments.length == _currentRoundPairs.length;
-    if (_showRoundResult) {
-      return GameStandardsPrimaryButton(
-        label: _completedPairs >= _allPairs.length ? 'Finish game' : 'Continue',
-        onPressed: _nextRoundOrFinish,
-      );
-    }
-    return GameStandardsPrimaryButton(
-      label: allAssigned ? 'Check matches' : 'Select all matches',
-      onPressed: _checkCurrentRound,
-    );
-  }
-
   Future<void> _persistProgress() async {
     if (_gameCompleted) return;
     await GameProgressService.saveProgress(
@@ -656,21 +538,29 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
 
   @override
   void dispose() {
+    _isLeaving = true;
     WidgetsBinding.instance.removeObserver(this);
-    _matchFlyerTimer?.cancel();
     _mascotReactionTimer?.cancel();
+    _feedbackTimer?.cancel();
     _roundTimer?.cancel();
+    _cancelPendingLeftTermSpeak();
     unawaited(_persistProgress());
-    unawaited(_ttsService.stop());
-    unawaited(_soundService.stopMusic(force: true));
+    unawaited(GameAudioLifecycle.stopAll(
+      tts: _ttsService,
+      sound: _soundService,
+    ));
     for (final controller in _flipControllers.values) {
       controller.dispose();
     }
     _progressController.dispose();
     _confettiController.dispose();
-    _ttsService.dispose();
     super.dispose();
   }
+
+  Future<void> _stopVoiceAndMusic() => GameAudioLifecycle.stopAll(
+        tts: _ttsService,
+        sound: _soundService,
+      );
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -753,12 +643,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _flippedCards.remove(secondIndex);
       });
 
-      _showMatchFlyer(_buildMatchSentence(card1, card2));
-      _showMascotReaction(
-        'Excellent match. Keep chaining them.',
-        tone: CompanionTone.success,
-        celebrate: true,
-      );
       _confettiController.play();
 
       // Update progress
@@ -791,10 +675,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         });
       });
       _soundService.playIncorrect();
-      _showMascotReaction(
-        'Not a pair yet. Remember positions and try again.',
-        tone: CompanionTone.tip,
-      );
     }
 
     safeSetState(() {
@@ -855,19 +735,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     return 'Great match! "${leftCard.text}" goes with "${rightCard.text}".';
   }
 
-  void _showMatchFlyer(String text) {
-    _matchFlyerTimer?.cancel();
-    safeSetState(() {
-      _matchFlyerText = text;
-    });
-    _matchFlyerTimer = Timer(const Duration(milliseconds: 1800), () {
-      if (!mounted) return;
-      safeSetState(() {
-        _matchFlyerText = null;
-      });
-    });
-  }
-
   void _showMascotReaction(
     String message, {
     CompanionTone tone = CompanionTone.neutral,
@@ -900,9 +767,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   Future<void> _showHowToPlay({bool autoRead = false}) async {
     if (!mounted) return;
     final instructionText =
-        'This is a direct matching game. Choose a term on the left and map it to the correct outcome on the right. '
-        'Complete each section before moving to the next one. '
-        'Green means correct mapping, red means rematch needed.';
+        'Match one pair at a time. Tap a term on the left, then tap its definition on the right. '
+        'You get instant feedback on every try. Clear each section to move on.';
     var muted = !_isTTSEnabled;
     final sheetFuture = showModalBottomSheet(
       context: context,
@@ -954,7 +820,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Match each left concept to its correct right outcome in order.',
+                  'Match each left term to its right definition, one pair at a time.',
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: AppTheme.textMedium,
@@ -965,16 +831,16 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                   'Tap a left item (term) first.',
                 ),
                 _buildHowToBullet(
-                  'Then tap the matching right item (definition/outcome).',
+                  'Then tap the matching right item. You hear right or wrong instantly.',
                 ),
                 _buildHowToBullet(
-                  'Fill all mappings, then press Check matches.',
+                  'Correct pairs lock green and you earn XP.',
                 ),
                 _buildHowToBullet(
-                  'Correct mappings turn green; incorrect mappings turn red.',
+                  'Wrong picks bounce back. Try again until the section is clear.',
                 ),
                 _buildHowToBullet(
-                  'You get up to 5 pairs per section, and 3 sections flow progressively.',
+                  'Up to 5 pairs per section. Sections unlock as you go.',
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -992,7 +858,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       },
     );
     if (autoRead && _isTTSEnabled && !muted) {
-      _ttsService.speak(instructionText);
+      await _soundService.duckBgmForSpeech();
+      await _ttsService.speakAndWait(instructionText);
     }
     await sheetFuture;
     await _ttsService.stop();
@@ -1079,9 +946,10 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       }
     }());
 
-    // Play completion sound
-    // Don't block navigation on audio playback.
+    // Play completion sound without blocking navigation.
     unawaited(_soundService.playComplete());
+
+    await _stopVoiceAndMusic();
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -1101,6 +969,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   }
 
   Future<void> _handleBack() async {
+    if (_isLeaving) return;
+
     final quit = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1131,10 +1001,13 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       ),
     );
     if (quit == true && mounted) {
-      await _ttsService.stop();
-      await _soundService.stopMusic(force: true);
+      _isLeaving = true;
+      _roundTimer?.cancel();
+      _cancelPendingLeftTermSpeak();
+      await _stopVoiceAndMusic();
       await _persistProgress();
-      SkulMateNavigation.exitToSkulMateHome(context);
+      if (!mounted) return;
+      await SkulMateNavigation.popGame(context);
     }
   }
 
@@ -1200,14 +1073,15 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) _handleBack();
+        if (!didPop) unawaited(_handleBack());
       },
       child: Scaffold(
         backgroundColor: AppTheme.softBackground,
         appBar: SkulMateGameAppBar(
+          light: true,
           title: widget.game.title,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: const Icon(Icons.arrow_back_rounded),
             onPressed: _handleBack,
           ),
           actions: [
@@ -1216,7 +1090,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
               visualDensity: VisualDensity.compact,
               constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
               padding: const EdgeInsets.all(6),
-              icon: const Icon(Icons.help_outline, color: Colors.white),
+              icon: const Icon(Icons.help_outline_rounded),
               onPressed: _showHowToPlay,
             ),
             Padding(
@@ -1226,7 +1100,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 onTap: _openGameSettings,
                 child: CircleAvatar(
                   radius: 16,
-                  backgroundColor: Colors.white.withOpacity(0.22),
+                  backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.08),
                   child: const SkulMateProfileAvatar(
                     size: 28,
                     forGameAppBar: true,
@@ -1240,190 +1114,100 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           children: [
             Column(
               children: [
-                // Animated Progress bar
-                AnimatedBuilder(
-                  animation: _progressAnimation,
-                  builder: (context, child) {
-                    return LinearProgressIndicator(
-                      value: _progressValue(),
-                      backgroundColor: AppTheme.neutral200,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        AppTheme.primaryColor,
-                      ),
-                      minHeight: 4,
-                    );
-                  },
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: GameStandardsHud(
+                    progressText:
+                        'Section ${_roundNumber()} · $_completedPairs/$totalPairs matched',
+                    progressValue: _progressValue(),
+                    xpEarned: _xpEarned,
+                    gameType: GameType.matching,
+                  ),
                 ),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => SingleChildScrollView(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                           child: Column(
                             children: [
-                        // Section 1: compact status strip (no large square cards)
-                        FlatStageCard(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
+                        if (_feedbackMessage.isNotEmpty) ...[
+                          GameFeedbackBanner(
+                            tone: _feedbackTone,
+                            message: _feedbackMessage,
                           ),
-                          borderColor: AppTheme.primaryColor.withOpacity(0.15),
+                          const SizedBox(height: 10),
+                        ],
+                        GameFlatPanel(
                     child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          children: [
-                                  _buildCompactTopPill(
-                                    icon: Icons.timer_outlined,
-                                    label: 'Time',
-                                    value: '${_roundRemainingSeconds}s',
-                                    color: _roundRemainingSeconds <= 10
-                                        ? AppTheme.primaryDark
-                                        : AppTheme.primaryColor,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _buildCompactTopPill(
-                                    icon: Icons.check_circle,
-                                    label: 'Matched',
-                                    value: '$_completedPairs/$totalPairs',
-                                    color: AppTheme.primaryColor,
-                            ),
-                            const SizedBox(width: 8),
-                                  _buildCompactTopPill(
-                                    icon: Icons.star_rounded,
-                                    label: 'XP',
-                                    value: '$_xpEarned',
-                                    color: AppTheme.primaryLight,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
                               Row(
                                 children: [
                                   Text(
-                                    'Section ${_roundNumber()} of ${_totalSections()}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppTheme.textMedium,
+                                    'Match It',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.textDark,
                                     ),
                                   ),
                                   const Spacer(),
                                   Text(
-                                    '${_currentRoundPairs.length} pairs on this screen',
-                                    style: GoogleFonts.poppins(
+                                    '${_matchedInRound.length}/${_currentRoundPairs.length}',
+                                    style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
+                                      fontWeight: FontWeight.w600,
                                       color: AppTheme.textMedium,
                               ),
                             ),
-                          ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        // Section 2: matching board
-                        FlatStageCard(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          borderColor: AppTheme.primaryColor.withOpacity(0.14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Knowledge Match',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppTheme.textMedium,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                        Expanded(
-                                    child: Text(
-                                      'Terms',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppTheme.primaryColor,
-                                      ),
-                                    ),
-                                  ),
                                   const SizedBox(width: 8),
-                                  Expanded(
+                                  Container(
+                          padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _roundRemainingSeconds <= 10
+                                          ? AppTheme.gameNudgeBg
+                                          : AppTheme.neutral100,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
                                     child: Text(
-                                      'Definitions',
-                                      textAlign: TextAlign.right,
-                                      style: GoogleFonts.poppins(
+                                      '${_roundRemainingSeconds}s',
+                                      style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w700,
-                                        color: AppTheme.textMedium,
+                                        color: AppTheme.textDark,
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: List.generate(_totalSections().clamp(1, 5), (
-                                index,
-                                ) {
-                                  final sectionCount = _totalSections().clamp(1, 5);
-                                  final completedSteps = _showRoundResult
-                                      ? _roundNumber().clamp(1, sectionCount)
-                                      : (_roundNumber() - 1).clamp(
-                                          0,
-                                          sectionCount,
-                                        );
-                                  final filled = index < completedSteps;
-                                  return Expanded(
-                                    child: Container(
-                                      margin: EdgeInsets.only(
-                                        right: index == sectionCount - 1 ? 0 : 6,
-                                      ),
-                                      height: 6,
-                                      decoration: BoxDecoration(
-                                        color: filled
-                                            ? AppTheme.skyBlue
-                                            : AppTheme.neutral200,
-                                        borderRadius: BorderRadius.circular(99),
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ),
-                              const SizedBox(height: 10),
-                              _buildMatchingColumns(),
+                              const SizedBox(height: 12),
+                              _buildMatchingBoard(),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 10),
                         if (_mascotReaction != null) ...[
+                          const SizedBox(height: 10),
                           SkulMateCompanionBanner(
                             tone: _mascotReactionTone,
                             message: _mascotReaction!,
                             celebrate: _mascotCelebrate,
                           ),
-                          const SizedBox(height: 10),
                         ],
-                        const SizedBox(height: 12),
-                        // Section 3: action area
+                        const SizedBox(height: 10),
                         _buildSectionActionArea(),
                             ],
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            // Confetti overlay
+            GameEdgeFlash(
+              trigger: _edgeFlashTrigger,
+              success: _edgeFlashSuccess,
+            ),
+            GameMatchPulse(trigger: _matchPulseTrigger),
             Align(
               alignment: Alignment.topCenter,
               child: ConfettiWidget(
@@ -1445,50 +1229,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 ],
               ),
             ),
-            if (_matchFlyerText != null)
-              Positioned(
-                top: 10,
-                left: 16,
-                right: 16,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 220),
-                  opacity: _matchFlyerText == null ? 0 : 1,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppTheme.primaryLight, AppTheme.primaryDark],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: AppTheme.accentGreen.withOpacity(0.9),
-                        width: 1.6,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primaryColor.withOpacity(0.2),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      _matchFlyerText!,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ),
+            GameXpPopup(amount: _lastXpBurst, visible: _xpPopupVisible),
           ],
         ),
       ),

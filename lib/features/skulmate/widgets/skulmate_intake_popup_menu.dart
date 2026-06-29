@@ -1,18 +1,14 @@
-import 'dart:io' show File;
-
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
 import '../models/skulmate_intake_models.dart';
 import '../services/skulmate_intake_coordinator.dart';
-import 'photo_upload_bottom_sheet.dart';
-import 'skulmate_surface_styles.dart';
+import '../services/skulmate_import_actions.dart';
+import '../utils/deck_navigation.dart';
 import 'skulmate_record_lecture_sheet.dart';
+import 'skulmate_surface_styles.dart';
 import 'skulmate_youtube_import_sheet.dart';
 
 /// Gizmo-style anchored popup menus (not bottom sheets).
@@ -33,14 +29,14 @@ class SkulMateIntakePopupMenu {
       anchor: anchor,
       preferAbove: true,
       entries: [
-        _Entry('PDF', _BrandIcon.pdf(), (p) => _pickDocument(p, childId)),
-        _Entry('PowerPoint', _BrandIcon.powerpoint(), (p) => _pickDocument(p, childId)),
+        _Entry('PDF', _BrandIcon.pdf(), (p) => SkulMateImportActions.pickDocuments(p, childId: childId)),
+        _Entry('PowerPoint', _BrandIcon.powerpoint(), (p) => SkulMateImportActions.pickDocuments(p, childId: childId)),
         _Entry('YouTube', _BrandIcon.youtube(), (p) => _youtube(p, childId)),
-        _Entry(copy.paste, _BrandIcon.notes(), (p) => _paste(p, childId)),
-        _Entry(copy.photo, _BrandIcon.photo(), (p) => _photo(p, childId)),
+        _Entry(copy.paste, _BrandIcon.notes(), (p) => SkulMateImportActions.openPaste(p, childId: childId)),
+        _Entry(copy.photo, _BrandIcon.photo(), (p) => SkulMateImportActions.pickPhotos(p, childId: childId)),
         _Entry(copy.recordLecture, _BrandIcon.mic(), (p) => _record(p, childId)),
         _Entry(copy.quizlet, _BrandIcon.quizlet(), (p) async => _comingSoon(p, copy)),
-        _Entry(copy.deck, _BrandIcon.folder(), (p) async => _comingSoon(p, copy)),
+        _Entry(copy.deck, _BrandIcon.folder(), (p) => _openDeck(p, childId)),
       ],
     );
   }
@@ -59,7 +55,7 @@ class SkulMateIntakePopupMenu {
       alignEnd: true,
       entries: [
         _Entry(copy.recordLecture, _BrandIcon.mic(), (p) => _record(p, childId)),
-        _Entry(copy.deck, _BrandIcon.folder(), (p) async => _comingSoon(p, copy)),
+        _Entry(copy.deck, _BrandIcon.folder(), (p) => _openDeck(p, childId)),
       ],
     );
   }
@@ -147,70 +143,8 @@ class SkulMateIntakePopupMenu {
     );
   }
 
-  static Future<void> _pickDocument(BuildContext context, String? childId) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'docx', 'pptx', 'txt', 'jpg', 'jpeg', 'png'],
-      allowMultiple: false,
-    );
-    if (result == null || result.files.isEmpty || !context.mounted) return;
-
-    if (kIsWeb) {
-      await SkulMateIntakeCoordinator.start(
-        context,
-        SkulMateIntakePayload(
-          source: SkulMateIntakeSource.document,
-          filesWeb: [result.files.first],
-          childId: childId,
-        ),
-      );
-    } else if (result.files.first.path != null) {
-      await SkulMateIntakeCoordinator.start(
-        context,
-        SkulMateIntakePayload(
-          source: SkulMateIntakeSource.document,
-          files: [File(result.files.first.path!)],
-          childId: childId,
-        ),
-      );
-    }
-  }
-
-  static Future<void> _photo(BuildContext context, String? childId) async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (_) => PhotoUploadBottomSheet(),
-    );
-    if (source == null || !context.mounted) return;
-
-    final picker = ImagePicker();
-    final List<XFile> images;
-    if (source == ImageSource.gallery) {
-      images = await picker.pickMultiImage(imageQuality: 85);
-    } else {
-      final shot = await picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-      );
-      images = shot != null ? [shot] : [];
-    }
-    if (images.isEmpty || !context.mounted) return;
-    await SkulMateIntakeCoordinator.start(
-      context,
-      SkulMateIntakePayload(
-        source: SkulMateIntakeSource.photo,
-        images: images,
-        childId: childId,
-      ),
-    );
-  }
-
   static Future<void> _record(BuildContext context, String? childId) async {
     await SkulMateRecordLectureSheet.show(context, childId: childId);
-  }
-
-  static Future<void> _paste(BuildContext context, String? childId) async {
-    await SkulMateIntakeCoordinator.openPasteFlow(context, childId: childId);
   }
 
   static Future<void> _youtube(BuildContext context, String? childId) async {
@@ -224,6 +158,10 @@ class SkulMateIntakePopupMenu {
         childId: childId,
       ),
     );
+  }
+
+  static Future<void> _openDeck(BuildContext context, String? childId) async {
+    await DeckNavigation.openDeckPicker(context: context, childId: childId);
   }
 
   static void _comingSoon(BuildContext context, SkulMateCopy copy) {

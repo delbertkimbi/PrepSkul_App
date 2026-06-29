@@ -12,25 +12,53 @@ import '../widgets/skulmate_surface_styles.dart';
 class SkulMateNavigation {
   SkulMateNavigation._();
 
-  /// Pop one route (game screen back to SkulMate home).
-  static void popGame(BuildContext context, {dynamic result}) {
-    if (!context.mounted) return;
-    Navigator.of(context).pop(result);
+  static void _applyStatusBar() {
     SystemChrome.setSystemUIOverlayStyle(
       SkulMateSurfaceStyles.lightStatusBarOverlay,
     );
   }
 
-  /// Leave game/results stack and return to SkulMate tab on main shell.
-  static void exitToSkulMateHome(BuildContext context) {
+  /// Pop one route (game screen back to SkulMate home / deck hub).
+  static Future<void> popGame(BuildContext context, {dynamic result}) async {
+    if (!context.mounted) return;
+    final navigator = Navigator.of(context);
+    unawaited(GameSoundService().stopMusic(force: true));
+    if (navigator.canPop()) {
+      navigator.pop(result);
+    }
+    _applyStatusBar();
+  }
+
+  /// Leave game stack and focus the SkulMate tab on the main shell.
+  static Future<void> exitToSkulMateHome(BuildContext context) async {
+    if (!context.mounted) return;
+    final navigator = Navigator.of(context);
+    final scope = MainNavigationScope.maybeOf(context);
+    unawaited(GameSoundService().stopMusic(force: true));
+    if (navigator.canPop()) {
+      navigator.popUntil((route) => route.isFirst);
+    }
+    scope?.switchTab(StudentTabIndex.skulMate);
+    _applyStatusBar();
+  }
+
+  /// Stop audio, persist if needed, then pop one level — preferred game quit path.
+  static Future<void> quitGame(
+    BuildContext context, {
+    Future<void> Function()? beforePop,
+    bool toSkulMateTab = false,
+  }) async {
     if (!context.mounted) return;
     unawaited(GameSoundService().stopMusic(force: true));
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    MainNavigationScope.maybeOf(context)
-        ?.switchTab(StudentTabIndex.skulMate);
-    SystemChrome.setSystemUIOverlayStyle(
-      SkulMateSurfaceStyles.lightStatusBarOverlay,
-    );
+    if (beforePop != null) {
+      await beforePop();
+    }
+    if (!context.mounted) return;
+    if (toSkulMateTab) {
+      await exitToSkulMateHome(context);
+    } else {
+      await popGame(context);
+    }
   }
 
   static Widget gameBackButton(

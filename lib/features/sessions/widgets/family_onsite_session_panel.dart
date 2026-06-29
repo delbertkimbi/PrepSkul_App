@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:prepskul/core/utils/geocoding_helper.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
 import 'package:prepskul/features/sessions/widgets/onsite_session_experience.dart';
 
@@ -52,7 +53,11 @@ class FamilyOnsiteSessionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final stage = onsiteStageFromSession(session);
     final effectiveStatus = SessionLiveUtils.effectiveStatus(session);
-    final mapVisible = showMapPreview ?? true;
+    final mapVisible = showMapPreview ??
+        GeocodingHelper.shouldShowMapForSession(
+          sessionAddress: address,
+          userAddress: userAddress,
+        );
     final statusLine = stage == OnsiteExperienceStage.preSession
         ? _preSessionStatusLine(
             scheduledStart: scheduledStart,
@@ -82,6 +87,7 @@ class FamilyOnsiteSessionPanel extends StatelessWidget {
           sessionStartedAt: sessionStartedAt,
           statusLine: statusLine,
           showMapPreview: mapVisible,
+          userReferenceAddress: userAddress,
           familyTrackingSlot: stage == OnsiteExperienceStage.live ? trackingWidget : null,
           familyConfirmSlot: stage == OnsiteExperienceStage.live
               ? confirmStartWidget

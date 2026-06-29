@@ -111,13 +111,18 @@ class SkulMateLectureTranscriptionService {
     } catch (_) {}
 
     if (response.statusCode == 422) {
-      final msg = decoded?['error']?.toString() ??
+      final code = decoded?['errorCode']?.toString();
+      final msg = _mapTranscribeErrorCode(code) ??
+          decoded?['error']?.toString() ??
           'Not enough speech detected. Record a bit longer.';
       throw Exception(msg);
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final msg = decoded?['error']?.toString() ?? 'Transcription failed';
+      final code = decoded?['errorCode']?.toString();
+      final msg = _mapTranscribeErrorCode(code) ??
+          decoded?['error']?.toString() ??
+          'Transcription failed';
       throw Exception(msg);
     }
 
@@ -128,5 +133,25 @@ class SkulMateLectureTranscriptionService {
     }
 
     return LectureTranscriptionResult(transcriptId: transcriptId, text: text);
+  }
+
+  static String? _mapTranscribeErrorCode(String? code) {
+    if (code == null || code.isEmpty) return null;
+    switch (code) {
+      case 'AUDIO_TOO_SHORT':
+      case 'TRANSCRIPT_TOO_SHORT':
+        return 'Recording is too short or not enough speech was detected.\n\n'
+            'Record at least 15 seconds of clear speech, closer to the mic.';
+      case 'AUDIO_UNREACHABLE':
+        return 'Could not access the recording for transcription.\n\n'
+            'Please try recording again.';
+      case 'DEEPGRAM_AUTH':
+        return 'Transcription is temporarily unavailable.\n\n'
+            'Please try again later or paste your notes manually.';
+      case 'TRANSCRIPTION_FAILED':
+        return 'Transcription failed. Please try again.';
+      default:
+        return null;
+    }
   }
 }

@@ -1,250 +1,336 @@
 import 'dart:async';
-import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:confetti/confetti.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
-import 'package:prepskul/core/services/log_service.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+
+import '../l10n/skulmate_copy.dart';
 import '../models/game_model.dart';
-import '../services/skulmate_service.dart';
+import '../models/game_stats_model.dart';
+import '../models/puzzle_step_model.dart';
+import '../services/game_audio_lifecycle.dart';
+import '../services/game_progress_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
-import '../services/game_progress_service.dart';
-import '../models/game_stats_model.dart';
-import '../widgets/skulmate_game_app_bar.dart';
-import '../widgets/skulmate_profile_avatar.dart';
+import '../services/skulmate_service.dart';
+import '../services/tts_service.dart';
+import '../utils/skulmate_navigation.dart';
+import '../widgets/game_settings_sheet.dart';
 import '../widgets/game_standard_widgets.dart';
-import '../widgets/skulmate_mascot_media_widget.dart';
+import '../widgets/puzzle_learn_more_sheet.dart';
+import '../widgets/puzzle_sequence_widgets.dart';
+import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_game_surface.dart';
+import '../widgets/skulmate_profile_avatar.dart';
 import 'game_results_screen.dart';
 
-Offset _parsePuzzlePosition(Map<String, dynamic> pieceData) {
-  const boardW = 280.0;
-  const boardH = 380.0;
-
-  final pos = pieceData['correctPosition'];
-  if (pos is Map) {
-    final x = (pos['x'] as num?)?.toDouble();
-    final y = (pos['y'] as num?)?.toDouble();
-    if (x != null && y != null) {
-      if (x <= 1.0 && y <= 1.0) {
-        return Offset(x * boardW, y * boardH);
-      }
-      return Offset(x, y);
-    }
-  }
-  final legacyX = (pieceData['correctX'] as num?)?.toDouble();
-  final legacyY = (pieceData['correctY'] as num?)?.toDouble();
-  if (legacyX != null && legacyY != null) {
-    if (legacyX <= 1.0 && legacyY <= 1.0) {
-      return Offset(legacyX * boardW, legacyY * boardH);
-    }
-    return Offset(legacyX, legacyY);
-  }
-  return const Offset(140, 190);
-}
-
-/// Puzzle Pieces game screen
+/// Multi-mode puzzle journey (pick, hotspot, order).
 class PuzzlePiecesGameScreen extends StatefulWidget {
   final GameModel game;
   final GameProgress? resumeFrom;
 
   const PuzzlePiecesGameScreen({
-    Key? key,
+    super.key,
     required this.game,
     this.resumeFrom,
-  }) : super(key: key);
+  });
 
   @override
   State<PuzzlePiecesGameScreen> createState() => _PuzzlePiecesGameScreenState();
 }
 
-class PuzzlePiece {
-  final String id;
-  final String text;
-  final Offset correctPosition;
-  Offset? currentPosition;
-  final double rotation;
-  bool isPlaced;
-
-  PuzzlePiece({
-    required this.id,
-    required this.text,
-    required this.correctPosition,
-    this.currentPosition,
-    this.rotation = 0.0,
-    this.isPlaced = false,
-  });
-}
-
-class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
-    with TickerProviderStateMixin {
-  String? _imageUrl;
-  List<PuzzlePiece> _pieces = [];
+class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen> {
+  List<PuzzleStepDefinition> _steps = [];
+  int _currentStepIndex = 0;
   int _score = 0;
-  int _currentStreak = 0;
   int _xpEarned = 0;
+  int _wrongAttempts = 0;
   DateTime? _startTime;
   final GameSoundService _soundService = GameSoundService();
-  late ConfettiController _confettiController;
-  late AnimationController _progressController;
-  late Animation<double> _progressAnimation;
-  GameStats? _currentStats;
-  String? _selectedPieceId;
+  final TTSService _ttsService = TTSService();
+  String? _flashWrongId;
+  String _feedbackMessage = '';
+  GameFeedbackTone _feedbackTone = GameFeedbackTone.neutral;
+  bool _isAdvancing = false;
+  bool _showCompletionAnimation = false;
+  bool _xpPopupVisible = false;
+  int _lastXpBurst = 0;
+  int _edgeFlashTrigger = 0;
+  bool _edgeFlashSuccess = true;
   bool _gameCompleted = false;
+  bool _isTTSEnabled = true;
+  bool _isLeaving = false;
+
+  // hotspot_drop state for current step
+  final Map<String, String> _filledHotspots = {};
+  String? _selectedLabelId;
+  // order_check state for current step
+  final List<String> _orderTapped = [];
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
-    _soundService.initialize();
-    _confettiController = ConfettiController(
-      duration: const Duration(seconds: 2),
-    );
-    _progressController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _progressAnimation = Tween<double>(begin: 0, end: 0).animate(
-      CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
-    );
-    _initializePieces();
-    if (widget.resumeFrom != null) {
-      _score = widget.resumeFrom!.score;
-      final placed = widget.resumeFrom!.currentIndex;
-      for (var i = 0; i < placed && i < _pieces.length; i++) {
-        _pieces[i].isPlaced = true;
-        _pieces[i].currentPosition = _pieces[i].correctPosition;
-      }
-    }
-    _loadStats();
+    unawaited(_initializeAudio());
+    _loadSteps();
+    _restoreFromProgress();
   }
 
-  Future<void> _loadStats() async {
-    final stats = await GameStatsService.getStats();
-    safeSetState(() {
-      _currentStats = stats;
-      _currentStreak = stats.currentStreak;
-    });
+  Future<void> _initializeAudio() async {
+    await _soundService.ensureInitialized();
+    await _ttsService.ensureInitialized();
+    _isTTSEnabled = _ttsService.isEnabled;
+    if (!_soundService.soundsEnabled) {
+      await _soundService.toggleSounds(true);
+    }
+    await _soundService.playMusicForGame(GameType.puzzlePieces);
   }
 
-  void _initializePieces() {
-    if (widget.game.items.isNotEmpty) {
-      final item = widget.game.items[0];
-      if (item.imageUrl != null) {
-        _imageUrl = item.imageUrl;
-      }
-      if (item.puzzlePieces != null) {
-        for (final pieceData in item.puzzlePieces!) {
-          final position = _parsePuzzlePosition(pieceData);
-          _pieces.add(
-            PuzzlePiece(
-              id:
-                  pieceData['id']?.toString() ??
-                  Random().nextInt(1000).toString(),
-              text: pieceData['text'] as String? ?? 'Piece',
-              correctPosition: position,
-              rotation: (pieceData['rotation'] as num?)?.toDouble() ?? 0.0,
-              currentPosition: Offset(
-                Random().nextDouble() * 200 + 50,
-                Random().nextDouble() * 400 + 100,
-              ),
-            ),
-          );
-        }
-      }
+  void _loadSteps() {
+    if (widget.game.items.isEmpty) {
+      _steps = PuzzleStepDefinition.fromLegacyPieces([
+        {'id': '1', 'text': 'Learn the concept', 'order': 0},
+        {'id': '2', 'text': 'Practice', 'order': 1},
+        {'id': '3', 'text': 'Apply', 'order': 2},
+      ]);
+      return;
     }
-
-    if (_pieces.isEmpty) {
-      // Create default pieces
-      _pieces = [
-        PuzzlePiece(
-          id: '1',
-          text: 'Piece 1',
-          correctPosition: const Offset(100, 100),
-          currentPosition: const Offset(50, 200),
-        ),
-        PuzzlePiece(
-          id: '2',
-          text: 'Piece 2',
-          correctPosition: const Offset(200, 100),
-          currentPosition: const Offset(150, 300),
-        ),
-      ];
+    final item = widget.game.items.first;
+    _steps = PuzzleStepDefinition.parseFromGameItem(
+      puzzleSteps: item.puzzleSteps,
+      puzzlePieces: item.puzzlePieces,
+      gameData: item.gameData,
+    );
+    if (_steps.isEmpty) {
+      _steps = PuzzleStepDefinition.fromLegacyPieces([
+        {'id': '1', 'text': 'Learn the concept', 'order': 0},
+        {'id': '2', 'text': 'Practice', 'order': 1},
+      ]);
     }
   }
 
-  void _onPieceTap(String pieceId) {
+  void _restoreFromProgress() {
+    final resume = widget.resumeFrom;
+    if (resume == null) return;
+    _score = resume.score;
+    _currentStepIndex = resume.currentIndex.clamp(0, _steps.length);
+    _xpEarned = _currentStepIndex * 5;
+  }
+
+  PuzzleStepDefinition? get _currentStep =>
+      _currentStepIndex < _steps.length ? _steps[_currentStepIndex] : null;
+
+  String _stepKindLabel(SkulMateCopy copy, PuzzleStepDefinition step) {
+    switch (step.type) {
+      case PuzzleStepType.pickOne:
+        return copy.puzzleStepTypePick;
+      case PuzzleStepType.hotspotDrop:
+        return copy.puzzleStepTypeHotspot;
+      case PuzzleStepType.orderCheck:
+        return copy.puzzleStepTypeOrder;
+    }
+  }
+
+  String get _questionPrompt {
+    final step = _currentStep;
+    if (step == null) return '';
+    if (step.prompt.isNotEmpty) return step.prompt;
+    return SkulMateCopy.of(context).puzzleNextPrompt(
+      placedCount: _currentStepIndex,
+      total: _steps.length,
+    );
+  }
+
+  bool get _isComplete => _currentStepIndex >= _steps.length;
+
+  double get _progressValue {
+    if (_steps.isEmpty) return 0;
+    return (_currentStepIndex / _steps.length).clamp(0.0, 1.0);
+  }
+
+  void _resetStepState() {
+    _filledHotspots.clear();
+    _orderTapped.clear();
+    _selectedLabelId = null;
+    _flashWrongId = null;
+  }
+
+  Future<void> _persistProgress() async {
+    if (_gameCompleted) return;
+    await GameProgressService.saveProgress(
+      GameProgress(
+        gameId: widget.game.id,
+        gameType: widget.game.gameType,
+        currentIndex: _currentStepIndex,
+        score: _score,
+        stateData: const {},
+        savedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  Future<void> _onStepSuccess() async {
+    if (_isAdvancing || _isComplete) return;
+    _isAdvancing = true;
+    HapticFeedback.mediumImpact();
+    unawaited(_soundService.playCorrect());
+    unawaited(_soundService.playPiecePlace());
+
     safeSetState(() {
-      _selectedPieceId = _selectedPieceId == pieceId ? null : pieceId;
+      _score += 10;
+      _xpEarned += 5;
+      _lastXpBurst = 5;
+      _xpPopupVisible = true;
+      _edgeFlashSuccess = true;
+      _edgeFlashTrigger++;
+      _feedbackMessage = '';
+    });
+
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    safeSetState(() => _xpPopupVisible = false);
+
+    if (_currentStepIndex + 1 >= _steps.length) {
+      safeSetState(() {
+        _showCompletionAnimation = true;
+        _feedbackMessage = SkulMateCopy.read(context).puzzleSequenceComplete;
+        _feedbackTone = GameFeedbackTone.success;
+      });
+      await Future.delayed(const Duration(milliseconds: 900));
+      if (mounted) await _finishGame();
+      return;
+    }
+
+    safeSetState(() {
+      _currentStepIndex++;
+      _resetStepState();
+      _isAdvancing = false;
+    });
+    unawaited(_persistProgress());
+  }
+
+  void _onWrong({String? message}) {
+    _wrongAttempts++;
+    HapticFeedback.lightImpact();
+    unawaited(_soundService.playIncorrect());
+    final copy = SkulMateCopy.read(context);
+    safeSetState(() {
+      _feedbackMessage = message ?? copy.puzzleWrongStep;
+      _feedbackTone = GameFeedbackTone.error;
+      _edgeFlashSuccess = false;
+      _edgeFlashTrigger++;
     });
   }
 
-  void _onPieceDrag(String pieceId, Offset newPosition) {
-    final piece = _pieces.firstWhere((p) => p.id == pieceId);
-    final distance = (newPosition - piece.correctPosition).distance;
-    final isCorrect = distance < 30; // 30 pixel tolerance
+  Future<void> _onPickOne(String choiceId) async {
+    if (_isAdvancing) return;
+    final step = _currentStep;
+    if (step == null) return;
 
+    unawaited(_soundService.playClick());
+    final choice = step.choices.cast<PuzzleStepChoice?>().firstWhere(
+          (c) => c?.id == choiceId,
+          orElse: () => null,
+        );
+    if (choice == null) return;
+
+    if (!choice.correct) {
+      safeSetState(() => _flashWrongId = choiceId);
+      _onWrong();
+      await Future.delayed(const Duration(milliseconds: 420));
+      if (mounted) safeSetState(() => _flashWrongId = null);
+      return;
+    }
+    await _onStepSuccess();
+  }
+
+  Future<void> _onHotspotDrop(String labelId, String hotspotId) async {
+    if (_isAdvancing) return;
+    final step = _currentStep;
+    if (step == null) return;
+
+    unawaited(_soundService.playClick());
+    final hotspot = step.hotspots.cast<PuzzleHotspot?>().firstWhere(
+          (h) => h?.id == hotspotId,
+          orElse: () => null,
+        );
+    if (hotspot == null || hotspot.accepts != labelId) {
+      safeSetState(() => _flashWrongId = labelId);
+      _onWrong();
+      await Future.delayed(const Duration(milliseconds: 420));
+      if (mounted) safeSetState(() => _flashWrongId = null);
+      return;
+    }
+
+    safeSetState(() => _filledHotspots[hotspotId] = labelId);
+    final allFilled = step.hotspots.every((h) => _filledHotspots.containsKey(h.id));
+    if (allFilled) await _onStepSuccess();
+  }
+
+  void _onLabelSelect(String labelId) {
+    if (_isAdvancing) return;
+    unawaited(_soundService.playClick());
     safeSetState(() {
-      piece.currentPosition = newPosition;
-      if (isCorrect && !piece.isPlaced) {
-        piece.currentPosition = piece.correctPosition;
-        piece.isPlaced = true;
-        _score += 10;
-        _currentStreak++;
-        _xpEarned += 5;
-        _soundService.playPiecePlace();
-        _confettiController.play();
-
-        // Update progress
-        final newProgress =
-            _pieces.where((p) => p.isPlaced).length / _pieces.length;
-        _progressAnimation =
-            Tween<double>(
-              begin: _progressAnimation.value,
-              end: newProgress.clamp(0.0, 1.0),
-            ).animate(
-              CurvedAnimation(
-                parent: _progressController,
-                curve: Curves.easeOut,
-              ),
-            );
-        _progressController.forward(from: 0);
-
-        // Check if game complete
-        if (_pieces.every((p) => p.isPlaced)) {
-          Future.delayed(const Duration(milliseconds: 500), () {
-            _finishGame();
-          });
-        }
-      }
+      _selectedLabelId = _selectedLabelId == labelId ? null : labelId;
     });
+  }
+
+  Future<void> _onSlotTap(String hotspotId) async {
+    final labelId = _selectedLabelId;
+    if (labelId == null || _isAdvancing) return;
+    await _onHotspotDrop(labelId, hotspotId);
+    if (mounted) safeSetState(() => _selectedLabelId = null);
+  }
+
+  Future<void> _onOrderTap(String choiceId) async {
+    if (_isAdvancing) return;
+    final step = _currentStep;
+    if (step == null) return;
+
+    unawaited(_soundService.playClick());
+    final expected = step.orderSequence;
+    final nextIndex = _orderTapped.length;
+    if (nextIndex >= expected.length || expected[nextIndex] != choiceId) {
+    safeSetState(() {
+        _flashWrongId = choiceId;
+        _orderTapped.clear();
+      });
+      _onWrong();
+      await Future.delayed(const Duration(milliseconds: 420));
+      if (mounted) safeSetState(() => _flashWrongId = null);
+      return;
+    }
+
+    safeSetState(() => _orderTapped.add(choiceId));
+    if (_orderTapped.length == expected.length) {
+      await _onStepSuccess();
+    }
   }
 
   Future<void> _finishGame() async {
     _gameCompleted = true;
     await GameProgressService.clearProgress(widget.game.id);
-    final endTime = DateTime.now();
     final timeTaken = _startTime != null
-        ? endTime.difference(_startTime!).inSeconds
+        ? DateTime.now().difference(_startTime!).inSeconds
         : null;
-
-    final isPerfectScore = _pieces.every((p) => p.isPlaced);
-
-    int bonusXP = 0;
-    if (isPerfectScore) bonusXP += 50;
-    if (timeTaken != null && timeTaken < 180) bonusXP += 25;
+    final isPerfectScore = _wrongAttempts == 0;
+    var bonusXP = 50;
+    if (timeTaken != null && timeTaken < 120) bonusXP += 25;
     final totalXP = _xpEarned + bonusXP;
+    final totalSteps = _steps.length;
 
     unawaited(
       GameStatsService.addGameResult(
-        correctAnswers: _pieces.where((p) => p.isPlaced).length,
-        totalQuestions: _pieces.length,
+        correctAnswers: totalSteps,
+        totalQuestions: totalSteps,
         timeTakenSeconds: timeTaken ?? 0,
         isPerfectScore: isPerfectScore,
       ).catchError((e) {
-        LogService.error('🎮 [PuzzlePieces] Error updating game stats: $e');
+        LogService.error('🎮 [PuzzlePieces] stats error: $e');
+        return GameStats.empty();
       }),
     );
 
@@ -252,16 +338,17 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
       SkulMateService.saveGameSession(
         gameId: widget.game.id,
         score: _score,
-        totalQuestions: _pieces.length,
-        correctAnswers: _pieces.where((p) => p.isPlaced).length,
+        totalQuestions: totalSteps,
+        correctAnswers: totalSteps,
         timeTakenSeconds: timeTaken,
-        answers: {'pieces': _pieces.where((p) => p.isPlaced).length},
+        answers: {'steps': totalSteps, 'wrongAttempts': _wrongAttempts},
       ).catchError((e) {
-        LogService.error('🎮 [PuzzlePieces] Error saving game session: $e');
+        LogService.error('🎮 [PuzzlePieces] session error: $e');
       }),
     );
 
-    await _soundService.playComplete();
+    unawaited(_soundService.playComplete());
+    await GameAudioLifecycle.stopAll(tts: _ttsService, sound: _soundService);
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -270,7 +357,7 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
           builder: (context) => GameResultsScreen(
             game: widget.game,
             score: _score,
-            totalQuestions: _pieces.length,
+            totalQuestions: totalSteps,
             timeTakenSeconds: timeTaken,
             xpEarned: totalXP,
             isPerfectScore: isPerfectScore,
@@ -280,147 +367,292 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
     }
   }
 
-  Future<void> _persistProgress() async {
-    if (_gameCompleted) return;
-    final placed = _pieces.where((p) => p.isPlaced).length;
-    await GameProgressService.saveProgress(
-      GameProgress(
-        gameId: widget.game.id,
-        gameType: widget.game.gameType,
-        currentIndex: placed,
-        score: _score,
-        savedAt: DateTime.now(),
+  Future<void> _handleBack() async {
+    if (_isLeaving) return;
+    if (_gameCompleted) {
+      await SkulMateNavigation.popGame(context);
+      return;
+    }
+
+    final quit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Quit game?',
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'Your progress is saved. You can continue later from the game library.',
+          style: GoogleFonts.plusJakartaSans(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep playing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Quit'),
+          ),
+        ],
       ),
+    );
+    if (quit == true && mounted) {
+      _isLeaving = true;
+      await GameAudioLifecycle.stopAll(tts: _ttsService, sound: _soundService);
+      await _persistProgress();
+      if (!mounted) return;
+      await SkulMateNavigation.popGame(context);
+    }
+  }
+
+  void _openLearnMore() {
+    final step = _currentStep;
+    if (step == null) return;
+    final explanation = step.explanation?.trim() ?? '';
+    if (explanation.isEmpty && step.prompt.isEmpty) return;
+    unawaited(_soundService.playClick());
+    unawaited(
+      showPuzzleLearnMoreSheet(
+        context: context,
+        term: widget.game.title,
+        definition: explanation.isNotEmpty ? explanation : step.prompt,
+        gameId: widget.game.id,
+        ttsService: _ttsService,
+        ttsEnabled: _isTTSEnabled,
+      ),
+    );
+  }
+
+  Future<void> _openGameSettings() async {
+    await GameSettingsSheet.show(
+      context: context,
+      soundService: _soundService,
+      gameType: widget.game.gameType,
+      ttsService: _ttsService,
+      isTTSEnabled: _isTTSEnabled,
+      onTTSToggled: (v) => safeSetState(() => _isTTSEnabled = v),
+    );
+  }
+
+  Widget _buildInteractionArea(SkulMateCopy copy) {
+    final step = _currentStep;
+    if (step == null || _showCompletionAnimation) {
+      return PuzzleCompletionPathAnimation(nodeCount: _steps.length);
+    }
+
+    switch (step.type) {
+      case PuzzleStepType.hotspotDrop:
+        if (step.hotspots.isEmpty) {
+          return _buildChoiceList(
+            step.choices.map((c) => (id: c.id, text: c.text)).toList(),
+          );
+        }
+        return PuzzleSlotMatchBoard(
+          slots: step.hotspots
+              .map((h) => (id: h.id, hint: h.label))
+              .toList(),
+          labels: step.dragLabels
+              .map((l) => (id: l.id, text: l.text))
+              .toList(),
+          filledSlots: Map.from(_filledHotspots),
+          selectedLabelId: _selectedLabelId,
+          flashWrongId: _flashWrongId,
+          disabled: _isAdvancing,
+          onLabelTap: _onLabelSelect,
+          onSlotTap: (slotId) => unawaited(_onSlotTap(slotId)),
+        );
+      case PuzzleStepType.orderCheck:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_orderTapped.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  copy.puzzleOrderProgress(_orderTapped.length, step.orderSequence.length),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+              ),
+            PuzzleOrderTapBoard(
+              choices: step.choices.map((c) => (id: c.id, text: c.text)).toList(),
+              orderSequence: step.orderSequence,
+              tappedOrder: _orderTapped,
+              flashWrongId: _flashWrongId,
+              disabled: _isAdvancing,
+              onTap: (id) => unawaited(_onOrderTap(id)),
+            ),
+          ],
+        );
+      case PuzzleStepType.pickOne:
+        return _buildChoiceList(
+          step.choices.map((c) => (id: c.id, text: c.text)).toList(),
+        );
+    }
+  }
+
+  Widget _buildChoiceList(List<({String id, String text})> choices) {
+    if (choices.length <= 3) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: choices
+            .map(
+              (c) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: PuzzleConceptTile(
+                  text: c.text,
+                  fullWidth: true,
+                  isWrongFlash: _flashWrongId == c.id,
+                  disabled: _isAdvancing,
+                  onTap: () => unawaited(_onPickOne(c.id)),
+                ),
+              ),
+            )
+            .toList(),
+      );
+    }
+    return PuzzleChoiceGrid(
+      choices: choices,
+      flashWrongId: _flashWrongId,
+      disabled: _isAdvancing,
+      onTap: (id) => unawaited(_onPickOne(id)),
     );
   }
 
   @override
   void dispose() {
+    _isLeaving = true;
     unawaited(_persistProgress());
-    _progressController.dispose();
-    _confettiController.dispose();
+    unawaited(GameAudioLifecycle.stopAll(tts: _ttsService, sound: _soundService));
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final placedCount = _pieces.where((p) => p.isPlaced).length;
-    final progress = _pieces.isEmpty ? 0.0 : (placedCount / _pieces.length);
-    return Scaffold(
+    final copy = SkulMateCopy.of(context);
+    final total = _steps.length;
+    final step = _currentStep;
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_handleBack());
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.softBackground,
       appBar: SkulMateGameAppBar(
+          light: true,
         title: widget.game.title,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => unawaited(_handleBack()),
+          ),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 4, left: 0),
+              padding: const EdgeInsets.only(right: 4),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => unawaited(_openGameSettings()),
             child: CircleAvatar(
               radius: 16,
-              backgroundColor: Colors.white.withOpacity(0.22),
+                  backgroundColor:
+                      AppTheme.primaryColor.withValues(alpha: 0.08),
               child: const SkulMateProfileAvatar(
                 size: 28,
                 forGameAppBar: true,
+                  ),
               ),
             ),
           ),
         ],
       ),
-      body: Column(
+        body: Stack(
+          children: [
+            Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: GameStandardsHud(
-              progressText: 'Placed $placedCount of ${_pieces.length}',
-              progressValue: progress.clamp(0.0, 1.0),
+                    progressText: copy.puzzleProgressText(
+                      _currentStepIndex,
+                      total,
+                    ),
+                    progressValue: _progressValue,
               xpEarned: _xpEarned,
-              gameType: widget.game.gameType,
+                    gameType: GameType.puzzlePieces,
             ),
           ),
           Expanded(
-            child: Stack(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_imageUrl != null)
-                  Positioned.fill(
-                    child: CachedNetworkImage(
-                      imageUrl: _imageUrl!,
-                      fit: BoxFit.contain,
-                      placeholder: (context, url) =>
-                          const Center(child: CircularProgressIndicator()),
-                      errorWidget: (context, url, error) => Container(
-                        color: Colors.grey[200],
-                        child: const Center(
-                          child: Text('No puzzle image available'),
+                        PuzzleQuestTrail(
+                          total: total,
+                          currentIndex: _currentStepIndex,
+                          completedCount: _currentStepIndex,
                         ),
-                      ),
-                    ),
-                  ),
-                // Puzzle pieces
-                for (final piece in _pieces)
-                  Positioned(
-                    left: piece.currentPosition?.dx ?? 0,
-                    top: piece.currentPosition?.dy ?? 0,
-                    child: GestureDetector(
-                      onTap: () => _onPieceTap(piece.id),
-                      onPanUpdate: (details) {
-                        _onPieceDrag(
-                          piece.id,
-                          Offset(
-                            (piece.currentPosition?.dx ?? 0) + details.delta.dx,
-                            (piece.currentPosition?.dy ?? 0) + details.delta.dy,
+                        const SizedBox(height: 16),
+                        if (step != null)
+                          PuzzleStepFocusCard(
+                            stepNumber: _currentStepIndex + 1,
+                            total: total,
+                            prompt: _questionPrompt,
+                            stepKindLabel: _stepKindLabel(copy, step),
                           ),
-                        );
-                      },
-                      child: Transform.rotate(
-                        angle: piece.rotation,
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: piece.isPlaced
-                                ? Colors.green.withOpacity(0.8)
-                                : AppTheme.primaryColor.withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: _selectedPieceId == piece.id
-                                  ? Colors.yellow
-                                  : Colors.white,
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.textDark.withOpacity(0.2),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
+                        if (step?.explanation?.isNotEmpty == true ||
+                            step?.prompt.isNotEmpty == true)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: _openLearnMore,
+                              icon: const Icon(Icons.lightbulb_outline_rounded, size: 18),
+                              label: Text(copy.puzzleWhyLabel),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.primaryColor,
                               ),
-                            ],
+                            ),
                           ),
-                          child: Center(
+                        if (_feedbackMessage.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          GameFeedbackBanner(
+                            tone: _feedbackTone,
+                            message: _feedbackMessage,
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        if (step != null &&
+                            step.type != PuzzleStepType.hotspotDrop)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
                             child: Text(
-                              piece.text,
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
+                              copy.puzzlePickFromBelow,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.white,
+                                color: AppTheme.textMedium,
                               ),
-                              textAlign: TextAlign.center,
                             ),
                           ),
-                        ),
-                      ),
+                        _buildInteractionArea(copy),
+                      ],
+                    ),
                     ),
                   ),
               ],
             ),
-          ),
-          SizedBox(
-            width: 80,
-            height: 80,
-            child: const SkulMateMascotMediaWidget(
-              state: SkulMateMascotState.celebration,
-              useLandscapeFrame: false,
-              borderRadius: 999,
+            GameEdgeFlash(
+              trigger: _edgeFlashTrigger,
+              success: _edgeFlashSuccess,
             ),
-          ),
-        ],
+            GameXpPopup(amount: _lastXpBurst, visible: _xpPopupVisible),
+          ],
+        ),
       ),
     );
   }

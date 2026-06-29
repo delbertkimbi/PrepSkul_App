@@ -15,13 +15,11 @@ import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
 import '../widgets/game_roadmap_widget.dart';
-import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/drag_drop_question_widget.dart';
 import '../widgets/game_standard_widgets.dart';
 import '../widgets/game_settings_sheet.dart';
-import '../widgets/skulmate_companion_banner.dart';
 import '../services/daily_challenge_service.dart';
 import '../services/game_progress_service.dart';
 import '../utils/skulmate_navigation.dart';
@@ -70,10 +68,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   int? _lastCorrectXp; // +10 or +15 for boss – show pop-up briefly
   bool _xpPopupVisible = false; // drives fade-out before advancing
   final List<QuestionPerformance> _questionBreakdown = [];
-  String? _mascotReaction;
-  CompanionTone _mascotReactionTone = CompanionTone.neutral;
-  bool _mascotCelebrate = false;
-  Timer? _mascotReactionTimer;
 
   bool _hasShownRules = false;
   bool _gameCompleted = false;
@@ -137,23 +131,14 @@ class _QuizGameScreenState extends State<QuizGameScreen>
 
   Future<void> _showRulesIfNeeded() async {
     if (!_hasShownRules) {
-      await GameRulesOverlay.showIfNeeded(
-        context,
-        widget.game.gameType,
-        (isFirstTime) async {
-          _hasShownRules = true;
-          if (!isFirstTime) {
-            _startQuizMusicOnce();
-          }
-          _startCountdown();
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted && _isTTSEnabled) {
-              _speakCurrentQuestion();
-            }
-          });
-        },
-        onAfterFirstTimeDialogClosed: _openFirstTimeSoundSettingsSheet,
-      );
+      _hasShownRules = true;
+      _startQuizMusicOnce();
+      _startCountdown();
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _isTTSEnabled) {
+          _speakCurrentQuestion();
+        }
+      });
     } else {
       _startCountdown();
       Future.delayed(const Duration(milliseconds: 500), () {
@@ -184,7 +169,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
 
   @override
   void dispose() {
-    _mascotReactionTimer?.cancel();
     _countdownTimer?.cancel();
     _fillBlankController.dispose();
     unawaited(_persistProgress());
@@ -261,10 +245,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
 
     // Stronger feedback when time runs out
     _soundService.playCountdownBuzzer();
-    _showMascotReaction(
-      'Time is up. No stress, review this one and keep going.',
-      tone: CompanionTone.warning,
-    );
     final explanation = (question.explanation ?? '').trim();
     String toSpeak;
     if (isDrag) {
@@ -379,11 +359,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
         _xpPopupVisible = true;
         _soundService.playCorrect();
         _confettiController.play();
-        _showMascotReaction(
-          'Great answer! Keep this momentum.',
-          tone: CompanionTone.success,
-          celebrate: true,
-        );
         if (_isTTSEnabled) {
           _ttsService.speak('Correct!');
         }
@@ -401,10 +376,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
         unawaited(_soundService.registerUserGesture());
         unawaited(_soundService.playIncorrect());
         _showWrongAnswerFeedback = true;
-        _showMascotReaction(
-          'Close one. Read the explanation and bounce back.',
-          tone: CompanionTone.tip,
-        );
         final correctText =
             question.options != null &&
                 correctAnswerIndex < question.options!.length
@@ -488,11 +459,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     if (isCorrect) {
       _soundService.playCorrect();
       _confettiController.play();
-      _showMascotReaction(
-        'Perfect fill. You are locked in.',
-        tone: CompanionTone.success,
-        celebrate: true,
-      );
       Future.delayed(const Duration(milliseconds: 700), () {
         if (mounted) safeSetState(() => _xpPopupVisible = false);
       });
@@ -505,10 +471,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     } else {
       unawaited(_soundService.registerUserGesture());
       unawaited(_soundService.playIncorrect());
-      _showMascotReaction(
-        'Not quite. Let us use the hint and next one is yours.',
-        tone: CompanionTone.tip,
-      );
     }
   }
 
@@ -563,11 +525,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     if (isCorrect) {
       _soundService.playCorrect();
       _confettiController.play();
-      _showMascotReaction(
-        'Nice match mapping. Excellent.',
-        tone: CompanionTone.success,
-        celebrate: true,
-      );
       Future.delayed(const Duration(milliseconds: 700), () {
         if (mounted) safeSetState(() => _xpPopupVisible = false);
       });
@@ -580,33 +537,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     } else {
       unawaited(_soundService.registerUserGesture());
       unawaited(_soundService.playIncorrect());
-      _showMascotReaction(
-        'Good attempt. Check the mapping and retry the next.',
-        tone: CompanionTone.tip,
-      );
     }
-  }
-
-  void _showMascotReaction(
-    String message, {
-    CompanionTone tone = CompanionTone.neutral,
-    bool celebrate = false,
-    Duration duration = const Duration(seconds: 2),
-  }) {
-    _mascotReactionTimer?.cancel();
-    if (!mounted) return;
-    safeSetState(() {
-      _mascotReaction = message;
-      _mascotReactionTone = tone;
-      _mascotCelebrate = celebrate;
-    });
-    _mascotReactionTimer = Timer(duration, () {
-      if (!mounted) return;
-      safeSetState(() {
-        _mascotReaction = null;
-        _mascotCelebrate = false;
-      });
-    });
   }
 
   String _correctDragMappingText(GameItem question) {
@@ -1023,15 +954,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                     const SizedBox(width: 10),
                     _buildCountdownBadge(),
                   ],
-                ),
-              ),
-              if (_mascotReaction != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                  child: SkulMateCompanionBanner(
-                    tone: _mascotReactionTone,
-                    message: _mascotReaction!,
-                    celebrate: _mascotCelebrate,
                 ),
               ),
               Expanded(

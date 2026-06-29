@@ -49,13 +49,13 @@ class GameRulesService {
       case GameType.matching:
         return GameRules(
           title: 'Matching Game',
-          description: 'Match related concepts by finding pairs.',
+          description: 'Connect terms to definitions, one match at a time.',
           steps: [
-            'Tap any card to flip it and hear it read aloud',
-            'Tap a second card to try to find its matching idea',
-            'If they match, they stay green and you earn XP',
-            'If they don\'t match, they flip back—try to remember their positions',
-            'Finish by matching all pairs with as few moves as possible',
+            'Tap a term on the left',
+            'Tap its matching definition on the right',
+            'Correct pairs lock in with a chime. Wrong picks bounce back',
+            'Clear all pairs in a section to unlock the next one',
+            'Earn XP for every correct match',
           ],
         );
       case GameType.fillBlank:
@@ -137,13 +137,14 @@ class GameRulesService {
         );
       case GameType.puzzlePieces:
         return GameRules(
-          title: 'Puzzle Pieces',
-          description: 'Assemble pieces to complete the puzzle.',
+          title: 'Sequence Puzzle',
+          description:
+              'Rebuild the process in the right order — one step at a time.',
           steps: [
-            'Drag puzzle pieces to move them',
-            'Rotate pieces by tapping them',
-            'Match edges to connect pieces',
-            'Complete the puzzle to see the full image',
+            'Read what happens first in the journey',
+            'Drag a concept card into the next open slot',
+            'Correct cards lock in with a satisfying snap',
+            'Wrong cards bounce back — try another until the full sequence is complete',
           ],
         );
       case GameType.simulation:

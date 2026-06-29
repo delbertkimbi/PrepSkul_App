@@ -3,10 +3,16 @@ import 'package:prepskul/core/services/supabase_service.dart';
 
 import '../models/skulmate_revision_plan.dart';
 
+import '../services/skulmate_credits_service.dart';
+
 /// Loads SkulMate limits and revision packages from the admin-controlled row.
 class SkulmatePricingService {
   static List<SkulmateRevisionPlan>? _cachedPlans;
   static DateTime? _cachedAt;
+  static Map<String, int>? _cachedImageBundleLimits;
+  static DateTime? _cachedImageBundleLimitsAt;
+  static int? _cachedMaxImages;
+  static DateTime? _cachedMaxImagesAt;
 
   static const _cacheTtl = Duration(minutes: 5);
 
@@ -52,6 +58,10 @@ class SkulmatePricingService {
   static void invalidateCache() {
     _cachedPlans = null;
     _cachedAt = null;
+    _cachedImageBundleLimits = null;
+    _cachedImageBundleLimitsAt = null;
+    _cachedMaxImages = null;
+    _cachedMaxImagesAt = null;
   }
 
   static Future<Map<String, int>> fetchFreeLimits() async {
@@ -94,5 +104,60 @@ class SkulmatePricingService {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', 1);
     return true;
+  }
+
+  static Future<Map<String, int>> fetchImageBundleLimits({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh &&
+        _cachedImageBundleLimits != null &&
+        _cachedImageBundleLimitsAt != null &&
+        DateTime.now().difference(_cachedImageBundleLimitsAt!) < _cacheTtl) {
+      return _cachedImageBundleLimits!;
+    }
+
+    try {
+      final row = await SupabaseService.client
+          .from('skulmate_pricing')
+          .select(
+            'max_images_per_prompt_free, max_images_per_prompt_paid',
+          )
+          .eq('id', 1)
+          .maybeSingle();
+
+      final limits = {
+        'free': (row?['max_images_per_prompt_free'] as num?)?.toInt() ?? 3,
+        'paid': (row?['max_images_per_prompt_paid'] as num?)?.toInt() ?? 5,
+      };
+      _cachedImageBundleLimits = limits;
+      _cachedImageBundleLimitsAt = DateTime.now();
+      return limits;
+    } catch (_) {
+      return const {'free': 3, 'paid': 5};
+    }
+  }
+
+  /// Paid credit balance unlocks the higher per-prompt image cap.
+  static Future<int> resolveMaxImagesPerPrompt({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh &&
+        _cachedMaxImages != null &&
+        _cachedMaxImagesAt != null &&
+        DateTime.now().difference(_cachedMaxImagesAt!) < _cacheTtl) {
+      return _cachedMaxImages!;
+    }
+
+    final limits = await fetchImageBundleLimits(forceRefresh: forceRefresh);
+    int max;
+    try {
+      final credits = await SkulmateCreditsService.fetchBalance();
+      max = credits >= 2 ? limits['paid'] ?? 5 : limits['free'] ?? 3;
+    } catch (_) {
+      max = limits['free'] ?? 3;
+    }
+    _cachedMaxImages = max;
+    _cachedMaxImagesAt = DateTime.now();
+    return max;
   }
 }

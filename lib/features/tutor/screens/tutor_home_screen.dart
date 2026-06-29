@@ -823,10 +823,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       return Container(
         width: double.infinity,
         padding: EdgeInsets.all(cardPadding),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.red.withOpacity(0.5), width: 2),
+        decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 14).copyWith(
+          color: Colors.red.withOpacity(0.06),
+          border: Border.all(color: Colors.red.withOpacity(0.25)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -892,14 +891,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       return Container(
         width: double.infinity,
         padding: EdgeInsets.all(cardPadding),
-        decoration: BoxDecoration(
+        decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 14).copyWith(
           gradient: LinearGradient(
             colors: [
               AppTheme.accentGreen,
               AppTheme.accentGreen.withOpacity(0.8),
             ],
           ),
-          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.accentGreen.withValues(alpha: 0.35)),
         ),
         child: Row(
           children: [
@@ -943,10 +942,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       return Container(
         width: double.infinity,
         padding: EdgeInsets.all(cardPadding),
-        decoration: BoxDecoration(
-          color: Colors.orange.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.orange.withOpacity(0.5), width: 1.5),
+        decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 14).copyWith(
+          color: Colors.orange.withOpacity(0.06),
+          border: Border.all(color: Colors.orange.withOpacity(0.25)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1007,13 +1005,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       return Container(
         width: double.infinity,
         padding: EdgeInsets.all(cardPadding),
-        decoration: BoxDecoration(
-          color: AppTheme.primaryColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: AppTheme.primaryColor.withOpacity(0.3),
-            width: 1.5,
-          ),
+        decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 14).copyWith(
+          color: AppTheme.primaryColor.withOpacity(0.06),
+          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1074,14 +1068,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
+        decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 14).copyWith(
           gradient: LinearGradient(
             colors: [
               AppTheme.primaryColor,
               AppTheme.primaryColor.withOpacity(0.8),
             ],
           ),
-          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.35)),
         ),
         child: Row(
           children: [

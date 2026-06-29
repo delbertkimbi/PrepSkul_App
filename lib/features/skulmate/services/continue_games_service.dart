@@ -14,20 +14,28 @@ class ContinueGamesService {
     List<GameModel> games, {
     int limit = maxItems,
   }) async {
-    final inProgressIds = await GameProgressService.gameIdsWithProgress();
     final items = <SkulMateContinueItem>[];
 
     for (final game in games) {
       if (items.length >= limit) break;
-      if (!game.isPlayable || !inProgressIds.contains(game.id)) continue;
+      if (!game.isPlayable) continue;
       final progress = await GameProgressService.loadProgress(game.id);
+      if (progress == null) continue;
+      if (!GameProgressService.isResumable(progress, game.items.length)) {
+        continue;
+      }
       items.add(
         SkulMateContinueItem(
           gameId: game.id,
           title: game.title,
           subtitle: GameTypeVisuals.labelFor(game.gameType),
-          progressPercent: 0,
-          lastPlayed: progress?.savedAt ?? DateTime.now(),
+          progressPercent: GameProgressService.progressPercent(
+            progress,
+            game.items.length,
+          ),
+          lastPlayed: progress.savedAt,
+          currentIndex: progress.currentIndex,
+          totalItems: game.items.length,
         ),
       );
     }

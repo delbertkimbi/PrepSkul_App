@@ -20,6 +20,8 @@ class TTSService {
   double _ttsVolume = 1.0;
   late final double _defaultSpeechRate = kIsWeb ? 0.8 : 0.55;
   double _speechRate = kIsWeb ? 0.8 : 0.55;
+  String? _activeSpeakText;
+  Timer? _debounceTimer;
 
   /// Initialize TTS service
   Future<void> initialize() async {
@@ -42,6 +44,7 @@ class TTSService {
       // Set completion handler (used by speakAndWait)
       _flutterTts!.setCompletionHandler(() {
         LogService.debug('[TTS] Speech completed');
+        _activeSpeakText = null;
         _speakCompleter?.complete();
         _speakCompleter = null;
         // TTS often ducks/pauses other audio (especially on iOS); resume game BGM.
@@ -54,6 +57,7 @@ class TTSService {
         );
       });
       _flutterTts!.setCancelHandler(() {
+        _activeSpeakText = null;
         _speakCompleter?.complete();
         _speakCompleter = null;
         unawaited(GameSoundService().resumeBgmIfNeeded());
@@ -85,18 +89,44 @@ class TTSService {
 
   bool get isInitialized => _isInitialized;
 
-  /// Speak text
-  Future<void> speak(String text) async {
+  /// Speak text, interrupting any in-progress utterance by default.
+  Future<void> speak(String text, {bool interrupt = true}) async {
     if (!_isEnabled || text.isEmpty) return;
     if (!_isInitialized) await ensureInitialized();
     if (!_isInitialized) return;
 
     try {
+      if (!interrupt && _activeSpeakText == text) return;
+      if (interrupt) {
+        await stop();
+      }
+      _activeSpeakText = text;
       await _flutterTts!.speak(text);
-      LogService.debug('[TTS] Speaking: ${text.substring(0, text.length > 50 ? 50 : text.length)}...');
+      LogService.debug(
+        '[TTS] Speaking: ${text.substring(0, text.length > 50 ? 50 : text.length)}...',
+      );
     } catch (e) {
+      _activeSpeakText = null;
       LogService.error('[TTS] Error speaking: $e');
     }
+  }
+
+  /// Debounced speak — waits for the user to pause before reading aloud.
+  void speakDebounced(
+    String text, {
+    Duration delay = const Duration(milliseconds: 520),
+    bool interrupt = false,
+  }) {
+    _debounceTimer?.cancel();
+    if (!_isEnabled || text.isEmpty) return;
+    _debounceTimer = Timer(delay, () {
+      unawaited(speak(text, interrupt: interrupt));
+    });
+  }
+
+  void cancelDebouncedSpeak() {
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
   }
 
   /// Speak text and return a Future that completes when speech finishes (or after a timeout).
@@ -108,6 +138,7 @@ class TTSService {
 
     _speakCompleter = Completer<void>();
     try {
+      await stop();
       await _flutterTts!.speak(text);
       final t = timeout ?? Duration(
         milliseconds: (text.length * 80).clamp(2000, 15000),
@@ -130,6 +161,11 @@ class TTSService {
     if (!_isInitialized) return;
 
     try {
+      _speakCompleter?.complete();
+      _speakCompleter = null;
+      _activeSpeakText = null;
+      _debounceTimer?.cancel();
+      _debounceTimer = null;
       await _flutterTts!.stop();
       unawaited(GameSoundService().resumeBgmIfNeeded());
     } catch (e) {

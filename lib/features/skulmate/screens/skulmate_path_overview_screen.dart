@@ -5,9 +5,13 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 
 import '../l10n/skulmate_copy.dart';
 import '../models/lesson_plan_model.dart';
+import '../models/game_model.dart';
+import '../models/revision_deck_model.dart';
 import '../models/skulmate_intake_models.dart';
 import '../screens/game_generation_screen.dart';
 import '../services/lesson_plan_service.dart';
+import '../utils/deck_navigation.dart';
+import '../widgets/deck_study_launcher_sheet.dart';
 import '../widgets/skulmate_surface_styles.dart';
 
 /// Turn-by-turn Path screen (Phase D1).
@@ -29,6 +33,8 @@ class _SkulMatePathOverviewScreenState extends State<SkulMatePathOverviewScreen>
   bool _loading = true;
   String? _error;
   bool _advancing = false;
+  GameModel? _pathGame;
+  RevisionDeckModel? _pathDeck;
 
   @override
   void initState() {
@@ -164,34 +170,91 @@ class _SkulMatePathOverviewScreenState extends State<SkulMatePathOverviewScreen>
     final payload = widget.payload;
     final topic = _lesson?.topic ?? payload.topicHint ?? payload.title;
 
-    dynamic document;
-    if (payload.filesWeb != null && payload.filesWeb!.isNotEmpty) {
-      document = payload.filesWeb!.first;
-    } else if (payload.files != null && payload.files!.isNotEmpty) {
-      document = payload.files!.first;
+    if (_pathGame == null || _pathDeck == null) {
+      dynamic document;
+      List<dynamic>? documents;
+      if (payload.filesWeb != null && payload.filesWeb!.isNotEmpty) {
+        if (payload.filesWeb!.length == 1) {
+          document = payload.filesWeb!.first;
+        } else {
+          documents = List.from(payload.filesWeb!);
+        }
+      } else if (payload.files != null && payload.files!.isNotEmpty) {
+        if (payload.files!.length == 1) {
+          document = payload.files!.first;
+        } else {
+          documents = List.from(payload.files!);
+        }
+      }
+
+      final generated = await Navigator.push<GameGenerationResult>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GameGenerationScreen(
+            documentToUpload: document,
+            documentsToUpload: documents,
+            imageToUpload:
+                payload.images != null &&
+                        payload.images!.length == 1 &&
+                        !payload.hasPreUploadedImages
+                    ? payload.images!.first
+                    : null,
+            imagesToUpload:
+                payload.images != null &&
+                        payload.images!.length > 1 &&
+                        !payload.hasPreUploadedImages
+                    ? payload.images
+                    : null,
+            preUploadedFileUrls: payload.preUploadedFileUrls,
+            preUploadedSourceNames: payload.preUploadedSourceNames,
+            text: payload.text ?? step.body,
+            youtubeUrl: payload.youtubeUrl,
+            childId: payload.childId,
+            topic: topic,
+            gameType: step.gameType ?? 'quiz',
+            generateOnly: true,
+          ),
+        ),
+      );
+      if (!mounted || generated == null) return;
+      _pathGame = generated.game;
+      _pathDeck = generated.deck;
     }
 
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => GameGenerationScreen(
-          documentToUpload: document,
-          imageToUpload:
-              payload.images != null && payload.images!.length == 1
-                  ? payload.images!.first
-                  : null,
-          imagesToUpload:
-              payload.images != null && payload.images!.length > 1
-                  ? payload.images
-                  : null,
-          text: payload.text ?? step.body,
-          youtubeUrl: payload.youtubeUrl,
-          childId: payload.childId,
-          topic: topic,
-          gameType: step.gameType ?? 'quiz',
-        ),
-      ),
+    final game = _pathGame;
+    final deck = _pathDeck;
+    if (game == null) return;
+
+    if (deck == null || deck.cards.isEmpty) {
+      await DeckNavigation.openAfterGeneration(
+        context: context,
+        game: game,
+        deck: deck,
+        childId: payload.childId,
+        intakeMode: SkulMateIntentMode.path,
+      );
+      return;
+    }
+
+    await DeckNavigation.playStudyModeFromHub(
+      context: context,
+      game: game,
+      deck: deck,
+      studyMode: _studyModeForStep(step),
+      childId: payload.childId,
     );
+  }
+
+  DeckStudyMode _studyModeForStep(LessonPlanStep step) {
+    final raw = step.gameType?.toLowerCase();
+    if (step.type == 'drill' || raw == 'flashcards') {
+      return DeckStudyMode.memorise;
+    }
+    if (raw == 'matching') return DeckStudyMode.matching;
+    if (raw == 'fill_blank' || raw == 'fillblank') {
+      return DeckStudyMode.fillBlank;
+    }
+    return DeckStudyMode.quiz;
   }
 
   Future<void> _completeStep(int index) async {

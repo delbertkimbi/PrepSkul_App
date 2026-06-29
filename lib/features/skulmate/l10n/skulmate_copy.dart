@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
 import 'package:provider/provider.dart';
+import '../models/deck_study_intent_mode.dart';
 import '../models/skulmate_intake_models.dart';
 import '../models/next_stop_suggestion.dart';
 
@@ -91,6 +92,246 @@ class SkulMateCopy {
       ? 'tes photos'
       : 'your photo notes';
 
+  String get importPhotosTitle =>
+      isFrench ? 'Importer des photos' : 'Import photos';
+
+  String get importPhotosContinue => isFrench ? 'Continuer' : 'Continue';
+
+  String importPhotosLimit(int count, int max) => isFrench
+      ? '$count sur $max photos'
+      : '$count of $max photos';
+
+  String get importPhotosAdd => isFrench ? 'Ajouter une photo' : 'Add photo';
+
+  String get puzzleSequenceTitle =>
+      isFrench ? 'Coffre du savoir' : 'Knowledge Vault';
+
+  String get puzzleSequenceSubtitle => isFrench
+      ? 'Déverrouille chaque chambre avec tes notes'
+      : 'Unlock each chamber using your notes';
+
+  String get puzzleMissionLine => isFrench
+      ? 'Chaque chambre teste une facette de ton cours — diagramme, choix, ordre.'
+      : 'Each chamber tests a different slice of your notes — diagram, choices, order.';
+
+  String puzzleIntroSteps(int count) => isFrench
+      ? '$count étapes à placer'
+      : '$count steps to place';
+
+  String puzzleIntroTime(int minutes) => isFrench
+      ? '~$minutes min'
+      : '~$minutes min';
+
+  String puzzleIntroReward(int xp) => isFrench
+      ? '+$xp XP possible'
+      : 'Up to +$xp XP';
+
+  String puzzleIntroMastery(String topic) => isFrench
+      ? 'Maîtrise · $topic'
+      : 'Mastery · $topic';
+
+  String get puzzleStartButton =>
+      isFrench ? 'Commencer le puzzle' : 'Start puzzle';
+
+  String get briefingScreenTitle =>
+      isFrench ? 'Avant de jouer' : 'Before you play';
+
+  String get briefingLearningSection =>
+      isFrench ? 'CE QUE TU APPRENDS' : 'WHAT YOU\'RE LEARNING';
+
+  String get briefingHowToPlaySection =>
+      isFrench ? 'COMMENT JOUER' : 'HOW TO PLAY';
+
+  String get briefingReadySection =>
+      isFrench ? 'PRÊT' : 'READY';
+
+  String get briefingStartButton =>
+      isFrench ? 'Commencer' : 'Start game';
+
+  String get briefingJourneySection =>
+      isFrench ? 'PARCOURS DU COFFRE' : 'VAULT JOURNEY';
+
+  String puzzleChamberProgress(int current, int total) => isFrench
+      ? 'Étape $current sur $total'
+      : 'Step $current of $total';
+
+  String get puzzleDiagramDecrypting => isFrench
+      ? 'Déchiffrement du diagramme…'
+      : 'Decrypting vault diagram…';
+
+  String get puzzleVaultLocked => isFrench
+      ? 'Diagramme du coffre'
+      : 'Vault diagram';
+
+  String puzzleVaultChamberLabel(int index) => isFrench
+      ? 'Étape $index'
+      : 'Step $index';
+
+  String get puzzleStepTypePick =>
+      isFrench ? 'Choix' : 'Pick the answer';
+
+  String get puzzleStepTypeHotspot =>
+      isFrench ? 'Associe les étiquettes' : 'Match the labels';
+
+  String get puzzleStepTypeOrder =>
+      isFrench ? 'Ordre' : 'Tap in order';
+
+  String puzzleOrderProgress(int done, int total) => isFrench
+      ? '$done sur $total dans l\'ordre'
+      : '$done of $total in order';
+
+  String briefingTopicLine(String topic) => isFrench
+      ? 'Sujet · $topic'
+      : 'Topic · $topic';
+
+  /// Narrative prompt — never "What is step 3?"
+  String puzzleNextPrompt({
+    required int placedCount,
+    String? previousStepLabel,
+    required int total,
+  }) {
+    if (placedCount == 0) {
+      return isFrench
+          ? 'Par quoi commence ce processus ?'
+          : 'What happens first in this process?';
+    }
+    if (placedCount >= total - 1) {
+      return isFrench
+          ? 'Dernière pièce. Que se passe-t-il ensuite ?'
+          : 'Last piece. What happens next?';
+    }
+    if (previousStepLabel != null && previousStepLabel.trim().isNotEmpty) {
+      final short = previousStepLabel.length > 42
+          ? '${previousStepLabel.substring(0, 39)}…'
+          : previousStepLabel;
+      return isFrench
+          ? 'Que vient après « $short » ?'
+          : 'What comes after "$short"?';
+    }
+    return isFrench
+        ? 'Que se passe-t-il ensuite ?'
+        : 'What happens next?';
+  }
+
+  String get puzzleWrongStepNudge => isFrench
+      ? 'Pas tout à fait. Essaie une autre carte.'
+      : 'Not quite. Try another card.';
+
+  String get puzzleStepCorrect => isFrench ? 'Bien placé.' : 'Locked in.';
+
+  String get puzzleWrongStep => puzzleWrongStepNudge;
+
+  String get puzzleSlotLabel => isFrench
+      ? 'Prochaine étape'
+      : 'Next in the sequence';
+
+  String get puzzleGoalHeader => isFrench
+      ? 'TON OBJECTIF'
+      : 'YOUR GOAL';
+
+  String get puzzleTapLabelThenSlot => isFrench
+      ? 'Touche une étiquette, puis la case qui correspond.'
+      : 'Tap a label, then the slot it belongs in.';
+
+  String get puzzleSlotEmpty => isFrench ? 'Case vide' : 'Empty slot';
+
+  String get puzzlePickFromBelow => isFrench
+      ? 'Choisis ta réponse'
+      : 'Pick your answer';
+
+  String get puzzleWhyLabel => isFrench ? 'POURQUOI' : 'WHY THIS FITS';
+
+  String puzzleProgressPlaced(int placed, int total) => isFrench
+      ? '$placed sur $total placées'
+      : '$placed of $total placed';
+
+  String puzzleCoachHint(int completed, int total) {
+    if (completed == 0) {
+      return isFrench
+          ? 'Commence par la première étape du processus.'
+          : 'Start with the first step in the process.';
+    }
+    if (completed >= total - 1) {
+      return isFrench
+          ? 'Dernière étape ! Tu y es presque.'
+          : 'Last step! You are almost there.';
+    }
+    if (completed >= total ~/ 2) {
+      return isFrench
+          ? 'Tu avances bien. Choisis la prochaine étape.'
+          : 'You are on a roll. Pick what happens next.';
+    }
+    return isFrench
+        ? 'Bonne piste. Continue dans l\'ordre logique.'
+        : 'Good start. Keep building the sequence.';
+  }
+
+  String get puzzleSequenceComplete => isFrench
+      ? 'Parfait ! Séquence complète.'
+      : 'Perfect! Sequence complete.';
+
+  String puzzleProgressText(int placed, int total) =>
+      puzzleProgressPlaced(placed, total);
+
+  String get puzzlePickTileHint => puzzlePickFromBelow;
+
+  String get puzzleConceptTilesLabel =>
+      isFrench ? 'Cartes disponibles' : 'Available cards';
+
+  String get matchingConnected => isFrench ? 'Connecté !' : 'Connected!';
+
+  String matchingPairLinked(String left, String right) => isFrench
+      ? '« $left » ↔ « $right »'
+      : '"$left" ↔ "$right"';
+
+  String get matchingContinueButton =>
+      isFrench ? 'Continuer' : 'Continue';
+
+  String get matchingSectionComplete => isFrench
+      ? 'Section terminée ! Appuie sur Continuer quand tu es prêt.'
+      : 'Section complete! Tap Continue when you are ready.';
+
+  String get matchingTimeUpContinue => isFrench
+      ? 'Temps écoulé. Les réponses sont révélées. Appuie sur Continuer.'
+      : 'Time is up. Answers revealed. Tap Continue when ready.';
+
+  String get matchingNiceMatch => isFrench
+      ? 'Bien joué ! Bonne association.'
+      : 'Nice match!';
+
+  String get matchingTryAgain => isFrench
+      ? 'Pas tout à fait. Réessaie.'
+      : 'Oops! Not quite. Try again.';
+
+  String get fillBlankCorrect => isFrench
+      ? 'Correct ! Beau travail.'
+      : 'Correct! Nice work.';
+
+  String fillBlankIncorrect(String answer) => isFrench
+      ? 'Pas tout à fait. La bonne réponse : $answer'
+      : 'Not quite. The answer is: $answer';
+
+  String fillBlankTimeUp(String answer) => isFrench
+      ? 'Temps écoulé. La bonne réponse : $answer'
+      : "Time's up. The answer is: $answer";
+
+  String get fillBlankEmptyAnswer => isFrench
+      ? 'Choisis ou tape une réponse.'
+      : 'Pick or type an answer first.';
+
+  String get matchingTapHint => isFrench
+      ? 'Touche un terme, puis sa définition. Retour instantané.'
+      : 'Tap a term, then its match. Instant feedback.';
+
+  String intakePhotoContextSummary(String summary) {
+    final trimmed = summary.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.endsWith('?')) return trimmed;
+    return isFrench
+        ? '$trimmed Comment veux-tu réviser ?'
+        : '$trimmed How would you like to revise?';
+  }
+
   String get intakeTopicFallbackDocument => isFrench
       ? 'ton document'
       : 'your document';
@@ -113,6 +354,93 @@ class SkulMateCopy {
 
   String get myGames => isFrench ? 'Mes jeux' : 'My games';
 
+  String get myDecks => isFrench ? 'Mes paquets' : 'My decks';
+
+  String get allGamesTitle => isFrench ? 'Mes jeux' : 'My games';
+
+  String get allDecksTitle => isFrench ? 'Paquets' : 'Decks';
+
+  String get publicDecks => isFrench ? 'Paquets publics' : 'Public decks';
+
+  String get searchGamesHint =>
+      isFrench ? 'Rechercher mes jeux' : 'Search my games';
+
+  String get searchDecksHint => searchMyDecks;
+
+  String get emptyGamesLibrary => isFrench
+      ? 'Aucun jeu pour l\'instant. Importe des notes pour commencer.'
+      : 'No games yet. Upload notes to get started.';
+
+  String get emptyPublicDecks => isFrench
+      ? 'Les paquets publics arrivent bientôt — classement par matière.'
+      : 'Public decks are coming soon — browse by subject here.';
+
+  String get studyDeck => isFrench ? 'Réviser le paquet' : 'Study deck';
+
+  String get tapToRevealAnswer =>
+      isFrench ? 'Appuie pour voir la réponse' : 'Tap to reveal answer';
+
+  String get memoriseSwipeTrueFalse => isFrench
+      ? 'Glisse à droite = Vrai, à gauche = Faux'
+      : 'Swipe right = True, left = False';
+
+  String get memoriseSwipeKnow => isFrench
+      ? 'Glisse à droite si tu sais, à gauche sinon'
+      : 'Swipe right if you know it, left if not';
+
+  String get memoriseTapReveal => isFrench
+      ? 'Touchez la carte pour révéler'
+      : 'Tap card to reveal';
+
+  String get startLearning => isFrench ? 'Commencer' : 'Start learning';
+
+  String get magicImport => isFrench ? 'Import magique' : 'Magic Import';
+
+  String get magicImportSubtitle => isFrench
+      ? 'Transforme PDF, notes, YouTube et plus en cartes'
+      : 'Turn PDFs, notes, YouTube and more into flashcards';
+
+  String get photoNotes =>
+      isFrench ? 'Photographier tes notes' : 'Photograph your notes';
+
+  String get subdecks => isFrench ? 'Sous-paquets' : 'Subdecks';
+
+  String get leaderboardSharePrompt => isFrench
+      ? 'Tu veux tes amis ici ?'
+      : 'Want your friends here?';
+
+  String get leaderboardShareBody => isFrench
+      ? 'Partage le paquet avec eux.'
+      : 'Share the deck with them.';
+
+  String get shareDeck => isFrench ? 'Partager le paquet' : 'Share deck';
+
+  String get deckLesson => isFrench ? 'Leçon du paquet' : 'Deck lesson';
+
+  String get addToDeck => isFrench ? 'Ajouter au paquet' : 'Add to deck';
+
+  String get writeOwnCards => isFrench
+      ? 'Écris tes propres cartes'
+      : 'Write your own cards';
+
+  String get makeLesson => isFrench
+      ? 'Crée une leçon étape par étape'
+      : 'Make a step-by-step lesson';
+
+  String get createNotes => isFrench
+      ? 'Crée des notes libres'
+      : 'Create freeform notes';
+
+  String get importSources => isFrench
+      ? 'Notes, YouTube, PDF…'
+      : 'Notes, YouTube, PDF…';
+
+  String get aiTutorMode => isFrench ? 'Tuteur IA' : 'AI Tutor';
+
+  String get aiTutorSubtitle => isFrench
+      ? 'Apprends étape par étape'
+      : 'Learn step by step';
+
   String get upload => isFrench ? 'Importer' : 'Upload';
 
   String get photo => isFrench ? 'Photo' : 'Photo';
@@ -130,8 +458,8 @@ class SkulMateCopy {
       isFrench ? 'Coller des notes' : 'Paste notes';
 
   String get pasteNotesSubtitle => isFrench
-      ? 'Colle ton texte ici — SkulMate le transformera en jeux de révision.'
-      : 'Drop your notes here — SkulMate will turn them into revision games.';
+      ? 'Colle ton texte ici. SkulMate le transformera en jeux de révision.'
+      : 'Drop your notes here. SkulMate will turn them into revision games.';
 
   String get pasteTitleOptional =>
       isFrench ? 'Titre (optionnel)' : 'Title (optional)';
@@ -222,6 +550,10 @@ class SkulMateCopy {
       ? 'Pas assez de parole détectée. Enregistre un peu plus longtemps.'
       : 'Not enough speech detected. Record a bit longer.';
 
+  String get recordingTooShort => isFrench
+      ? 'Enregistrement trop court. Parle au moins 15 secondes avant de continuer.'
+      : 'Recording is too short. Speak for at least 15 seconds before continuing.';
+
   String get more => isFrench ? 'Plus' : 'More';
 
   String get history => isFrench ? 'Historique' : 'History';
@@ -236,6 +568,159 @@ class SkulMateCopy {
   String get quizlet => 'Quizlet';
 
   String get deck => isFrench ? 'Paquet' : 'Deck';
+
+  String get selectDeck => isFrench ? 'Choisir un paquet' : 'Select deck';
+
+  String get searchMyDecks =>
+      isFrench ? 'Rechercher mes paquets' : 'Search my decks';
+
+  String get emptyDecksHint => isFrench
+      ? 'Importe des notes pour créer ton premier paquet.'
+      : 'Upload notes to create your first deck.';
+
+  String get deckStudyChatTitle =>
+      isFrench ? 'Aide-moi à réviser ce paquet' : 'Help me study this deck';
+
+  String get deckStudyUserMessage => isFrench
+      ? 'Aide-moi à réviser ce paquet.'
+      : 'Help me study this deck.';
+
+  String deckStudyChatPrompt(String deckTitle) => isFrench
+      ? 'Parfait — comment veux-tu travailler sur $deckTitle ?'
+      : 'Great — how would you like to work through $deckTitle?';
+
+  String get deckStudyRefinePlaceholder =>
+      isFrench ? 'Je veux apprendre…' : 'I want to learn…';
+
+  String deckStudyModeLabel(DeckStudyIntentMode mode) {
+    switch (mode) {
+      case DeckStudyIntentMode.tutor:
+        return isFrench ? 'Comprendre' : 'Understand';
+      case DeckStudyIntentMode.drill:
+        return isFrench ? 'Drill' : 'Drill';
+      case DeckStudyIntentMode.play:
+        return isFrench ? 'Jouer' : 'Play';
+      case DeckStudyIntentMode.path:
+        return isFrench ? 'Parcours' : 'Path';
+      case DeckStudyIntentMode.scroll:
+        return isFrench ? 'Défilement' : 'Scroll';
+    }
+  }
+
+  String deckStudyModeSubtitle(DeckStudyIntentMode mode, String deckTitle) {
+    switch (mode) {
+      case DeckStudyIntentMode.tutor:
+        return isFrench
+            ? 'Tuteur IA — explications et quiz rapides'
+            : 'AI tutor — explanations and quick checks';
+      case DeckStudyIntentMode.drill:
+        return isFrench
+            ? 'Rappel actif avec tes cartes'
+            : 'Active recall with your cards';
+      case DeckStudyIntentMode.play:
+        return isFrench
+            ? 'Jeux interactifs depuis ce paquet'
+            : 'Interactive games from this deck';
+      case DeckStudyIntentMode.path:
+        return deckTitle;
+      case DeckStudyIntentMode.scroll:
+        return isFrench
+            ? 'Parcourir tes cartes en flux'
+            : 'Swipe through your deck';
+    }
+  }
+
+  String deckStudyModeCta(DeckStudyIntentMode mode) {
+    switch (mode) {
+      case DeckStudyIntentMode.tutor:
+        return isFrench ? 'Comprendre' : 'Understand';
+      case DeckStudyIntentMode.drill:
+        return isFrench ? 'Drill' : 'Drill';
+      case DeckStudyIntentMode.play:
+        return isFrench ? 'Jouer' : 'Play';
+      case DeckStudyIntentMode.path:
+        return isFrench ? 'Commencer le parcours' : 'Start path';
+      case DeckStudyIntentMode.scroll:
+        return isFrench ? 'Défilement' : 'Scroll';
+    }
+  }
+
+  String get saveDeckTitle =>
+      isFrench ? 'Enregistrer comme paquet ?' : 'Save as a deck?';
+
+  String get saveDeckSubtitle => isFrench
+      ? 'Garde ce contenu comme paquet réutilisable pour notes, jeux et tuteur IA.'
+      : 'Keep this upload as a reusable deck for notes, games, and AI tutor study.';
+
+  String get saveDeckToggle =>
+      isFrench ? 'Créer un paquet' : 'Create a deck';
+
+  String get saveDeckNameLabel =>
+      isFrench ? 'Nom du paquet' : 'Deck name';
+
+  String get saveDeckConfirm =>
+      isFrench ? 'Enregistrer le paquet' : 'Save deck';
+
+  String get saveDeckSkip =>
+      isFrench ? 'Pas maintenant' : 'Not now';
+
+  String get addDeckTitle =>
+      isFrench ? 'Nouveau paquet' : 'New deck';
+
+  String get addDeckSubtitle => isFrench
+      ? 'Importe des notes — on crée un paquet réutilisable avec résumés et cartes.'
+      : 'Import notes — we\'ll build a reusable deck with summaries and cards.';
+
+  String get addDeckCta =>
+      isFrench ? 'Créer un paquet' : 'Create a deck';
+
+  String get deckCreateTitle =>
+      isFrench ? 'Ajouter un paquet' : 'Add deck';
+
+  String get deckCreateInMyDecks =>
+      isFrench ? 'Dans : Mes paquets' : 'In: My decks';
+
+  String get deckNameLabel =>
+      isFrench ? 'Nom du paquet' : 'Deck name';
+
+  String get deckNamePlaceholder =>
+      isFrench ? 'Ex. Enzymes' : 'E.g. Enzymes';
+
+  String get deckColourLabel =>
+      isFrench ? 'Couleur' : 'Colour';
+
+  String get noCardsYet =>
+      isFrench ? 'Pas encore de cartes' : 'No cards yet';
+
+  String get noCardsSubtitle => isFrench
+      ? 'Ajoute des cartes pour commencer à réviser'
+      : 'Add some cards to start quizzing';
+
+  String get writeCards =>
+      isFrench ? 'Écrire des cartes' : 'Write cards';
+
+  String get scrollFinishSession =>
+      isFrench ? 'Terminer' : 'Done';
+
+  String get scrollLeaveTitle =>
+      isFrench ? 'Quitter la séance ?' : 'Leave session?';
+
+  String get scrollLeaveBody => isFrench
+      ? 'Ta progression sera enregistrée.'
+      : 'Your progress so far will be saved.';
+
+  String get scrollLeaveConfirm =>
+      isFrench ? 'Quitter' : 'Leave';
+
+  String get publicDecksComingSoonTitle =>
+      isFrench ? 'Paquets publics bientôt' : 'Public decks coming soon';
+
+  String get publicDecksComingSoonBody => isFrench
+      ? 'Découvre et révise des paquets partagés par d\'autres apprenants, classés par matière et niveau.'
+      : 'Browse and study decks shared by other learners — organised by subject and level.';
+
+  String get orImportMaterial =>
+      isFrench ? 'Ou importer du contenu' : 'Or import material';
 
   String get comingSoon =>
       isFrench ? 'Bientôt disponible' : 'Coming soon';
@@ -268,12 +753,12 @@ class SkulMateCopy {
   String welcomeBenefitResume({bool isParent = false}) {
     if (isParent) {
       return isFrench
-          ? 'Reprenez là où il/elle s\'est arrêté(e) — la progression est sauvegardée.'
-          : 'Pick up where they left off — progress is saved automatically.';
+          ? 'Reprenez là où il/elle s\'est arrêté(e). La progression est sauvegardée.'
+          : 'Pick up where they left off. Progress is saved automatically.';
     }
     return isFrench
-        ? 'Reprends là où tu t\'es arrêté — ta progression est sauvegardée.'
-        : 'Resume where you left off — your progress is saved automatically.';
+        ? 'Reprends là où tu t\'es arrêté. Ta progression est sauvegardée.'
+        : 'Resume where you left off. Your progress is saved automatically.';
   }
 
   String welcomeBenefitLeaderboard({bool isParent = false}) {
@@ -323,8 +808,8 @@ class SkulMateCopy {
       : 'Balance: $balance credits';
 
   String get paywallCreditsActiveHint => isFrench
-      ? 'Tes crédits sont actifs — pas de limite gratuite à afficher.'
-      : 'Your credits are active — no free daily limits apply.';
+      ? 'Tes crédits sont actifs. Pas de limite gratuite à afficher.'
+      : 'Your credits are active. No free daily limits apply.';
 
   String plansHeroWithCredits(int balance) => isFrench
       ? 'Tu as $balance crédits de révision. Continue à générer des jeux.'
@@ -335,8 +820,8 @@ class SkulMateCopy {
       : 'Keep generating games anytime.';
 
   String get plansHeroFreeRemaining => isFrench
-      ? 'Révision gratuite disponible aujourd\'hui — voir ton quota ci-dessous.'
-      : 'Free revision available today — see your quota below.';
+      ? 'Révision gratuite disponible aujourd\'hui. Voir ton quota ci-dessous.'
+      : 'Free revision available today. See your quota below.';
 
   String activePlanBadge(String tier) => isFrench
       ? 'Forfait $tier actif'
@@ -384,8 +869,25 @@ class SkulMateCopy {
       : 'Your focus topics';
 
   String get progressTopicsEmpty => isFrench
-      ? 'Joue quelques jeux de révision — tes sujets apparaîtront ici.'
-      : 'Play a few revision games — your topics will show up here.';
+      ? 'Joue quelques jeux de révision. Tes sujets apparaîtront ici.'
+      : 'Play a few revision games. Your topics will show up here.';
+
+  String get progressActivityTitle =>
+      isFrench ? 'Activité' : 'Activity';
+
+  String progressSessionsOnDay(int count) {
+    if (count == 0) {
+      return isFrench ? 'Aucun jeu ce jour-là' : 'No games on this day';
+    }
+    if (count == 1) {
+      return isFrench ? '1 jeu ce jour-là' : '1 game on this day';
+    }
+    return isFrench ? '$count jeux ce jour-là' : '$count games on this day';
+  }
+
+  String progressXpToNext(int xp) => isFrench
+      ? '$xp XP pour le niveau suivant'
+      : '$xp XP to next level';
 
   String get nextStopTitle =>
       isFrench ? 'Prochaine étape' : 'Next stop';
@@ -444,6 +946,73 @@ class SkulMateCopy {
 
   String get profileCreditsCta =>
       isFrench ? 'Crédits' : 'Credits';
+
+  String intakeErrorTitle(SkulMateIntakeSource source, String raw) {
+    if (source == SkulMateIntakeSource.youtube) {
+      return youtubeIntakeErrorTitle(raw);
+    }
+    if (source == SkulMateIntakeSource.lecture) {
+      return lectureErrorTitle(raw);
+    }
+    if (source == SkulMateIntakeSource.photo ||
+        source == SkulMateIntakeSource.document) {
+      final lower = raw.toLowerCase();
+      if (lower.contains('image processing') ||
+          lower.contains('provider') ||
+          lower.contains('ocr')) {
+        return isFrench
+            ? 'Impossible de lire ce fichier'
+            : 'Could not read this file';
+      }
+    }
+    return isFrench
+        ? 'Impossible d\'analyser la source'
+        : 'Could not analyze source';
+  }
+
+  String intakeErrorDetails(SkulMateIntakeSource source, String raw) {
+    if (source == SkulMateIntakeSource.youtube) {
+      return youtubeIntakeErrorDetails(raw);
+    }
+    if (source == SkulMateIntakeSource.lecture) {
+      return lectureErrorDetails(raw);
+    }
+    return raw;
+  }
+
+  String youtubeIntakeErrorTitle(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('no captions') || lower.contains('no usable captions')) {
+      return isFrench
+          ? 'Pas de sous-titres pour cette vidéo'
+          : 'No captions for this video';
+    }
+    if (lower.contains('caption service') ||
+        lower.contains('not available yet')) {
+      return isFrench
+          ? 'Service de sous-titres indisponible'
+          : 'Caption service unavailable';
+    }
+    return isFrench
+        ? 'Impossible de lire cette vidéo YouTube'
+        : 'Could not read this YouTube video';
+  }
+
+  String youtubeIntakeErrorDetails(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('caption service') ||
+        lower.contains('not available yet')) {
+      return isFrench
+          ? 'Tu peux quand même lancer la génération. Nous récupérerons les sous-titres côté serveur. Sinon, colle tes notes manuellement.'
+          : 'You can still start generation. We will fetch captions on the server. Or paste notes manually.';
+    }
+    if (lower.contains('no captions') || lower.contains('no usable captions')) {
+      return isFrench
+          ? 'Essaie une vidéo avec sous-titres activés, ou colle tes notes manuellement.'
+          : 'Try a video with subtitles on, or paste notes manually.';
+    }
+    return raw;
+  }
 
   String lectureErrorTitle(String raw) {
     final lower = raw.toLowerCase();
@@ -517,6 +1086,16 @@ class SkulMateCopy {
   String get scrollFeedTitle =>
       isFrench ? 'Révision rapide' : 'Quick revision';
 
+  String get scrollObjective => isFrench
+      ? 'Fais défiler — révèle, puis dis si tu le savais.'
+      : 'Swipe up — reveal, then mark if you knew it.';
+
+  String get scrollSwipeHint =>
+      isFrench ? 'Glisse vers le haut' : 'Swipe up';
+
+  String get scrollRevealAction =>
+      isFrench ? 'Révéler' : 'Reveal';
+
   String get scrollTapReveal =>
       isFrench ? 'Appuie pour voir la réponse' : 'Tap to reveal answer';
 
@@ -536,8 +1115,8 @@ class SkulMateCopy {
       isFrench ? 'Belle série !' : 'Nice run!';
 
   String scrollGateBody(int known, int reviewed) => isFrench
-      ? '$known sur $reviewed — continuer ou terminer la séance ?'
-      : '$known of $reviewed — keep scrolling or wrap up?';
+      ? '$known sur $reviewed. Continuer ou terminer la séance ?'
+      : '$known of $reviewed. Keep scrolling or wrap up?';
 
   String get scrollSessionEndTitle =>
       isFrench ? 'Séance terminée' : 'Session complete';
@@ -547,8 +1126,51 @@ class SkulMateCopy {
       : 'You reviewed $reviewed card${reviewed == 1 ? '' : 's'} ($known marked known).';
 
   String get scrollEmptyQueue => isFrench
-      ? 'Rien à défiler pour l\'instant — crée un jeu ou reviens quand des révisions sont dues.'
-      : 'Nothing to scroll yet — create a game or come back when reviews are due.';
+      ? 'Rien à défiler pour l\'instant. Crée un jeu ou reviens quand des révisions sont dues.'
+      : 'Nothing to scroll yet. Create a game or come back when reviews are due.';
+
+  String get scrollLoadingTitle =>
+      isFrench ? 'Leçon en chargement…' : 'Lesson loading…';
+
+  String get scrollLoadingSubtitle => isFrench
+      ? 'Préparation de ta session de révision'
+      : 'Getting your revision session ready';
+
+  String get scrollMusicOn => isFrench ? 'Musique' : 'Music';
+
+  String get scrollMusicOff => isFrench ? 'Muet' : 'Muted';
+
+  String get scrollSfxOn => isFrench ? 'Sons' : 'SFX';
+
+  String get scrollSfxOff => isFrench ? 'Sons off' : 'SFX off';
+
+  String get scrollListen => isFrench ? 'Écouter' : 'Listen';
+
+  String get scrollListenMode => isFrench ? 'Mode écoute' : 'Listen mode';
+
+  String get scrollPlayAloud => isFrench ? 'Lire à voix haute' : 'Play aloud';
+
+  String get scrollHookDefault =>
+      isFrench ? 'POV : tu comprends enfin' : 'POV: you finally get it';
+
+  String get scrollTermLabel => isFrench ? 'Terme' : 'Term';
+
+  String get scrollQuickCheck =>
+      isFrench ? 'Vérification rapide' : 'Quick check';
+
+  String get scrollMatchLabel => isFrench ? 'Associer' : 'Match';
+
+  String get scrollRevealMatch =>
+      isFrench ? 'Révéler la paire' : 'Reveal the pair';
+
+  String get scrollCelebrateTitle =>
+      isFrench ? 'Belle série !' : 'Nice streak!';
+
+  String get scrollCelebrateBody => isFrench
+      ? 'Continue — tu es en feu.'
+      : 'Keep going — you\'re on a roll.';
+
+  String get scrollFeedTypeLabel => isFrench ? 'Défilement' : 'Scroll';
 
   String modeLabel(SkulMateIntentMode mode) {
     switch (mode) {

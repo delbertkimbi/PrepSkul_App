@@ -36,15 +36,7 @@ class SkulMateIntentSheet extends StatefulWidget {
     );
   }
 
-  static const _selectableModes = [
-    SkulMateIntentMode.play,
-    SkulMateIntentMode.scroll,
-    SkulMateIntentMode.path,
-    SkulMateIntentMode.drill,
-  ];
-
-  /// Sheet and other unreleased modes stay off the picker until shipped.
-  static bool isComingSoonMode(SkulMateIntentMode mode) => false;
+  static const _selectableModes = SkulMateIntentModeX.selectableInIntake;
 
   @override
   State<SkulMateIntentSheet> createState() => _SkulMateIntentSheetState();
@@ -68,11 +60,11 @@ class _SkulMateIntentSheetState extends State<SkulMateIntentSheet> {
       footer: SizedBox(
         width: double.infinity,
         child: ElevatedButton(
-          onPressed: SkulMateIntentSheet.isComingSoonMode(_selected)
+          onPressed: _selected.isComingSoon
               ? null
               : () => Navigator.pop(context, _selected),
           style: SkulMateSurfaceStyles.sheetPrimaryButton(
-            enabled: !SkulMateIntentSheet.isComingSoonMode(_selected),
+            enabled: !_selected.isComingSoon,
           ),
           child: Text(
             widget.copy.modeCta(_selected),
@@ -87,7 +79,7 @@ class _SkulMateIntentSheetState extends State<SkulMateIntentSheet> {
   }
 
   Widget _modeCard(SkulMateIntentMode mode) {
-    final comingSoon = SkulMateIntentSheet.isComingSoonMode(mode);
+    final comingSoon = mode.isComingSoon;
     final selected = !comingSoon && _selected == mode;
 
     return Padding(

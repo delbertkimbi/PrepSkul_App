@@ -12,7 +12,6 @@ import '../widgets/skulmate_social_screen_scaffold.dart';
 import '../widgets/skulmate_surface_styles.dart';
 import '../models/social_models.dart';
 import '../services/social_service.dart';
-import '../widgets/add_friend_dialog.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'add_friend_screen.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';

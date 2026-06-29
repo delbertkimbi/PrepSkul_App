@@ -11,9 +11,8 @@ void main() {
       expect(items, isEmpty);
     });
 
-    test('defaultLimit is 6 and lookback is 7 days', () {
-      expect(ContinueGamesService.defaultLimit, 6);
-      expect(ContinueGamesService.lookbackDays, 7);
+    test('maxItems default is 3', () {
+      expect(ContinueGamesService.maxItems, 3);
     });
   });
 }

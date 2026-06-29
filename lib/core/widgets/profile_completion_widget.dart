@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/models/profile_completion.dart';
+import 'package:prepskul/features/skulmate/widgets/skulmate_surface_styles.dart';
 
 /// Widget to display profile completion status with progress bar and checklist
 class ProfileCompletionWidget extends StatelessWidget {
@@ -20,17 +21,7 @@ class ProfileCompletionWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -236,11 +227,11 @@ class ProfileCompletionBanner extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
+        decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 14).copyWith(
           gradient: LinearGradient(
             colors: [Colors.orange.shade400, Colors.orange.shade600],
           ),
-          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.shade300.withValues(alpha: 0.35)),
         ),
         child: Row(
           children: [

@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
-import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/drag_drop_question_widget.dart';
@@ -60,15 +59,6 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
     _startTime = DateTime.now();
     _soundService.initialize();
     unawaited(_soundService.playMusicForGame(widget.game.gameType));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        GameRulesOverlay.showIfNeeded(
-          context,
-          GameType.dragDrop,
-          (_) async {},
-        );
-      }
-    });
   }
 
   void _openGameSettingsSheet() {

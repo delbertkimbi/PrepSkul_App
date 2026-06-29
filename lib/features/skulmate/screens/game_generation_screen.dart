@@ -12,31 +12,30 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/storage_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/whatsapp_support_service.dart';
-import '../services/learner_context_service.dart';
+import '../services/learner_intelligence_service.dart';
+import '../services/revision_deck_service.dart';
 import '../services/skulmate_service.dart';
 import '../models/game_model.dart';
-import 'quiz_game_screen.dart';
-import 'flashcard_game_screen.dart';
-import 'skulmate_scroll_feed_screen.dart';
-import 'matching_game_screen.dart';
-import 'fill_blank_game_screen.dart';
-import 'drag_drop_game_screen.dart';
-import 'puzzle_pieces_game_screen.dart';
-import 'match3_game_screen.dart';
-import 'bubble_pop_game_screen.dart';
-import 'word_search_game_screen.dart';
-import 'crossword_game_screen.dart';
-import 'simulation_game_screen.dart';
-import 'mystery_game_screen.dart';
-import 'escape_room_game_screen.dart';
+import '../models/revision_deck_model.dart';
+import '../models/skulmate_intake_models.dart';
+import '../widgets/deck_name_prompt_sheet.dart';
+import '../utils/deck_navigation.dart';
 import '../utils/skulmate_client_game_policy.dart';
 import '../utils/skulmate_navigation.dart';
-import 'text_input_screen.dart';
+import '../widgets/skulmate_paste_sheet.dart';
 import '../widgets/skulmate_generation_error_panel.dart';
 import '../widgets/skulmate_paywall_sheet.dart';
 import '../services/game_sound_service.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_mascot_media_widget.dart';
+
+/// Returned when [GameGenerationScreen.generateOnly] is true (path mode).
+class GameGenerationResult {
+  final GameModel game;
+  final RevisionDeckModel? deck;
+
+  const GameGenerationResult({required this.game, this.deck});
+}
 
 /// Screen showing game generation progress
 /// Accepts either pre-uploaded URLs or files to upload (navigates here first, then uploads)
@@ -56,14 +55,27 @@ class GameGenerationScreen extends StatefulWidget {
   /// Document to upload (PlatformFile on web, File on mobile)
   final dynamic documentToUpload;
 
+  /// Multiple documents/images-as-files from multi-select picker.
+  final List<dynamic>? documentsToUpload;
+
   /// Image to upload (XFile from image picker) - single image
   final dynamic imageToUpload;
 
   /// Multiple images to upload (used when user selects several photos)
   final List<dynamic>? imagesToUpload;
 
+  /// Already-uploaded image URLs from intake analysis (skip re-upload).
+  final List<String>? preUploadedFileUrls;
+  final List<String>? preUploadedSourceNames;
+
   /// After flashcard generation, open vertical scroll feed instead of full game.
   final bool openAsScrollFeed;
+
+  /// Intake mode chosen before generation (play / drill / scroll / path).
+  final SkulMateIntentMode? intakeMode;
+
+  /// Generate once and return — used by path mode (no auto-play).
+  final bool generateOnly;
 
   const GameGenerationScreen({
     Key? key,
@@ -77,9 +89,14 @@ class GameGenerationScreen extends StatefulWidget {
     this.numQuestions,
     this.gameType,
     this.documentToUpload,
+    this.documentsToUpload,
     this.imageToUpload,
     this.imagesToUpload,
+    this.preUploadedFileUrls,
+    this.preUploadedSourceNames,
     this.openAsScrollFeed = false,
+    this.intakeMode,
+    this.generateOnly = false,
   }) : super(key: key);
 
   @override
@@ -344,6 +361,16 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
     return 0;
   }
 
+  String _fileNameForUpload(dynamic file, int index) {
+    if (file is PlatformFile && file.name.isNotEmpty) return file.name;
+    if (file is File) {
+      final p = file.path.replaceAll('\\', '/');
+      if (p.contains('/')) return p.split('/').last;
+      return p;
+    }
+    return 'document_${index + 1}';
+  }
+
   String? _inferSourceFileName() {
     final doc = widget.documentToUpload;
     if (doc is PlatformFile) return doc.name;
@@ -402,6 +429,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         widget.documentToUpload != null ||
         widget.imageToUpload != null ||
         (widget.imagesToUpload?.isNotEmpty ?? false) ||
+        (widget.preUploadedFileUrls?.isNotEmpty ?? false) ||
         (widget.fileUrl?.isNotEmpty ?? false) ||
         (widget.youtubeUrl?.isNotEmpty ?? false);
 
@@ -457,16 +485,37 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       _suggestedGameType = null;
 
       // Upload files if passed (user navigated here with files)
+      final preUrls = widget.preUploadedFileUrls;
+      final hasPreUploaded =
+          preUrls != null && preUrls.isNotEmpty;
       final hasImages =
-          widget.imagesToUpload != null && widget.imagesToUpload!.isNotEmpty;
-      final hasSingleImage = widget.imageToUpload != null;
-      final hasDocs = widget.documentToUpload != null;
+          !hasPreUploaded &&
+          widget.imagesToUpload != null &&
+          widget.imagesToUpload!.isNotEmpty;
+      final hasSingleImage =
+          !hasPreUploaded && widget.imageToUpload != null;
+      final hasSingleDoc = widget.documentToUpload != null;
+      final hasMultiDocs = widget.documentsToUpload != null &&
+          widget.documentsToUpload!.isNotEmpty;
+      final hasDocs = hasSingleDoc || hasMultiDocs;
 
-      if (hasDocs || hasSingleImage || hasImages) {
+      if (hasPreUploaded) {
+        fileUrls = List<String>.from(preUrls);
+        imageUrl = preUrls.first;
+        sourceFileNames = widget.preUploadedSourceNames != null
+            ? List<String>.from(widget.preUploadedSourceNames!)
+            : null;
+        _setGenerationStatus('Analyzing content...');
+      } else if (hasDocs || hasSingleImage || hasImages) {
         // Validate total size before uploading (avoid generic "Upload issue" for large files)
         int totalBytes = 0;
         if (widget.documentToUpload != null) {
           totalBytes += await _getFileSizeBytes(widget.documentToUpload);
+        }
+        if (widget.documentsToUpload != null) {
+          for (final doc in widget.documentsToUpload!) {
+            totalBytes += await _getFileSizeBytes(doc);
+          }
         }
         if (widget.imageToUpload != null) {
           totalBytes += await _getFileSizeBytes(widget.imageToUpload);
@@ -503,6 +552,28 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
             documentFile: widget.documentToUpload,
             documentType: 'skulmate_notes',
           );
+        } else if (hasMultiDocs) {
+          final urls = <String>[];
+          final names = <String>[];
+          for (var i = 0; i < widget.documentsToUpload!.length; i++) {
+            final doc = widget.documentsToUpload![i];
+            if (i > 0) {
+              _setGenerationStatus(
+                'Uploading file ${i + 1} of ${widget.documentsToUpload!.length}...',
+              );
+            }
+            urls.add(
+              await StorageService.uploadDocument(
+                userId: user.id,
+                documentFile: doc,
+                documentType: 'skulmate_notes',
+              ),
+            );
+            names.add(_fileNameForUpload(doc, i));
+          }
+          fileUrls = urls;
+          fileUrl = urls.first;
+          sourceFileNames = names;
         }
         // Prefer imagesToUpload when multiple; otherwise single imageToUpload
         if (hasImages) {
@@ -545,16 +616,21 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       }
 
       // Pull adaptive learner context from onboarding/survey so we avoid re-asking users.
-      final learnerContext = await LearnerContextService.build(
+      final learnerContext = await LearnerIntelligenceService.build(
         childId: widget.childId,
       );
 
       // For auto only: if not playable or unreleased, retry with released types.
       final fallbackTypes = SkulMateClientGamePolicy.autoStableApiTypes;
-      _setGenerationStatus('Generating your game...');
+      if (requestedGameType == 'puzzle_pieces') {
+        _setGenerationStatus('Building your diagram…');
+      } else {
+        _setGenerationStatus('Generating your game...');
+      }
       final sourceFileName = _inferSourceFileName();
       final generationText = _textForGeneration();
-      GameModel game = await SkulMateService.generateGame(
+      RevisionDeckModel? revisionDeck;
+      SkulMateGenerateResult generation = await SkulMateService.generateGame(
         fileUrl: fileUrl ?? widget.fileUrl,
         fileUrls: fileUrls,
         imageUrl: imageUrl ?? widget.imageUrl,
@@ -569,6 +645,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         numQuestions: widget.numQuestions,
         learnerContext: learnerContext,
       );
+      GameModel game = generation.game;
+      revisionDeck = generation.deck;
 
       // Keep the first ID so we can clean up unusable saved records.
       final firstGeneratedId = game.id;
@@ -581,7 +659,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           if (fallbackType == requestedGameType) continue;
           _setGenerationStatus('Generating with $fallbackType...');
           try {
-            final fallbackGame = await SkulMateService.generateGame(
+            final fallbackGeneration = await SkulMateService.generateGame(
               fileUrl: fileUrl ?? widget.fileUrl,
               fileUrls: fileUrls,
               imageUrl: imageUrl ?? widget.imageUrl,
@@ -596,6 +674,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
               gameType: fallbackType,
               learnerContext: learnerContext,
             );
+            final fallbackGame = fallbackGeneration.game;
+            revisionDeck = fallbackGeneration.deck ?? revisionDeck;
             game = fallbackGame;
             if (SkulMateClientGamePolicy.isReleasedInClient(game.gameType) &&
                 game.isPlayable) {
@@ -614,7 +694,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           if (fallbackType == requestedGameType) continue;
           _setGenerationStatus('Generating with $fallbackType...');
           try {
-            final fallbackGame = await SkulMateService.generateGame(
+            final fallbackGeneration = await SkulMateService.generateGame(
               fileUrl: fileUrl ?? widget.fileUrl,
               fileUrls: fileUrls,
               imageUrl: imageUrl ?? widget.imageUrl,
@@ -629,6 +709,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
               gameType: fallbackType,
               learnerContext: learnerContext,
             );
+            final fallbackGame = fallbackGeneration.game;
+            revisionDeck = fallbackGeneration.deck ?? revisionDeck;
             game = fallbackGame;
             if (game.isPlayable &&
                 SkulMateClientGamePolicy.isReleasedInClient(game.gameType)) {
@@ -754,63 +836,48 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         return;
       }
 
-      // Navigate to appropriate game screen (fromGenerationFlow so back goes to dashboard)
+      // Optional deck naming, then play flow.
+      if (!widget.generateOnly &&
+          mounted &&
+          revisionDeck != null &&
+          revisionDeck.cards.isNotEmpty) {
+        final saveResult = await showDeckNamePromptSheet(
+          context: context,
+          suggestedName: revisionDeck.title,
+        );
+        if (saveResult?.saveToLibrary == true) {
+          revisionDeck = await RevisionDeckService.renameDeck(
+            gameId: game.id,
+            title: saveResult!.title.trim().isEmpty
+                ? revisionDeck.title
+                : saveResult.title.trim(),
+            deck: revisionDeck,
+          );
+        }
+      }
+
       if (mounted) {
-        Widget gameScreen;
-        switch (game.gameType) {
-          case GameType.quiz:
-            gameScreen = QuizGameScreen(game: game, fromGenerationFlow: true);
-            break;
-          case GameType.flashcards:
-            gameScreen = widget.openAsScrollFeed
-                ? SkulMateScrollFeedScreen(
-                    seedGame: game,
-                    childId: widget.childId,
-                  )
-                : FlashcardGameScreen(game: game);
-            break;
-          case GameType.matching:
-            gameScreen = MatchingGameScreen(game: game);
-            break;
-          case GameType.fillBlank:
-            gameScreen = FillBlankGameScreen(game: game);
-            break;
-          case GameType.dragDrop:
-            gameScreen = DragDropGameScreen(game: game);
-            break;
-          case GameType.puzzlePieces:
-            gameScreen = PuzzlePiecesGameScreen(game: game);
-            break;
-          case GameType.match3:
-            gameScreen = Match3GameScreen(game: game);
-            break;
-          case GameType.bubblePop:
-            gameScreen = BubblePopGameScreen(game: game);
-            break;
-          case GameType.wordSearch:
-            gameScreen = WordSearchGameScreen(game: game);
-            break;
-          case GameType.crossword:
-            gameScreen = CrosswordGameScreen(game: game);
-            break;
-          case GameType.simulation:
-            gameScreen = SimulationGameScreen(game: game);
-            break;
-          case GameType.mystery:
-            gameScreen = MysteryGameScreen(game: game);
-            break;
-          case GameType.escapeRoom:
-            gameScreen = EscapeRoomGameScreen(game: game);
-            break;
-          default:
-            gameScreen = QuizGameScreen(game: game, fromGenerationFlow: true);
+        if (widget.generateOnly) {
+          safeSetState(() => _isGenerating = false);
+          Navigator.pop(
+            context,
+            GameGenerationResult(game: game, deck: revisionDeck),
+          );
+          return;
         }
 
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => gameScreen),
-          (route) => route.isFirst,
+        await DeckNavigation.openAfterGeneration(
+          context: context,
+          game: game,
+          deck: revisionDeck,
+          childId: widget.childId,
+          openAsScrollFeed: widget.openAsScrollFeed,
+          intakeMode: widget.intakeMode,
         );
+        if (mounted) {
+          safeSetState(() => _isGenerating = false);
+          Navigator.pop(context, true);
+        }
       }
     } catch (e) {
       LogService.error('Error generating game: $e');
@@ -1379,15 +1446,14 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                     onPaywall: _isBillingErrorState()
                         ? () => SkulMatePaywallSheet.show(context)
                         : null,
-                    onManualText: () {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    TextInputScreen(childId: widget.childId),
-                              ),
-                            );
-                          },
+                    onManualText: () async {
+                      Navigator.pop(context);
+                      if (!context.mounted) return;
+                      await SkulMatePasteSheet.show(
+                        context,
+                        childId: widget.childId,
+                      );
+                    },
                     onBack: () => Navigator.pop(context),
                     onTrySuggested: _suggestedGameType != null
                         ? () {

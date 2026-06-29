@@ -12,7 +12,9 @@ import '../models/game_model.dart';
 import '../services/skulmate_service.dart';
 import '../utils/skulmate_game_router.dart';
 import '../widgets/game_card.dart';
+import '../widgets/skulmate_loading_skeletons.dart';
 import '../widgets/skulmate_surface_styles.dart';
+import '../widgets/skulmate_typography.dart';
 
 /// Saved games list — connected to SkulMate home (back button, no legacy tabs).
 class SkulMateGamesScreen extends StatefulWidget {
@@ -214,19 +216,12 @@ class _SkulMateGamesScreenState extends State<SkulMateGamesScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          copy.myGames,
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+        title: Text(copy.myGames, style: SkulMateTypography.sectionTitle()),
       ),
       body: RefreshIndicator(
         onRefresh: () => _loadGames(refresh: true),
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            ? SkulMateLoadingSkeletons.gamesScreen()
             : CustomScrollView(
                 controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),

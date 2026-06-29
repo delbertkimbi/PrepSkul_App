@@ -38,6 +38,8 @@ import 'tutor_session_detail_full_screen.dart';
 import 'package:prepskul/features/booking/utils/trial_requester_display.dart';
 import 'package:prepskul/features/sessions/domain/onsite_session_phase.dart';
 import 'package:prepskul/features/sessions/widgets/onsite_presence_summary.dart';
+import 'package:prepskul/features/sessions/widgets/session_card_map_preview.dart';
+import 'package:prepskul/features/skulmate/widgets/skulmate_surface_styles.dart';
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 
@@ -1366,29 +1368,24 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
     final modeColor =
         location == 'online' ? AppTheme.primaryColor : AppTheme.accentGreen;
 
-    // Same card style as student My Sessions: white, shadow, padding 16
+    // Neumorphic card — aligned with learner My Sessions
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () => _showSessionDetails(session),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+          decoration: SkulMateSurfaceStyles.neumorphicCard(
+            radius: 14,
+            compact: true,
+          ).copyWith(
             border: Border.all(
-              color: isExpired ? Colors.red.withOpacity(0.2) : Colors.grey[200]!,
-              width: 1,
+              color: isExpired
+                  ? Colors.red.withOpacity(0.2)
+                  : AppTheme.softBorder.withValues(alpha: 0.9),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1696,6 +1693,14 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
                                 ),
                               ],
                             ),
+                            if (address != null && address.trim().isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              SessionCardMapPreview(
+                                address: address,
+                                coordinates: SessionCardMapPreview.coordinatesFromSession(session),
+                                locationDescription: session['location_description'] as String?,
+                              ),
+                            ],
                           ],
                         ],
                       ),

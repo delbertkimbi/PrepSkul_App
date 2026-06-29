@@ -1,22 +1,14 @@
-import 'dart:io' show File;
-
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
-import '../models/skulmate_intake_models.dart';
-import '../services/skulmate_intake_coordinator.dart';
-import 'photo_upload_bottom_sheet.dart';
+import '../services/skulmate_import_actions.dart';
 import 'skulmate_from_class_sheet.dart';
 import 'skulmate_intake_popup_menu.dart';
 import 'skulmate_surface_styles.dart';
-import 'skulmate_youtube_import_sheet.dart';
+import 'skulmate_typography.dart';
 
-/// Import tool chips below the intent card.
+/// Import tool chips below the intent card — simple rounded pills.
 class SkulMateImportActionGrid extends StatelessWidget {
   final String? childId;
 
@@ -29,12 +21,28 @@ class SkulMateImportActionGrid extends StatelessWidget {
     final copy = SkulMateCopy.of(context);
 
     final chips = [
-      _ChipDef(copy.upload, Icons.file_upload_rounded, (ctx, _) => _pickDocument(ctx)),
-      _ChipDef(copy.photo, Icons.photo_camera_rounded, (ctx, _) => _pickPhoto(ctx)),
-      _ChipDef(copy.paste, Icons.content_paste_rounded, (ctx, _) => _paste(ctx)),
-      _ChipDef(copy.youtube, Icons.play_circle_rounded, (ctx, _) => _youtube(ctx)),
-      _ChipDef(copy.sessions, Icons.video_library_rounded, (ctx, _) => _fromClass(ctx)),
-      _ChipDef(copy.more, Icons.keyboard_arrow_down_rounded, (ctx, box) => _more(ctx, box)),
+      _ChipDef(copy.upload, Icons.file_upload_rounded, (ctx, _) async {
+        await SkulMateImportActions.pickDocuments(ctx, childId: childId);
+      }),
+      _ChipDef(copy.photo, Icons.photo_camera_rounded, (ctx, _) async {
+        await SkulMateImportActions.pickPhotos(ctx, childId: childId);
+      }),
+      _ChipDef(copy.paste, Icons.content_paste_rounded, (ctx, _) async {
+        await SkulMateImportActions.openPaste(ctx, childId: childId);
+      }),
+      _ChipDef(copy.youtube, Icons.play_circle_rounded, (ctx, _) async {
+        await SkulMateImportActions.importYoutube(ctx, childId: childId);
+      }),
+      _ChipDef(copy.sessions, Icons.video_library_rounded, (ctx, _) async {
+        await SkulMateFromClassSheet.show(ctx, childId: childId);
+      }),
+      _ChipDef(copy.more, Icons.keyboard_arrow_down_rounded, (ctx, box) async {
+        await SkulMateIntakePopupMenu.showExtraTools(
+          ctx,
+          anchor: box,
+          childId: childId,
+        );
+      }),
     ];
 
     return GridView.builder(
@@ -50,119 +58,48 @@ class SkulMateImportActionGrid extends StatelessWidget {
       itemBuilder: (context, index) => _ChipButton(def: chips[index]),
     );
   }
-
-  Future<void> _pickDocument(BuildContext context) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'docx', 'txt', 'jpg', 'jpeg', 'png'],
-      allowMultiple: false,
-    );
-    if (result == null || result.files.isEmpty || !context.mounted) return;
-
-    if (kIsWeb) {
-      final webFile = result.files.first;
-      await SkulMateIntakeCoordinator.start(
-        context,
-        SkulMateIntakePayload(
-          source: SkulMateIntakeSource.document,
-          filesWeb: [webFile],
-          childId: childId,
-        ),
-      );
-    } else if (result.files.first.path != null) {
-      await SkulMateIntakeCoordinator.start(
-        context,
-        SkulMateIntakePayload(
-          source: SkulMateIntakeSource.document,
-          files: [File(result.files.first.path!)],
-          childId: childId,
-        ),
-      );
-    }
-  }
-
-  Future<void> _pickPhoto(BuildContext context) async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (_) => PhotoUploadBottomSheet(),
-    );
-    if (source == null || !context.mounted) return;
-
-    final picker = ImagePicker();
-    final List<XFile> images;
-    if (source == ImageSource.gallery) {
-      images = await picker.pickMultiImage(imageQuality: 85);
-    } else {
-      final shot = await picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-      );
-      images = shot != null ? [shot] : [];
-    }
-
-    if (images.isEmpty || !context.mounted) return;
-    await SkulMateIntakeCoordinator.start(
-      context,
-      SkulMateIntakePayload(
-        source: SkulMateIntakeSource.photo,
-        images: images,
-        childId: childId,
-      ),
-    );
-  }
-
-  Future<void> _paste(BuildContext context) async {
-    await SkulMateIntakeCoordinator.openPasteFlow(context, childId: childId);
-  }
-
-  Future<void> _youtube(BuildContext context) async {
-    final url = await SkulMateYoutubeImportSheet.show(context);
-    if (url == null || !context.mounted) return;
-    await SkulMateIntakeCoordinator.start(
-      context,
-      SkulMateIntakePayload(
-        source: SkulMateIntakeSource.youtube,
-        youtubeUrl: url,
-        childId: childId,
-      ),
-    );
-  }
-
-  Future<void> _fromClass(BuildContext context) async {
-    await SkulMateFromClassSheet.show(context, childId: childId);
-  }
-
-  Future<void> _more(BuildContext context, RenderBox anchor) async {
-    await SkulMateIntakePopupMenu.showExtraTools(
-      context,
-      anchor: anchor,
-      childId: childId,
-    );
-  }
 }
 
 class _ChipDef {
   final String label;
   final IconData icon;
-  final void Function(BuildContext context, RenderBox anchor) onTap;
+  final Future<void> Function(BuildContext context, RenderBox anchor) onTap;
 
   const _ChipDef(this.label, this.icon, this.onTap);
 }
 
-class _ChipButton extends StatelessWidget {
+class _ChipButton extends StatefulWidget {
   final _ChipDef def;
 
   const _ChipButton({required this.def});
+
+  @override
+  State<_ChipButton> createState() => _ChipButtonState();
+}
+
+class _ChipButtonState extends State<_ChipButton> {
+  bool _busy = false;
+
+  Future<void> _handleTap() async {
+    if (_busy) return;
+    SkulMateSurfaceStyles.lightTap();
+    setState(() => _busy = true);
+    try {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        await widget.def.onTap(context, box);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          final box = context.findRenderObject() as RenderBox?;
-          if (box != null && box.hasSize) def.onTap(context, box);
-        },
+        onTap: _busy ? null : _handleTap,
         borderRadius: BorderRadius.circular(SkulMateSurfaceStyles.pillRadius),
         child: Container(
           alignment: Alignment.center,
@@ -170,16 +107,19 @@ class _ChipButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(def.icon, size: 20, color: AppTheme.textDark),
+              if (_busy)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(widget.def.icon, size: 20, color: AppTheme.textDark),
               const SizedBox(width: 5),
               Flexible(
                 child: Text(
-                  def.label,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
-                  ),
+                  widget.def.label,
+                  style: SkulMateTypography.chipLabel(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

@@ -36,6 +36,8 @@ class SkulMateRecordLectureSheet extends StatefulWidget {
 }
 
 class _SkulMateRecordLectureSheetState extends State<SkulMateRecordLectureSheet> {
+  static const _minRecordingSeconds = 15;
+
   _RecordPhase _phase = _RecordPhase.idle;
   Timer? _timer;
   int _seconds = 0;
@@ -121,6 +123,13 @@ class _SkulMateRecordLectureSheetState extends State<SkulMateRecordLectureSheet>
     if (path == null || path.isEmpty) return;
 
     final copy = SkulMateCopy.read(context);
+
+    if (_seconds < _minRecordingSeconds) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(copy.recordingTooShort)),
+      );
+      return;
+    }
 
     final access = await SkulmateAccessService.checkGenerationAccess(
       sourceType: SkulmateSourceType.text,

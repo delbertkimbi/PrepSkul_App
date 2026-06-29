@@ -44,26 +44,34 @@ class _SkulMateRerouteNudgeState extends State<SkulMateRerouteNudge> {
   }
 
   Future<void> _evaluate() async {
-    final dueCount =
-        await SpacedRepetitionService.dueCountToday(childId: widget.childId);
-    if (dueCount > 0) {
+    try {
+      final dueCount =
+          await SpacedRepetitionService.dueCountToday(childId: widget.childId);
+      if (dueCount > 0) {
+        if (!mounted) return;
+        setState(() {
+          _suggestion = null;
+          _loading = false;
+        });
+        return;
+      }
+
+      final suggestion = await RerouteSuggestionService.evaluate(
+        games: widget.games,
+        childId: widget.childId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _suggestion = suggestion;
+        _loading = false;
+      });
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _suggestion = null;
         _loading = false;
       });
-      return;
     }
-
-    final suggestion = await RerouteSuggestionService.evaluate(
-      games: widget.games,
-      childId: widget.childId,
-    );
-    if (!mounted) return;
-    setState(() {
-      _suggestion = suggestion;
-      _loading = false;
-    });
   }
 
   Future<void> _dismiss() async {

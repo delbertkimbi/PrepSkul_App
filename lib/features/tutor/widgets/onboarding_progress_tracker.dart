@@ -3,6 +3,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
+import '../../skulmate/widgets/skulmate_surface_styles.dart';
 import '../screens/tutor_onboarding_screen.dart';
 
 /// Beautiful onboarding progress tracker widget
@@ -205,17 +206,7 @@ class _OnboardingProgressTrackerState
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: SkulMateSurfaceStyles.neumorphicCard(radius: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

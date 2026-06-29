@@ -1,69 +1,52 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
-/// Gizmo-style section title with optional View all (right) or + action.
+import '../l10n/skulmate_copy.dart';
+import 'skulmate_typography.dart';
+
+/// Section header for SkulMate home rows — bold title, optional View all / +.
 class SkulMateHomeSectionHeader extends StatelessWidget {
   final String title;
   final VoidCallback? onViewAll;
-  final VoidCallback? onAdd;
   final String? viewAllLabel;
+  final VoidCallback? onAdd;
 
   const SkulMateHomeSectionHeader({
     super.key,
     required this.title,
     this.onViewAll,
-    this.onAdd,
     this.viewAllLabel,
+    this.onAdd,
   });
 
   @override
   Widget build(BuildContext context) {
+    final copy = SkulMateCopy.of(context);
+    final actionLabel = viewAllLabel ?? copy.viewAll;
+
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
-          child: Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-              letterSpacing: -0.2,
-            ),
-          ),
+          child: Text(title, style: SkulMateTypography.sectionTitle()),
         ),
         if (onViewAll != null)
-          GestureDetector(
-            onTap: onViewAll,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-              child: Text(
-                viewAllLabel ?? 'View all',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.textMedium,
-                ),
-              ),
+          TextButton(
+            onPressed: onViewAll,
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
+            child: Text(actionLabel, style: SkulMateTypography.linkAction()),
           ),
         if (onAdd != null)
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onAdd,
-              borderRadius: BorderRadius.circular(999),
-              child: const Padding(
-                padding: EdgeInsets.all(6),
-                child: Icon(
-                  Icons.add_rounded,
-                  size: 24,
-                  color: AppTheme.textDark,
-                ),
-              ),
-            ),
+          IconButton(
+            onPressed: onAdd,
+            tooltip: copy.addDeckCta,
+            icon: const Icon(Icons.add_rounded),
+            color: AppTheme.primaryColor,
+            visualDensity: VisualDensity.compact,
           ),
       ],
     );

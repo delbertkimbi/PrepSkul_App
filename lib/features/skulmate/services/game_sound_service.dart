@@ -442,6 +442,16 @@ class GameSoundService {
     } catch (_) {}
   }
 
+  /// Lower BGM briefly so term TTS stays intelligible over game music/SFX.
+  Future<void> duckBgmForSpeech() async {
+    if (!_musicEnabled || !_isInitialized || _currentMusicPath == null) return;
+    try {
+      await _bgmPlayer.setVolume(
+        (_currentMusicBaseVolume * _musicVolume * 0.22).clamp(0.0, 1.0),
+      );
+    } catch (_) {}
+  }
+
   /// BGM can be paused/ducked by SFX, TTS, or the OS audio session (especially iOS).
   /// Call after short non-BGM playback so the loop keeps running during games.
   Future<void> resumeBgmIfNeeded() async {
@@ -764,13 +774,14 @@ class GameSoundService {
   }
 
   /// Matching-specific SFX: force lively mp3 assets first.
-  Future<void> playMatchingTap() async {
+  Future<void> playMatchingTap({bool quiet = false}) async {
     // Guarantee immediate tactile tap feedback even when asset decoding lags.
     if (!kIsWeb) {
       try {
         SystemSound.play(SystemSoundType.click);
       } catch (_) {}
     }
+    if (quiet) return;
     await _playMatchingAssetCandidates([
       'sounds/match.mp3',
       'sounds/flip.mp3',

@@ -61,6 +61,12 @@ class AppTheme {
   static const Color warning = Color(0xFFF59E0B);
   static const Color error = Color(0xFFEF4444);
 
+  /// Gentle in-game nudge for wrong answers (warm amber, not alarm red).
+  static const Color gameNudgeBg = Color(0xFFFFFBEB);
+  static const Color gameNudgeFg = Color(0xFF92400E);
+  static const Color gameNudgeBorder = Color(0xFFFDE68A);
+  static const Color gameNudgeGlow = Color(0xFFF59E0B);
+
   // Gradient Colors
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [Color(0xFF1B2C4F), Color(0xFF4A6FBF)],

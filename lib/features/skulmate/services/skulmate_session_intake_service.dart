@@ -6,6 +6,7 @@ class SkulMateSessionIntakeService {
     String? childId,
     int limit = 50,
   }) async {
+    if (!SupabaseService.isClientAvailable) return [];
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) return [];
 

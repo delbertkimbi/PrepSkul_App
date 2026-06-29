@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
 import 'skulmate_intake_popup_menu.dart';
 import 'skulmate_surface_styles.dart';
+import 'skulmate_typography.dart';
 
 /// Intent card — simple neumorphic surface; send appears on type.
 class SkulMateStudyIntentCard extends StatefulWidget {
@@ -52,7 +52,7 @@ class _SkulMateStudyIntentCardState extends State<SkulMateStudyIntentCard> {
 
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 120),
+      constraints: const BoxConstraints(minHeight: 88),
       decoration: SkulMateSurfaceStyles.homeCard(
         radius: SkulMateSurfaceStyles.intentCardRadius,
         compact: true,
@@ -68,8 +68,9 @@ class _SkulMateStudyIntentCardState extends State<SkulMateStudyIntentCard> {
               ),
               child: TextField(
                 controller: widget.controller,
-                maxLines: 2,
-                minLines: 2,
+                minLines: 1,
+                maxLines: 5,
+                keyboardType: TextInputType.multiline,
                 decoration: InputDecoration(
                   hintText: copy.intentPlaceholder,
                   filled: true,
@@ -82,19 +83,12 @@ class _SkulMateStudyIntentCardState extends State<SkulMateStudyIntentCard> {
                   focusedErrorBorder: _noBorder,
                   isCollapsed: true,
                   contentPadding: EdgeInsets.zero,
-                  hintStyle: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w400,
+                  hintStyle: SkulMateTypography.body(
                     color: AppTheme.textMedium.withValues(alpha: 0.55),
-                    height: 1.35,
+                    size: 15,
                   ),
                 ),
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400,
-                  color: AppTheme.textDark,
-                  height: 1.35,
-                ),
+                style: SkulMateTypography.body(size: 15),
                 textAlignVertical: TextAlignVertical.top,
                 textInputAction: TextInputAction.go,
                 onSubmitted: (_) => widget.onSubmit(),

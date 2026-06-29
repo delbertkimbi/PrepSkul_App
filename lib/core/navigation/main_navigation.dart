@@ -19,6 +19,7 @@ import '../../features/skulmate/services/skulmate_welcome_service.dart';
 import '../../features/skulmate/widgets/skulmate_welcome_sheet.dart';
 import '../../core/config/app_config.dart';
 import '../../core/services/supabase_service.dart';
+import '../../features/skulmate/services/skulmate_streak_reminder_service.dart';
 import '../theme/app_theme.dart';
 import '../localization/app_localizations.dart';
 import '../../features/skulmate/services/game_sound_service.dart';
@@ -90,6 +91,11 @@ class _MainNavigationState extends State<MainNavigation>
     // Route arguments will be read in didChangeDependencies
     _selectedIndex = widget.initialTab ?? 0;
     _stopGameMusicOnShellTab();
+    if (widget.userRole == 'student' ||
+        widget.userRole == 'learner' ||
+        widget.userRole == 'parent') {
+      unawaited(SkulMateStreakReminderService.rescheduleIfNeeded());
+    }
   }
 
   @override
@@ -104,6 +110,11 @@ class _MainNavigationState extends State<MainNavigation>
     if (state == AppLifecycleState.resumed) {
       _stopGameMusicOnShellTab();
       unawaited(LiveSessionOverlayController.instance.refreshFromServer());
+      if (widget.userRole == 'student' ||
+          widget.userRole == 'learner' ||
+          widget.userRole == 'parent') {
+        unawaited(SkulMateStreakReminderService.rescheduleIfNeeded());
+      }
     }
   }
 

@@ -43,26 +43,40 @@ class LessonPlanService {
     final url = '$_apiBaseUrl$_endpoint';
     LogService.info('🗺️ [Path] Creating lesson plan: $url');
 
-    final response = await SkulMateService.postJson(
-      url: url,
-      token: token,
-      body: body,
-    );
+    try {
+      final response = await SkulMateService.postJson(
+        url: url,
+        token: token,
+        body: body,
+      );
 
-    if (response.statusCode != 200) {
+      if (response.statusCode != 200) {
+        final decoded = _decodeJson(response.body);
+        final message =
+            decoded?['error']?.toString() ?? 'Failed to create lesson path';
+        LogService.warning(
+          '🗺️ [Path] API failed ($message), using local fallback',
+        );
+        return _localFallback(_resolveTopic(topic, text));
+      }
+
       final decoded = _decodeJson(response.body);
-      final message =
-          decoded?['error']?.toString() ?? 'Failed to create lesson path';
-      throw Exception(message);
-    }
+      final lessonJson = decoded?['lesson'];
+      if (lessonJson is! Map<String, dynamic>) {
+        LogService.warning('🗺️ [Path] Invalid response, using local fallback');
+        return _localFallback(_resolveTopic(topic, text));
+      }
 
-    final decoded = _decodeJson(response.body);
-    final lessonJson = decoded?['lesson'];
-    if (lessonJson is! Map<String, dynamic>) {
-      throw Exception('Invalid lesson plan response');
+      return LessonPlan.fromJson(lessonJson);
+    } catch (e) {
+      LogService.warning('🗺️ [Path] Request failed ($e), using local fallback');
+      return _localFallback(_resolveTopic(topic, text));
     }
+  }
 
-    return LessonPlan.fromJson(lessonJson);
+  static String _resolveTopic(String? topic, String? text) {
+    final raw = (topic ?? text ?? 'Lesson').trim();
+    return raw.isEmpty ? 'Lesson' : raw;
   }
 
   /// Mark step complete and advance current_step in Supabase.
@@ -71,9 +85,6 @@ class LessonPlanService {
     required int stepIndex,
   }) async {
     if (stepIndex < 0 || stepIndex >= lesson.steps.length) return lesson;
-
-    final userId = SupabaseService.client.auth.currentUser?.id;
-    if (userId == null) return lesson;
 
     final updatedSteps = lesson.steps
         .asMap()
@@ -88,14 +99,64 @@ class LessonPlanService {
       nextStep = updatedSteps.length - 1;
     }
 
+    // Ephemeral local plan — skip DB when API could not persist.
+    if (lesson.id.startsWith('local-')) {
+      return lesson.copyWith(steps: updatedSteps, currentStep: nextStep);
+    }
+
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId == null) {
+      return lesson.copyWith(steps: updatedSteps, currentStep: nextStep);
+    }
+
     final now = DateTime.now().toUtc().toIso8601String();
-    await SupabaseService.client.from('skulmate_lessons').update({
-      'steps': updatedSteps.map((s) => s.toJson()).toList(),
-      'current_step': nextStep,
-      'updated_at': now,
-    }).eq('id', lesson.id).eq('user_id', userId);
+    try {
+      await SupabaseService.client.from('skulmate_lessons').update({
+        'steps': updatedSteps.map((s) => s.toJson()).toList(),
+        'current_step': nextStep,
+        'updated_at': now,
+      }).eq('id', lesson.id).eq('user_id', userId);
+    } catch (e) {
+      LogService.warning('LessonPlanService.completeStep: $e');
+    }
 
     return lesson.copyWith(steps: updatedSteps, currentStep: nextStep);
+  }
+
+  static LessonPlan _localFallback(String topic) {
+    final isFrench = LanguageService.languageCode == 'fr';
+    return LessonPlan(
+      id: 'local-${DateTime.now().millisecondsSinceEpoch}',
+      topic: topic,
+      steps: [
+        LessonPlanStep(
+          type: 'overview',
+          title: isFrench ? 'Aperçu' : 'Overview',
+          body: isFrench
+              ? 'Voici ce que nous allons couvrir sur $topic.'
+              : 'Here is what we will cover for $topic.',
+        ),
+        LessonPlanStep(
+          type: 'concepts',
+          title: isFrench ? 'Idées clés' : 'Key ideas',
+          body: isFrench
+              ? 'Lisez les points essentiels avant de pratiquer.'
+              : 'Review the essential points before you practice.',
+        ),
+        LessonPlanStep(
+          type: 'drill',
+          title: isFrench ? 'Pratique' : 'Practice',
+          gameType: 'flashcards',
+        ),
+        LessonPlanStep(
+          type: 'recap',
+          title: isFrench ? 'Récap' : 'Recap',
+          body: isFrench
+              ? 'Révisez ce que vous avez appris.'
+              : 'Review what you learned.',
+        ),
+      ],
+    );
   }
 
   static Future<LessonPlan?> fetchLesson(String lessonId) async {

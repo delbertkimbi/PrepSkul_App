@@ -84,6 +84,40 @@ class TutorEscalationService {
     return weakStreak >= 2 || (attempts >= 4 && masteryScore < 0.42);
   }
 
+  /// Offer human tutor when AI explanations aren't landing (repeated follow-ups).
+  static const tutorFollowUpThreshold = 3;
+
+  static Future<bool> shouldOfferDuringTutorStudy({
+    required String gameId,
+    required int followUpCount,
+    String? childId,
+  }) async {
+    if (gameId.isEmpty || followUpCount < tutorFollowUpThreshold) {
+      return false;
+    }
+
+    final tutorStatus = await ActiveTutorService.check();
+    if (tutorStatus.hasActiveTutor) return false;
+    if (!await _hasWeeklyBudget()) return false;
+
+    final topicIds = await _topicIdsForGame(gameId);
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+
+    for (final topicId in topicIds) {
+      if (topicId == 'open:general') continue;
+      if (_isDismissed(prefs, topicId, now)) continue;
+      final row = await _masteryRow(topicId: topicId, childId: childId);
+      final weakStreak = (row?['weak_streak'] as num?)?.toInt() ?? 0;
+      final mastery = (row?['mastery_score'] as num?)?.toDouble() ?? 1;
+      if (weakStreak >= 1 || mastery < 0.6 || followUpCount >= 4) {
+        return true;
+      }
+    }
+
+    return followUpCount >= tutorFollowUpThreshold + 1;
+  }
+
   static Future<void> dismissForGame(String gameId) async {
     final topicIds = await _topicIdsForGame(gameId);
     final prefs = await SharedPreferences.getInstance();

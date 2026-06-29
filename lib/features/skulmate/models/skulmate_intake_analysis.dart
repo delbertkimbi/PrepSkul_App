@@ -7,6 +7,8 @@ class SkulMateIntakeAttachment {
   final String? fileName;
   final String? thumbnailUrl;
   final String? localImagePath;
+  final List<String>? localImagePaths;
+  final int? imageCount;
 
   const SkulMateIntakeAttachment({
     required this.source,
@@ -14,6 +16,8 @@ class SkulMateIntakeAttachment {
     this.fileName,
     this.thumbnailUrl,
     this.localImagePath,
+    this.localImagePaths,
+    this.imageCount,
   });
 }
 
@@ -22,11 +26,17 @@ class SkulMateIntakeAnalysis {
   final String topicLabel;
   final String? resolvedText;
   final SkulMateIntakeAttachment attachment;
+  final String? contextSummary;
+  final List<String>? uploadedFileUrls;
+  final List<String>? uploadedFileNames;
 
   const SkulMateIntakeAnalysis({
     required this.topicLabel,
     required this.attachment,
     this.resolvedText,
+    this.contextSummary,
+    this.uploadedFileUrls,
+    this.uploadedFileNames,
   });
 
   SkulMateIntakePayload enrich(SkulMateIntakePayload payload) {
@@ -51,6 +61,9 @@ class SkulMateIntakeAnalysis {
       youtubeUrl: hasResolvedYoutube ? null : payload.youtubeUrl,
       title: explicitTitle,
       childId: payload.childId,
+      preUploadedFileUrls: uploadedFileUrls ?? payload.preUploadedFileUrls,
+      preUploadedSourceNames:
+          uploadedFileNames ?? payload.preUploadedSourceNames,
     );
   }
 }

@@ -35,6 +35,7 @@ class OnsiteSessionExperience extends StatefulWidget {
   final bool showProfileHeader;
   final Widget? sessionDetailsSlot;
   final bool showMapPreview;
+  final String? userReferenceAddress;
 
   const OnsiteSessionExperience({
     super.key,
@@ -60,6 +61,7 @@ class OnsiteSessionExperience extends StatefulWidget {
     this.showProfileHeader = true,
     this.sessionDetailsSlot,
     this.showMapPreview = true,
+    this.userReferenceAddress,
   });
 
   @override
@@ -130,6 +132,7 @@ class _OnsiteSessionExperienceState extends State<OnsiteSessionExperience>
           statusLine: widget.statusLine,
           locationDescription: widget.locationDescription,
           showMapPreview: widget.showMapPreview,
+          userReferenceAddress: widget.userReferenceAddress,
         ),
         if (widget.checkInSlot != null) ...[
           const SizedBox(height: 16),

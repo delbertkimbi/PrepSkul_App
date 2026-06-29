@@ -85,6 +85,7 @@ class GameProgressService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('$_prefix$gameId');
+      await prefs.remove('skulmate_next_stop_continue_fp_$gameId');
     } catch (e) {
       LogService.error('🎮 [Progress] clear failed: $e');
     }
@@ -102,4 +103,30 @@ class GameProgressService {
       return {};
     }
   }
+
+  /// True when the learner left mid-game — not at start or already finished.
+  static bool isResumable(GameProgress progress, int totalItems) {
+    if (totalItems <= 0) return false;
+    if (progress.stateData['completed'] == true) return false;
+    if (progress.currentIndex <= 0) return false;
+    if (progress.currentIndex >= totalItems) return false;
+    return true;
+  }
+
+  static int progressPercent(GameProgress progress, int totalItems) {
+    if (totalItems <= 0) return 0;
+    return ((progress.currentIndex / totalItems) * 100).round().clamp(0, 99);
+  }
+
+  static Future<bool> hasResumableProgress(
+    String gameId,
+    int totalItems,
+  ) async {
+    final progress = await loadProgress(gameId);
+    if (progress == null) return false;
+    return isResumable(progress, totalItems);
+  }
+
+  static String progressFingerprint(GameProgress progress) =>
+      progress.savedAt.toIso8601String();
 }

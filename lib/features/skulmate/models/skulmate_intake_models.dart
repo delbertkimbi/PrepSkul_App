@@ -24,6 +24,19 @@ enum SkulMateIntentMode {
   fromClass,
 }
 
+extension SkulMateIntentModeX on SkulMateIntentMode {
+  /// Modes shown on intake chat and the legacy intent sheet.
+  static const selectableInIntake = <SkulMateIntentMode>[
+    SkulMateIntentMode.play,
+    SkulMateIntentMode.drill,
+    SkulMateIntentMode.scroll,
+    SkulMateIntentMode.path,
+  ];
+
+  bool get isComingSoon =>
+      this == SkulMateIntentMode.sheet || this == SkulMateIntentMode.fromClass;
+}
+
 /// Payload collected before the intent sheet.
 class SkulMateIntakePayload {
   final SkulMateIntakeSource source;
@@ -35,6 +48,8 @@ class SkulMateIntakePayload {
   final String? youtubeUrl;
   final String? title;
   final String? childId;
+  final List<String>? preUploadedFileUrls;
+  final List<String>? preUploadedSourceNames;
 
   const SkulMateIntakePayload({
     required this.source,
@@ -46,6 +61,8 @@ class SkulMateIntakePayload {
     this.youtubeUrl,
     this.title,
     this.childId,
+    this.preUploadedFileUrls,
+    this.preUploadedSourceNames,
   });
 
   bool get hasFiles =>
@@ -57,6 +74,9 @@ class SkulMateIntakePayload {
   bool get hasText => text != null && text!.trim().isNotEmpty;
 
   bool get hasYoutube => youtubeUrl != null && youtubeUrl!.trim().isNotEmpty;
+
+  bool get hasPreUploadedImages =>
+      preUploadedFileUrls != null && preUploadedFileUrls!.isNotEmpty;
 
   bool get hasTopicOnly =>
       topicHint != null &&
@@ -83,8 +103,10 @@ class SkulMateContinueItem {
   final String gameId;
   final String title;
   final String subtitle;
-  final double progressPercent;
+  final int progressPercent;
   final DateTime lastPlayed;
+  final int currentIndex;
+  final int totalItems;
 
   const SkulMateContinueItem({
     required this.gameId,
@@ -92,5 +114,7 @@ class SkulMateContinueItem {
     required this.subtitle,
     required this.progressPercent,
     required this.lastPlayed,
+    this.currentIndex = 0,
+    this.totalItems = 0,
   });
 }

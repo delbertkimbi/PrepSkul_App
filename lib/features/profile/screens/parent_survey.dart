@@ -2954,6 +2954,31 @@ No direct payments should be made to tutors outside the platform.''';
     );
   }
 
+  List<String>? _parseUniversityCourses() {
+    final raw = _universityCoursesController.text.trim();
+    if (raw.isEmpty) return null;
+    final courses = raw
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    return courses.isEmpty ? null : courses;
+  }
+
+  String _surveySaveErrorMessage(Object error) {
+    final msg = error.toString().toLowerCase();
+    if (msg.contains('socket') ||
+        msg.contains('host lookup') ||
+        msg.contains('network') ||
+        msg.contains('connection')) {
+      return 'We could not reach the server. Check your internet connection and try again.';
+    }
+    if (msg.contains('not authenticated')) {
+      return 'Your session expired. Please sign in again and retry.';
+    }
+    return 'We could not save your survey right now. Please try again in a moment.';
+  }
+
   Future<void> _completeSurvey() async {
     try {
       LogService.debug('📝 Parent Survey submission started...');
@@ -3023,10 +3048,7 @@ No direct payments should be made to tutors outside the platform.''';
               (_selectedSubjects != null && _selectedSubjects.isNotEmpty)
               ? _selectedSubjects
               : null,
-          'university_courses':
-              _universityCoursesController.text.trim().isNotEmpty
-              ? _universityCoursesController.text.trim()
-              : null,
+          'university_courses': _parseUniversityCourses(),
         },
         // Skill Development
         if (_selectedLearningPath == 'Skill Development') ...{
@@ -3143,7 +3165,7 @@ No direct payments should be made to tutors outside the platform.''';
             style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
           ),
           content: Text(
-            'Failed to save survey. Please try again.\n\nError: $e',
+            _surveySaveErrorMessage(e),
             style: GoogleFonts.poppins(),
           ),
           actions: [

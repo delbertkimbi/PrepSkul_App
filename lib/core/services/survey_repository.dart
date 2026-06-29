@@ -7,6 +7,58 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Repository for saving and retrieving survey data
 class SurveyRepository {
+  /// Columns stored as Postgres TEXT[] in learner/parent profile tables.
+  static const _textArrayColumns = {
+    'subjects',
+    'university_courses',
+    'skills',
+    'exam_subjects',
+    'preferred_schedule',
+    'learning_goals',
+    'learning_styles',
+    'challenges',
+  };
+
+  /// Coerce newline-separated strings into lists for TEXT[] columns.
+  static dynamic _normalizeTextArrayField(String key, dynamic value) {
+    if (!_textArrayColumns.contains(key) || value == null) return value;
+    if (value is List) {
+      final list = value
+          .map((e) => e.toString().trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      return list.isEmpty ? null : list;
+    }
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      final list = trimmed
+          .split('\n')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      return list.isEmpty ? null : list;
+    }
+    return value;
+  }
+
+  static String _friendlySurveySaveError(Object error) {
+    final msg = error.toString().toLowerCase();
+    if (msg.contains('socket') ||
+        msg.contains('host lookup') ||
+        msg.contains('network') ||
+        msg.contains('connection')) {
+      return 'Unable to connect to the server. Please check your internet connection and try again.';
+    }
+    if (msg.contains('not authenticated')) {
+      return 'Your session expired. Please sign in again and retry.';
+    }
+    if (msg.contains('malformed array') || msg.contains('22p02')) {
+      return 'Some of your answers could not be saved in the expected format. Please review your course list and try again.';
+    }
+    return 'We could not save your survey right now. Please try again.';
+  }
+
   // ==================== TUTOR PROFILE ====================
 
   /// Save tutor survey data
@@ -919,16 +971,17 @@ class SurveyRepository {
       data.forEach((key, value) {
         // Skip null values
         if (value == null) return;
+        final normalized = _normalizeTextArrayField(key, value);
+        if (normalized == null) return;
         // Skip empty lists (but keep non-empty lists)
-        if (value is List &&
-            value.isEmpty &&
+        if (normalized is List &&
+            normalized.isEmpty &&
             key != 'subjects' &&
             key != 'learning_goals' &&
             key != 'learning_styles') {
           return;
         }
-        // Include all other values
-        filteredData[key] = value;
+        filteredData[key] = normalized;
       });
 
       // Save to learner_profiles table with retry logic for missing columns
@@ -1053,7 +1106,7 @@ class SurveyRepository {
       }
       
       // Re-throw the original error if it's not a network error
-      rethrow;
+      throw Exception(_friendlySurveySaveError(e));
     }
   }
 
@@ -1163,15 +1216,16 @@ class SurveyRepository {
       data.forEach((key, value) {
         // Skip null values
         if (value == null) return;
+        final normalized = _normalizeTextArrayField(key, value);
+        if (normalized == null) return;
         // Skip empty lists (but keep non-empty lists)
-        if (value is List &&
-            value.isEmpty &&
+        if (normalized is List &&
+            normalized.isEmpty &&
             key != 'subjects' &&
             key != 'learning_goals') {
           return;
         }
-        // Include all other values
-        filteredData[key] = value;
+        filteredData[key] = normalized;
       });
 
       // Save to parent_profiles table with retry logic for missing columns

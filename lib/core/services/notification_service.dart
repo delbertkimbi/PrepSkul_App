@@ -209,7 +209,8 @@ class NotificationService {
           'profile_approved',
           'profile_rejected',
           'profile_improvement',
-          'profile_complete', // Profile completion notifications
+          'profile_complete',
+          'onboarding_reminder',
         ];
         
         notifications = notifications.where((notification) {
@@ -230,6 +231,9 @@ class NotificationService {
             'connect with students',
             'become visible',
             'tutor onboarding',
+            'upload your id',
+            'video intro',
+            'tutor verification',
           ];
           
           final hasTutorKeyword = tutorKeywords.any((keyword) => 
@@ -369,6 +373,7 @@ class NotificationService {
           'profile_rejected',
           'profile_improvement',
           'profile_complete',
+          'onboarding_reminder',
         ];
         
         notifications = notifications.where((notification) {
@@ -386,6 +391,9 @@ class NotificationService {
             'connect with students',
             'become visible',
             'tutor onboarding',
+            'upload your id',
+            'video intro',
+            'tutor verification',
           ];
           
           final hasTutorKeyword = tutorKeywords.any((keyword) => 

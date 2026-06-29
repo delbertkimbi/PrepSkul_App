@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../models/game_model.dart';
 import '../services/game_progress_service.dart';
+import '../services/scroll_play_mode_prefs.dart';
+import '../widgets/game_briefing_screen.dart';
 import '../widgets/skulmate_surface_styles.dart';
 import '../screens/bubble_pop_game_screen.dart';
 import '../screens/crossword_game_screen.dart';
@@ -16,6 +18,7 @@ import '../screens/mystery_game_screen.dart';
 import '../screens/puzzle_pieces_game_screen.dart';
 import '../screens/quiz_game_screen.dart';
 import '../screens/simulation_game_screen.dart';
+import '../screens/skulmate_scroll_feed_screen.dart';
 import '../screens/word_search_game_screen.dart';
 import 'skulmate_client_game_policy.dart';
 
@@ -29,6 +32,9 @@ class SkulMateGameRouter {
     GameModel game, {
     bool isDailyChallenge = false,
     bool fromGenerationFlow = false,
+    bool openAsScrollFeed = false,
+    bool skipBriefing = false,
+    String? childId,
   }) async {
     if (comingSoonTypes.contains(game.gameType)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -56,14 +62,38 @@ class SkulMateGameRouter {
 
     final resumeFrom = await GameProgressService.loadProgress(game.id);
 
+    var asScroll = openAsScrollFeed;
+    if (!asScroll && game.gameType == GameType.flashcards) {
+      final preferred = await ScrollPlayModePrefs.preferredModeFor(game.id);
+      asScroll = preferred == ScrollPlayModePrefs.scroll;
+    }
+
+    if (!skipBriefing && resumeFrom == null && context.mounted && !asScroll) {
+      final ready = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GameBriefingScreen(game: game),
+        ),
+      );
+      if (!context.mounted || ready != true) return false;
+    }
+
     final screen = _screenFor(
       game,
       isDailyChallenge: isDailyChallenge,
       fromGenerationFlow: fromGenerationFlow,
       resumeFrom: resumeFrom,
+      openAsScrollFeed: asScroll,
+      childId: childId,
     );
 
-    if (resumeFrom != null && context.mounted) {
+    if (asScroll) {
+      await ScrollPlayModePrefs.markScroll(game.id);
+    } else if (game.gameType == GameType.flashcards) {
+      await ScrollPlayModePrefs.markFlashcards(game.id);
+    }
+
+    if (resumeFrom != null && context.mounted && !asScroll) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Resuming where you left off'),
@@ -75,14 +105,21 @@ class SkulMateGameRouter {
 
     if (!context.mounted) return false;
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => screen),
-    ).then((_) {
-      SystemChrome.setSystemUIOverlayStyle(
-        SkulMateSurfaceStyles.lightStatusBarOverlay,
+    final route = MaterialPageRoute(builder: (_) => screen);
+
+    if (fromGenerationFlow) {
+      await Navigator.pushAndRemoveUntil(
+        context,
+        route,
+        (r) => r.isFirst,
       );
-    });
+    } else {
+      await Navigator.push(context, route);
+    }
+
+    SystemChrome.setSystemUIOverlayStyle(
+      SkulMateSurfaceStyles.lightStatusBarOverlay,
+    );
     return true;
   }
 
@@ -91,6 +128,8 @@ class SkulMateGameRouter {
     required bool isDailyChallenge,
     required bool fromGenerationFlow,
     GameProgress? resumeFrom,
+    bool openAsScrollFeed = false,
+    String? childId,
   }) {
     switch (game.gameType) {
       case GameType.quiz:
@@ -101,6 +140,12 @@ class SkulMateGameRouter {
           resumeFrom: resumeFrom,
         );
       case GameType.flashcards:
+        if (openAsScrollFeed) {
+          return SkulMateScrollFeedScreen(
+            seedGame: game,
+            childId: childId,
+          );
+        }
         return FlashcardGameScreen(game: game, resumeFrom: resumeFrom);
       case GameType.matching:
         return MatchingGameScreen(game: game, resumeFrom: resumeFrom);
@@ -126,12 +171,6 @@ class SkulMateGameRouter {
         return MysteryGameScreen(game: game);
       case GameType.escapeRoom:
         return EscapeRoomGameScreen(game: game);
-      default:
-        return QuizGameScreen(
-          game: game,
-          isDailyChallenge: isDailyChallenge,
-          fromGenerationFlow: fromGenerationFlow,
-        );
     }
   }
 
@@ -140,7 +179,7 @@ class SkulMateGameRouter {
       case GameType.quiz:
         return 'Quiz';
       case GameType.flashcards:
-        return 'Flashcards';
+        return 'Flashcards'; // briefing only; scroll uses its own chrome
       case GameType.matching:
         return 'Matching';
       default:

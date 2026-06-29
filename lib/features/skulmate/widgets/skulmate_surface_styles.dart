@@ -9,6 +9,8 @@ class SkulMateSurfaceStyles {
   static const double pillRadius = 999;
   static const double intentCardRadius = 20;
   static const double sectionGap = 20;
+  static const double homeSectionSpacing = 12;
+  static const double homeCardRadius = 18;
 
   static List<BoxShadow> _softShadow({bool compact = false}) => [
         BoxShadow(
@@ -20,12 +22,13 @@ class SkulMateSurfaceStyles {
 
   /// Standard card — white, hairline border, gentle lift (matches game cards).
   static BoxDecoration homeCard({
-    double radius = 14,
+    double? radius,
     bool compact = false,
   }) {
+    final r = radius ?? homeCardRadius;
     return BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(radius),
+      borderRadius: BorderRadius.circular(r),
       border: Border.all(
         color: AppTheme.softBorder.withValues(alpha: 0.9),
       ),
@@ -160,6 +163,90 @@ class SkulMateSurfaceStyles {
       padding: const EdgeInsets.symmetric(vertical: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(pillRadius),
+      ),
+    );
+  }
+
+  static void lightTap() => HapticFeedback.lightImpact();
+
+  /// Yellow arcade CTA for in-game actions (e.g. puzzle check).
+  static ButtonStyle puzzlePrimaryButton({bool enabled = true}) {
+    return ElevatedButton.styleFrom(
+      backgroundColor: AppTheme.softYellow,
+      foregroundColor: AppTheme.textDark,
+      disabledBackgroundColor: AppTheme.neutral200,
+      disabledForegroundColor: AppTheme.textMedium,
+      elevation: enabled ? 2 : 0,
+      shadowColor: AppTheme.softYellow.withValues(alpha: 0.45),
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
+  }
+
+  // --- Deck flow (hub, concept check, study launcher) ---
+
+  static const double deckRadius = 18;
+  static const double deckChipRadius = 12;
+
+  static BoxDecoration deckMasteryBanner({double radius = 16}) {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.12)),
+      boxShadow: homeCardShadow(compact: true),
+    );
+  }
+
+  static BoxDecoration deckInfoPanel({double radius = 16}) {
+    return BoxDecoration(
+      color: AppTheme.skyBlueLight.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: AppTheme.skyBlue.withValues(alpha: 0.2)),
+    );
+  }
+
+  static BoxDecoration deckTabChip({required bool selected}) {
+    return BoxDecoration(
+      color: selected ? Colors.white : Colors.transparent,
+      borderRadius: BorderRadius.circular(deckChipRadius),
+      border: Border.all(
+        color: selected ? AppTheme.primaryColor : AppTheme.neutral200,
+      ),
+    );
+  }
+
+  static ButtonStyle deckPrimaryButton({double minHeight = 54}) {
+    return FilledButton.styleFrom(
+      backgroundColor: AppTheme.primaryColor,
+      foregroundColor: Colors.white,
+      minimumSize: Size.fromHeight(minHeight),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(deckRadius),
+      ),
+    );
+  }
+
+  static ButtonStyle deckAccentButton({double minHeight = 52}) {
+    return FilledButton.styleFrom(
+      backgroundColor: AppTheme.primaryColor,
+      foregroundColor: Colors.white,
+      minimumSize: Size.fromHeight(minHeight),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
+  }
+
+  static ButtonStyle deckOutlineButton({double minHeight = 44}) {
+    return OutlinedButton.styleFrom(
+      foregroundColor: AppTheme.primaryDark,
+      backgroundColor: Colors.white,
+      side: BorderSide(color: AppTheme.neutral200),
+      minimumSize: Size.fromHeight(minHeight),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
       ),
     );
   }

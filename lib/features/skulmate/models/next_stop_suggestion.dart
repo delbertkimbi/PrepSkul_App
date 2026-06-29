@@ -10,6 +10,9 @@ class NextStopSuggestion {
   final String? sessionId;
   final String? sessionSummary;
   final String? tutorName;
+  final int? progressPercent;
+  final int? currentIndex;
+  final int? totalItems;
 
   const NextStopSuggestion({
     required this.kind,
@@ -20,5 +23,8 @@ class NextStopSuggestion {
     this.sessionId,
     this.sessionSummary,
     this.tutorName,
+    this.progressPercent,
+    this.currentIndex,
+    this.totalItems,
   });
 }

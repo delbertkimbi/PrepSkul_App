@@ -21,6 +21,7 @@ void main() {
     );
 
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('What shall we revise today?'), findsOneWidget);
     expect(find.byType(SkulMateHomeTopBar), findsOneWidget);
@@ -33,5 +34,6 @@ void main() {
     expect(find.text('My games'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.text('Profile'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

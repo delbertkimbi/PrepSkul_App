@@ -194,6 +194,7 @@ class SpacedRepetitionService {
     int limit = 20,
     String? childId,
   }) async {
+    if (!SupabaseService.isClientAvailable) return [];
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) return [];
 
@@ -269,6 +270,7 @@ class SpacedRepetitionService {
 
   /// Count of items due by end of local today (for badge / home).
   static Future<int> dueCountToday({String? childId}) async {
+    if (!SupabaseService.isClientAvailable) return 0;
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) return 0;
 

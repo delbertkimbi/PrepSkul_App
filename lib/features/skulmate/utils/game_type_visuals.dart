@@ -6,7 +6,8 @@ import '../models/game_model.dart';
 class GameTypeVisuals {
   GameTypeVisuals._();
 
-  static IconData iconFor(GameType type) {
+  static IconData iconFor(GameType type, {String? playModeOverride}) {
+    if (playModeOverride == 'scroll') return Icons.view_agenda_rounded;
     switch (type) {
       case GameType.quiz:
         return Icons.quiz;
@@ -39,7 +40,8 @@ class GameTypeVisuals {
     }
   }
 
-  static Color accentColorFor(GameType type) {
+  static Color accentColorFor(GameType type, {String? playModeOverride}) {
+    if (playModeOverride == 'scroll') return const Color(0xFF8B3FD4);
     switch (type) {
       case GameType.quiz:
         return const Color(0xFF7E57C2);
@@ -72,7 +74,8 @@ class GameTypeVisuals {
     }
   }
 
-  static String labelFor(GameType type) {
+  static String labelFor(GameType type, {String? playModeOverride}) {
+    if (playModeOverride == 'scroll') return 'Scroll';
     switch (type) {
       case GameType.quiz:
         return 'Quiz';

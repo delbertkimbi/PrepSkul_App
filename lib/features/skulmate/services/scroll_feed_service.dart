@@ -1,5 +1,8 @@
 import '../models/game_model.dart';
+import '../models/revision_deck_model.dart';
 import '../models/scroll_feed_item.dart';
+import '../models/scroll_slide.dart';
+import 'scroll_feed_composer.dart';
 import 'spaced_repetition_service.dart';
 
 /// Builds the bounded queue for Scroll mode (due items first, then seed game).
@@ -9,8 +12,27 @@ class ScrollFeedService {
   static const int defaultSessionCap = 12;
   static const int masteryGateEvery = 8;
 
+  static Future<ScrollFeedSession> buildSession({
+    GameModel? seedGame,
+    RevisionDeckModel? deck,
+    String? childId,
+    int limit = defaultSessionCap,
+  }) async {
+    final items = await buildQueue(
+      seedGame: seedGame,
+      childId: childId,
+      limit: limit,
+    );
+    final slides = ScrollFeedComposer.compose(
+      items: items,
+      deck: deck,
+    );
+    return ScrollFeedSession(items: items, slides: slides);
+  }
+
   static Future<List<ScrollFeedItem>> buildQueue({
     GameModel? seedGame,
+    RevisionDeckModel? deck,
     String? childId,
     int limit = defaultSessionCap,
   }) async {
@@ -67,6 +89,40 @@ class ScrollFeedService {
       }
     }
 
+    if (queue.length < limit &&
+        deck != null &&
+        deck.cards.isNotEmpty &&
+        seedGame != null) {
+      for (var i = 0; i < deck.cards.length; i++) {
+        final card = deck.cards[i];
+        final itemIndex = card.gameItemIndex ?? i;
+        final key = '${seedGame.id}:$itemIndex';
+        if (seen.contains(key)) continue;
+        if (card.prompt.isEmpty) continue;
+        seen.add(key);
+        queue.add(
+          ScrollFeedItem(
+            gameId: seedGame.id,
+            itemIndex: itemIndex,
+            term: card.prompt,
+            definition: card.answer.isEmpty ? card.prompt : card.answer,
+            gameTitle: seedGame.title,
+          ),
+        );
+        if (queue.length >= limit) break;
+      }
+    }
+
     return queue;
   }
+}
+
+class ScrollFeedSession {
+  final List<ScrollFeedItem> items;
+  final List<ScrollSlide> slides;
+
+  const ScrollFeedSession({
+    required this.items,
+    required this.slides,
+  });
 }

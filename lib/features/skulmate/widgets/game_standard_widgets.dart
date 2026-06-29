@@ -107,7 +107,7 @@ class GameStandardsHud extends StatelessWidget {
       case GameType.diagramLabel:
         return AppTheme.primaryGradient;
       case GameType.puzzlePieces:
-        return AppTheme.primaryGradient;
+        return AppTheme.stitchYellowGradient;
       case GameType.simulation:
       case GameType.mystery:
       case GameType.escapeRoom:
@@ -291,6 +291,59 @@ class _GameStandardsSquishyPrimaryButtonState
                 style: GoogleFonts.plusJakartaSans(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Center-screen XP popup used across game types.
+class GameXpPopup extends StatelessWidget {
+  final int amount;
+  final bool visible;
+
+  const GameXpPopup({
+    super.key,
+    required this.amount,
+    required this.visible,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: MediaQuery.of(context).size.height * 0.32,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 300),
+          child: AnimatedSlide(
+            offset: visible ? Offset.zero : const Offset(0, -0.5),
+            duration: const Duration(milliseconds: 300),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.accentGreen,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.accentGreen.withValues(alpha: 0.5),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Text(
+                '+$amount XP',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
                   color: Colors.white,
                 ),
               ),

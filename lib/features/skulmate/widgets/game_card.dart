@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/game_model.dart';
+import '../services/revision_deck_service.dart';
+import '../services/scroll_play_mode_prefs.dart';
 import '../services/skulmate_service.dart';
 import '../utils/game_type_visuals.dart';
 import 'skulmate_surface_styles.dart';
+import 'skulmate_typography.dart';
 
 /// Card widget for displaying a game in the library
 class GameCard extends StatefulWidget {
@@ -36,6 +38,7 @@ class GameCard extends StatefulWidget {
 class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin {
   Map<String, dynamic>? _stats;
   bool _isFavorite = false;
+  String? _playModeOverride;
   
   @override
   bool get wantKeepAlive => true; // Keep widget alive when scrolled off-screen
@@ -47,6 +50,14 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
     if (!widget.compact) {
       _loadStats();
       _loadFavorite();
+    }
+    _loadPlayMode();
+  }
+
+  Future<void> _loadPlayMode() async {
+    final mode = await ScrollPlayModePrefs.preferredModeFor(widget.game.id);
+    if (mounted) {
+      setState(() => _playModeOverride = mode);
     }
   }
 
@@ -86,27 +97,36 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
     }
   }
 
-  IconData get _gameIcon => GameTypeVisuals.iconFor(widget.game.gameType);
+  IconData get _gameIcon =>
+      GameTypeVisuals.iconFor(widget.game.gameType, playModeOverride: _playModeOverride);
 
-  String get _gameTypeLabel => GameTypeVisuals.labelFor(widget.game.gameType);
+  String get _gameTypeLabel => GameTypeVisuals.labelFor(
+        widget.game.gameType,
+        playModeOverride: _playModeOverride,
+      );
+
+  int get _cardCount => RevisionDeckService.cardCountForGame(widget.game);
 
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-    final accentColor = GameTypeVisuals.accentColorFor(widget.game.gameType);
+    final accentColor = GameTypeVisuals.accentColorFor(
+      widget.game.gameType,
+      playModeOverride: _playModeOverride,
+    );
     final c = widget.compact;
     final h = widget.horizontal && c;
-    final cardRadius = h ? 12.0 : (c ? 13.0 : 14.0);
+    final cardRadius = SkulMateSurfaceStyles.homeCardRadius;
     final hPad = h ? 10.0 : (c ? 11.0 : 14.0);
-    final vPad = h ? 8.0 : (c ? 9.0 : 12.0);
-    final iconSize = h ? 34.0 : (c ? 36.0 : 42.0);
-    final iconInner = h ? 17.0 : (c ? 18.0 : 20.0);
-    final iconRadius = h ? 9.0 : (c ? 10.0 : 12.0);
-    final titleSize = h ? 13.0 : (c ? 13.0 : 14.0);
-    final metaSize = h ? 10.0 : (c ? 10.0 : 11.0);
+    final vPad = h ? 6.0 : (c ? 8.0 : 10.0);
+    final iconSize = h ? 30.0 : (c ? 34.0 : 40.0);
+    final iconInner = h ? 15.0 : (c ? 17.0 : 19.0);
+    final iconRadius = h ? 8.0 : (c ? 10.0 : 12.0);
+    final titleSize = h ? 14.0 : (c ? 14.0 : 15.0);
+    final metaSize = h ? 11.0 : (c ? 11.0 : 12.0);
     final favSize = c ? 20.0 : 22.0;
     final metaLine = widget.subtitleOverride ??
-        '$_gameTypeLabel · ${widget.game.items.length} items';
+        '$_gameTypeLabel · ${_cardCount} cards';
 
     if (c) {
       return Container(
@@ -127,7 +147,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                   if (h)
                     Container(
                       width: 3,
-                      height: iconSize + 4,
+                      height: iconSize + 2,
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
                         color: accentColor,
@@ -162,21 +182,17 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                       children: [
                         Text(
                           widget.game.title,
-                          style: GoogleFonts.poppins(
-                            fontSize: titleSize,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                            height: 1.15,
+                          style: SkulMateTypography.gameCardTitle(
+                            size: titleSize,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: h ? 2 : 3),
+                        SizedBox(height: h ? 1 : 3),
                         Text(
                           metaLine,
-                          style: GoogleFonts.poppins(
-                            fontSize: metaSize,
-                            color: AppTheme.textMedium,
+                          style: SkulMateTypography.gameCardMeta(
+                            size: metaSize,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -216,7 +232,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
             children: [
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(left: c ? 4 : 6, top: c ? 2 : 4),
+                  padding: EdgeInsets.only(left: c ? 4 : 6, top: c ? 1 : 2),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -244,15 +260,11 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                   children: [
                     Text(
                       widget.game.title,
-                      style: GoogleFonts.poppins(
-                        fontSize: titleSize,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textDark,
-                      ),
+                      style: SkulMateTypography.gameCardTitle(size: titleSize),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    SizedBox(height: c ? 4 : 6),
+                    SizedBox(height: c ? 3 : 5),
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
@@ -269,11 +281,8 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                           ),
                           child: Text(
                             _gameTypeLabel,
-                            style: GoogleFonts.poppins(
-                              fontSize: metaSize,
-                              fontWeight: FontWeight.w500,
-                              color: accentColor,
-                            ),
+                            style: SkulMateTypography.chipLabel(color: accentColor)
+                                .copyWith(fontSize: metaSize),
                           ),
                         ),
                         if (widget.game.metadata.difficulty != null)
@@ -288,19 +297,16 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                             ),
                             child: Text(
                               widget.game.metadata.difficulty!.toUpperCase(),
-                              style: GoogleFonts.poppins(
-                                fontSize: c ? 9.5 : 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: _getDifficultyColor(widget.game.metadata.difficulty!),
-                              ),
+                              style: SkulMateTypography.chipLabel(
+                                color: _getDifficultyColor(
+                                  widget.game.metadata.difficulty!,
+                                ),
+                              ).copyWith(fontSize: c ? 9.5 : 10.5),
                             ),
                           ),
                         Text(
-                          '${widget.game.items.length} items',
-                          style: GoogleFonts.poppins(
-                            fontSize: metaSize,
-                            color: AppTheme.textMedium,
-                          ),
+                          '$_cardCount cards',
+                          style: SkulMateTypography.gameCardMeta(size: metaSize),
                         ),
                       ],
                     ),
@@ -323,10 +329,9 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                               Flexible(
                                 child: Text(
                                   'Best: ${_stats!['bestScore']}/${widget.game.items.length}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
+                                  style: SkulMateTypography.cardMeta(
                                     color: Colors.amber[700],
+                                    size: 11,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                   maxLines: 1,
@@ -345,10 +350,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                               const SizedBox(width: 4),
                               Text(
                                 '${_stats!['timesPlayed']}x',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: AppTheme.textMedium,
-                                ),
+                                style: SkulMateTypography.cardMeta(size: 11),
                               ),
                             ],
                           ),
@@ -359,10 +361,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                       const SizedBox(height: 4),
                       Text(
                         _formatDate(widget.game.createdAt),
-                        style: GoogleFonts.poppins(
-                          fontSize: metaSize,
-                          color: AppTheme.textMedium,
-                        ),
+                        style: SkulMateTypography.cardMeta(size: metaSize),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
                       ),

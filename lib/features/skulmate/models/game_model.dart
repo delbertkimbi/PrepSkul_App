@@ -109,7 +109,17 @@ class GameModel {
             ((i.gameData?['clues'] as List?)?.isNotEmpty ?? false) ||
             ((i.gameData?['clueList'] as List?)?.isNotEmpty ?? false));
       case GameType.puzzlePieces:
-        return items.any((i) => (i.puzzlePieces ?? []).isNotEmpty);
+        return items.any((i) {
+          if ((i.puzzleSteps ?? []).isNotEmpty) return true;
+          if ((i.puzzlePieces ?? []).isNotEmpty) return true;
+          final gd = i.gameData;
+          if (gd == null) return false;
+          final steps = gd['puzzleSteps'] ?? gd['puzzle_steps'];
+          if (steps is List && steps.isNotEmpty) return true;
+          final pieces = gd['puzzlePieces'] ?? gd['puzzle_pieces'];
+          if (pieces is List && pieces.isNotEmpty) return true;
+          return false;
+        });
       case GameType.simulation:
         return items.any(
           (i) =>
@@ -272,10 +282,13 @@ class GameItem {
   final String? blankText; // For fill_blank
   // New fields for interactive game types
   final String? imageUrl; // For diagram/image-based games
+  final String? imagePrompt; // For OpenRouter illustration generation
+  final bool needsImage; // Server flag: generate/fetch illustration only when true
   final List<List<String>>? gridData; // For match-3, word search, crossword (2D grid)
   final List<Map<String, dynamic>>? dragItems; // For drag-drop games
   final List<Map<String, dynamic>>? dropZones; // For drag-drop target areas
   final List<Map<String, dynamic>>? puzzlePieces; // For puzzle assembly games
+  final List<Map<String, dynamic>>? puzzleSteps; // Multi-mode puzzle journey
   final List<Map<String, dynamic>>? diagramLabels; // For diagram labeling (list of label positions)
   final List<String>? words; // For word search
   final List<Map<String, dynamic>>? clues; // For crossword
@@ -301,10 +314,13 @@ class GameItem {
     this.rightItem,
     this.blankText,
     this.imageUrl,
+    this.imagePrompt,
+    this.needsImage = false,
     this.gridData,
     this.dragItems,
     this.dropZones,
     this.puzzlePieces,
+    this.puzzleSteps,
     this.diagramLabels,
     this.words,
     this.clues,
@@ -412,6 +428,8 @@ class GameItem {
       rightItem: json['rightItem'] ?? json['right_item'] as String?,
       blankText: json['blankText'] ?? json['blank_text'] as String?,
       imageUrl: json['imageUrl'] ?? json['image_url'] as String?,
+      imagePrompt: json['imagePrompt'] ?? json['image_prompt'] as String?,
+      needsImage: json['needsImage'] == true || json['needs_image'] == true,
       gridData: parseGridData(
         json['gridData'] ??
             json['grid_data'] ??
@@ -448,6 +466,12 @@ class GameItem {
             json['puzzle_pieces'] ??
             gameDataMap?['puzzlePieces'] ??
             gameDataMap?['puzzle_pieces'],
+      ),
+      puzzleSteps: parseMapList(
+        json['puzzleSteps'] ??
+            json['puzzle_steps'] ??
+            gameDataMap?['puzzleSteps'] ??
+            gameDataMap?['puzzle_steps'],
       ),
       diagramLabels: parseMapList(
         json['diagramLabels'] ??
@@ -513,10 +537,13 @@ class GameItem {
       if (rightItem != null) 'rightItem': rightItem,
       if (blankText != null) 'blankText': blankText,
       if (imageUrl != null) 'imageUrl': imageUrl,
+      if (imagePrompt != null) 'imagePrompt': imagePrompt,
+      if (needsImage) 'needsImage': needsImage,
       if (gridData != null) 'gridData': gridData,
       if (dragItems != null) 'dragItems': dragItems,
       if (dropZones != null) 'dropZones': dropZones,
       if (puzzlePieces != null) 'puzzlePieces': puzzlePieces,
+      if (puzzleSteps != null) 'puzzleSteps': puzzleSteps,
       if (diagramLabels != null) 'diagramLabels': diagramLabels,
       if (words != null) 'words': words,
       if (clues != null) 'clues': clues,

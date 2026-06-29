@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -13,11 +14,13 @@ import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/tts_service.dart';
 import '../services/game_progress_service.dart';
+import '../services/game_audio_lifecycle.dart';
+import '../l10n/skulmate_copy.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_profile_avatar.dart';
 import '../widgets/game_standard_widgets.dart';
 import '../widgets/game_settings_sheet.dart';
-import '../widgets/skulmate_companion_banner.dart';
+import '../widgets/skulmate_game_surface.dart';
 import '../utils/skulmate_navigation.dart';
 import 'game_results_screen.dart';
 
@@ -71,11 +74,15 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   int _typingSpeed = 0; // Characters per second
   DateTime? _typingStartTime;
   int _charactersTyped = 0;
-  String? _mascotReaction;
-  CompanionTone _mascotReactionTone = CompanionTone.neutral;
-  bool _mascotCelebrate = false;
-  Timer? _mascotReactionTimer;
+  Timer? _feedbackTimer;
   final Map<int, List<String>> _displayOptionsCache = {};
+  String _feedbackMessage = '';
+  GameFeedbackTone _feedbackTone = GameFeedbackTone.neutral;
+  bool _xpPopupVisible = false;
+  int _lastXpBurst = 0;
+  int _edgeFlashTrigger = 0;
+  bool _edgeFlashSuccess = false;
+  bool _isLeaving = false;
 
   @override
   void initState() {
@@ -241,6 +248,17 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     });
   }
 
+  void _showFeedback(String message, GameFeedbackTone tone) {
+    _feedbackTimer?.cancel();
+    safeSetState(() {
+      _feedbackMessage = message;
+      _feedbackTone = tone;
+    });
+    _feedbackTimer = Timer(const Duration(milliseconds: 2800), () {
+      if (mounted) safeSetState(() => _feedbackMessage = '');
+    });
+  }
+
   void _onTimerExpired() {
     if (_answeredQuestions.containsKey(_currentQuestionIndex)) return;
 
@@ -252,26 +270,25 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
       final correctAnswer = _formatRangeAnswer(
         (question.correctAnswer ?? '').toString(),
       );
-      final explanation = (question.explanation ?? '').trim();
+      final copy = SkulMateCopy.read(context);
       // Time's up - mark as incorrect
       safeSetState(() {
         _userAnswers[_currentQuestionIndex] = '';
         _answeredQuestions[_currentQuestionIndex] = false;
         _currentStreak = 0;
       });
-      _soundService.playIncorrect();
-      _showMascotReaction(
-        'Time up. Correct answer shown. Read the explanation and continue.',
-        tone: CompanionTone.warning,
-      );
+      HapticFeedback.mediumImpact();
+      _edgeFlashSuccess = false;
+      _edgeFlashTrigger++;
+      unawaited(_soundService.playIncorrect());
+      _showFeedback(copy.fillBlankTimeUp(correctAnswer), GameFeedbackTone.error);
       if (_ttsEnabled) {
         unawaited(_ttsService.stop());
-        final explanationSpeech = explanation.isEmpty ? '' : ' Explanation: $explanation';
         _autoAdvanceTimer?.cancel();
         unawaited(() async {
           await _ttsService.speakAndWait(
-            'Time is up. The correct answer is $correctAnswer.$explanationSpeech',
-            timeout: const Duration(milliseconds: 3800),
+            copy.fillBlankTimeUp(correctAnswer),
+            timeout: const Duration(milliseconds: 3200),
           );
           await _soundService.resumeBgmIfNeeded();
           if (mounted) _nextQuestion();
@@ -282,20 +299,6 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
           if (mounted) _nextQuestion();
         });
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            explanation.isEmpty
-                ? '⏰ Time\'s up! Correct answer: $correctAnswer'
-                : '⏰ Time\'s up! Correct: $correctAnswer • ${explanation.length > 90 ? '${explanation.substring(0, 90)}...' : explanation}',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-
     }
   }
 
@@ -314,14 +317,17 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
 
   @override
   void dispose() {
+    _isLeaving = true;
     WidgetsBinding.instance.removeObserver(this);
-    _mascotReactionTimer?.cancel();
     _questionTimer?.cancel();
     _autoAdvanceTimer?.cancel();
+    _feedbackTimer?.cancel();
     _bgmKeepAliveTimer?.cancel();
     unawaited(_persistProgress());
-    unawaited(_ttsService.stop());
-    unawaited(_soundService.stopMusic(force: true));
+    unawaited(GameAudioLifecycle.stopAll(
+      tts: _ttsService,
+      sound: _soundService,
+    ));
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -491,12 +497,16 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     int streakMultiplier = _currentStreak > 0 ? (1 + (_currentStreak ~/ 3)) : 1;
     int timeBonus = _remainingTime > 30 ? 5 : 0; // Quick answer bonus
     int xpForThisAnswer = (baseXP * streakMultiplier) + speedBonus + timeBonus;
+    final copy = SkulMateCopy.read(context);
+    final formattedCorrect = _formatRangeAnswer(
+      (question.correctAnswer ?? '').toString(),
+    );
 
     // Play success/fail audio outside setState so it starts immediately.
     if (isCorrect) {
+      HapticFeedback.mediumImpact();
       unawaited(_soundService.registerUserGesture());
       unawaited(_soundService.playCorrect());
-      // Layer a soft match ping for clearer "correct" feedback on device speakers.
       unawaited(
         Future<void>.delayed(
           const Duration(milliseconds: 110),
@@ -504,6 +514,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         ),
       );
     } else {
+      HapticFeedback.mediumImpact();
       unawaited(_soundService.registerUserGesture());
       unawaited(_soundService.playIncorrect());
     }
@@ -515,41 +526,31 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         _score++;
         _currentStreak++;
         _xpEarned += xpForThisAnswer;
-        _showMascotReaction(
-          'Great typing! Strong accuracy.',
-          tone: CompanionTone.success,
-          celebrate: true,
-        );
-        if (_ttsEnabled) {
-          unawaited(
-            Future<void>.delayed(
-              const Duration(milliseconds: 320),
-              () => _ttsService.speak('Correct. Nice work.'),
-            ),
-          );
-        }
-        // Trigger confetti
+        _lastXpBurst = xpForThisAnswer;
+        _xpPopupVisible = true;
+        _feedbackMessage = '';
+        _edgeFlashSuccess = true;
+        _edgeFlashTrigger++;
         _confettiController.play();
       } else {
-        _currentStreak = 0; // Reset streak on wrong answer
-        _showMascotReaction(
-          'Almost there. Check spelling and try next.',
-          tone: CompanionTone.tip,
-        );
-        if (_ttsEnabled) {
-          unawaited(
-            Future<void>.delayed(
-              const Duration(milliseconds: 200),
-              () => _ttsService.speak(
-                'Not quite. The correct answer is ${_formatRangeAnswer((question.correctAnswer ?? '').toString())}.',
-              ),
-            ),
-          );
-        }
+        _currentStreak = 0;
+        _edgeFlashSuccess = false;
+        _edgeFlashTrigger++;
       }
       _hints = [];
       _hintShown = false;
     });
+
+    if (isCorrect) {
+      Future.delayed(const Duration(milliseconds: 720), () {
+        if (mounted) safeSetState(() => _xpPopupVisible = false);
+      });
+    } else {
+      _showFeedback(
+        copy.fillBlankIncorrect(formattedCorrect),
+        GameFeedbackTone.error,
+      );
+    }
 
     // Update progress bar animation
     final newProgress = (_currentQuestionIndex + 1) / widget.game.items.length;
@@ -561,26 +562,11 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
           CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
         );
     _progressController.forward(from: 0);
-
-    // Keep successful path clean; only show snackbar on incorrect answers.
-    if (!isCorrect) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Incorrect. The answer is: ${_formatRangeAnswer((question.correctAnswer ?? '').toString())}',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-
-    // Keep flow deterministic: user explicitly moves with Next button.
   }
 
   void _nextQuestion() {
     _autoAdvanceTimer?.cancel();
+    _feedbackTimer?.cancel();
     unawaited(_ttsService.stop());
     _soundService.playClick();
     _questionTimer?.cancel();
@@ -593,6 +579,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         _hintShown = false;
         _typingStartTime = null;
         _charactersTyped = 0;
+        _feedbackMessage = '';
       });
       // Animate progress bar
       final newProgress =
@@ -610,28 +597,6 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     } else {
       _finishGame();
     }
-  }
-
-  void _showMascotReaction(
-    String message, {
-    CompanionTone tone = CompanionTone.neutral,
-    bool celebrate = false,
-    Duration duration = const Duration(seconds: 2),
-  }) {
-    _mascotReactionTimer?.cancel();
-    if (!mounted) return;
-    safeSetState(() {
-      _mascotReaction = message;
-      _mascotReactionTone = tone;
-      _mascotCelebrate = celebrate;
-    });
-    _mascotReactionTimer = Timer(duration, () {
-      if (!mounted) return;
-      safeSetState(() {
-        _mascotReaction = null;
-        _mascotCelebrate = false;
-      });
-    });
   }
 
   void _previousQuestion() {
@@ -717,14 +682,59 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     }
   }
 
+  Future<void> _handleBack() async {
+    if (_isLeaving || _gameCompleted) {
+      if (!_isLeaving && mounted) {
+        await SkulMateNavigation.popGame(context);
+      }
+      return;
+    }
+
+    final quit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Quit game?',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Your progress is saved. You can continue this game later from the Game Dashboard.',
+          style: GoogleFonts.poppins(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Keep playing',
+              style: GoogleFonts.poppins(color: AppTheme.primaryColor),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Quit to Dashboard',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (quit == true && mounted) {
+      await _exitGame();
+    }
+  }
+
   Future<void> _exitGame() async {
+    if (_isLeaving) return;
+    _isLeaving = true;
     _autoAdvanceTimer?.cancel();
     _questionTimer?.cancel();
     await _persistProgress();
     await _ttsService.stop();
     await _soundService.stopMusic(force: true);
     if (mounted) {
-      SkulMateNavigation.exitToSkulMateHome(context);
+      await SkulMateNavigation.popGame(context);
     }
   }
 
@@ -740,7 +750,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
-          unawaited(_exitGame());
+          unawaited(_handleBack());
         }
       },
       child: Scaffold(
@@ -749,7 +759,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
           title: widget.game.title,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => unawaited(_exitGame()),
+            onPressed: () => unawaited(_handleBack()),
           ),
           actions: [
           Padding(
@@ -816,6 +826,13 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (_feedbackMessage.isNotEmpty) ...[
+                        GameFeedbackBanner(
+                          tone: _feedbackTone,
+                          message: _feedbackMessage,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       // Timer and typing stats
                       Row(
                         children: [
@@ -953,35 +970,6 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                                 ],
                               ),
                             ],
-                            if (isAnswered && !isCorrect) ...[
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.info_outline,
-                                      color: Colors.blue,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Correct answer: ${_formatRangeAnswer((question.correctAnswer ?? '').toString())}',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          color: Colors.blue[900],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
@@ -995,11 +983,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                                     .trim() ??
                                 '';
                             if (answer.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Please select an answer'),
-                                  backgroundColor: Colors.orange,
-                                ),
+                              _showFeedback(
+                                SkulMateCopy.of(context).fillBlankEmptyAnswer,
+                                GameFeedbackTone.neutral,
                               );
                               return;
                             }
@@ -1087,6 +1073,11 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
             ],
           ),
           // Confetti overlay
+          GameEdgeFlash(
+            trigger: _edgeFlashTrigger,
+            success: _edgeFlashSuccess,
+          ),
+          GameXpPopup(amount: _lastXpBurst, visible: _xpPopupVisible),
           Align(
             alignment: Alignment.topCenter,
             child: ConfettiWidget(

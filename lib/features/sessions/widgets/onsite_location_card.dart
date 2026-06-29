@@ -14,6 +14,7 @@ class OnsiteLocationCard extends StatelessWidget {
   final String? locationDescription;
   final bool showMapPreview;
   final String? currentLocation;
+  final String? userReferenceAddress;
 
   const OnsiteLocationCard({
     super.key,
@@ -23,6 +24,7 @@ class OnsiteLocationCard extends StatelessWidget {
     this.locationDescription,
     this.showMapPreview = true,
     this.currentLocation,
+    this.userReferenceAddress,
   });
 
   Future<void> _openDirections(BuildContext context) async {
@@ -62,6 +64,12 @@ class OnsiteLocationCard extends StatelessWidget {
     final coordStr = coordinates ??
         GeocodingHelper.extractEmbeddedCoordinates(address) ??
         GeocodingHelper.extractEmbeddedCoordinates(locationDescription);
+    final atUserLocation = userReferenceAddress != null &&
+        !GeocodingHelper.shouldShowMapForSession(
+          sessionAddress: displayAddress,
+          userAddress: userReferenceAddress,
+        );
+    final effectiveShowMap = showMapPreview && !atUserLocation;
 
     return Container(
       width: double.infinity,
@@ -108,7 +116,9 @@ class OnsiteLocationCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Session at your location',
+              atUserLocation
+                  ? 'Session at your location'
+                  : 'Open directions when you\'re ready to leave',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 color: AppTheme.textMedium,
@@ -128,7 +138,7 @@ class OnsiteLocationCard extends StatelessWidget {
                 style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium, height: 1.4),
               ),
             ],
-            if (showMapPreview) ...[
+            if (effectiveShowMap) ...[
               const SizedBox(height: 14),
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -140,6 +150,7 @@ class OnsiteLocationCard extends StatelessWidget {
                 ),
               ),
             ],
+            if (!atUserLocation) ...[
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
@@ -159,6 +170,7 @@ class OnsiteLocationCard extends StatelessWidget {
                 ),
               ),
             ),
+            ],
           ],
         ),
       ),

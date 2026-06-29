@@ -1,8 +1,10 @@
 import 'dart:io' show File;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
@@ -11,8 +13,8 @@ import '../models/skulmate_intake_models.dart';
 import '../services/skulmate_intake_analysis_service.dart';
 import '../services/skulmate_intake_coordinator.dart';
 import '../widgets/skulmate_generation_error_panel.dart';
-import '../widgets/skulmate_intent_sheet.dart';
 import '../widgets/skulmate_mascot_media_widget.dart';
+import '../widgets/skulmate_mode_card.dart';
 import '../widgets/skulmate_surface_styles.dart';
 
 /// Gizmo-style chat intake — analyze content, then pick how to revise.
@@ -27,14 +29,8 @@ class SkulMateIntakeChatScreen extends StatefulWidget {
 }
 
 class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
-  static const _selectableModes = [
-    SkulMateIntentMode.play,
-    SkulMateIntentMode.drill,
-    SkulMateIntentMode.scroll,
-    SkulMateIntentMode.path,
-  ];
+  static const _selectableModes = SkulMateIntentModeX.selectableInIntake;
 
-  static const _selectedGreen = Color(0xFF22C55E);
 
   SkulMateIntentMode _selected = SkulMateIntentMode.play;
   bool _analyzing = true;
@@ -81,8 +77,8 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
       final msg = e.toString().replaceFirst('Exception: ', '');
       setState(() {
         _analyzing = false;
-        _errorTitle = copy.lectureErrorTitle(msg);
-        _errorDetails = copy.lectureErrorDetails(msg);
+        _errorTitle = copy.intakeErrorTitle(widget.payload.source, msg);
+        _errorDetails = copy.intakeErrorDetails(widget.payload.source, msg);
       });
     }
   }
@@ -104,6 +100,8 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
         youtubeUrl: enriched.youtubeUrl,
         title: refinement,
         childId: enriched.childId,
+        preUploadedFileUrls: enriched.preUploadedFileUrls,
+        preUploadedSourceNames: enriched.preUploadedSourceNames,
       );
     }
 
@@ -130,7 +128,9 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
         ),
         centerTitle: true,
         title: Text(
-          copy.intakeChatTitle,
+          _analysis != null && !_analyzing
+              ? _truncateTitle(_analysis!.topicLabel)
+              : copy.intakeChatTitle,
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w600,
             fontSize: 17,
@@ -152,6 +152,7 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
                           widget.payload,
                           copy,
                         ),
+                    imageFiles: widget.payload.images,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -221,11 +222,9 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: SkulMateIntentSheet.isComingSoonMode(_selected)
-                          ? null
-                          : _startGeneration,
+                      onPressed: _selected.isComingSoon ? null : _startGeneration,
                       style: SkulMateSurfaceStyles.sheetPrimaryButton(
-                        enabled: !SkulMateIntentSheet.isComingSoonMode(_selected),
+                        enabled: !_selected.isComingSoon,
                       ),
                       child: Text(
                         copy.modeCta(_selected),
@@ -238,7 +237,7 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
                   ),
                   const SizedBox(height: 16),
                   _SummaryText(
-                    message: copy.intakeChatSummary(_analysis!.topicLabel),
+                    message: _summaryMessage(copy),
                     topic: _analysis!.topicLabel,
                   ),
                 ],
@@ -291,117 +290,70 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
   }
 
   Widget _modeCard(SkulMateIntentMode mode, SkulMateCopy copy) {
-    final comingSoon = SkulMateIntentSheet.isComingSoonMode(mode);
+    final comingSoon = mode.isComingSoon;
     final selected = !comingSoon && _selected == mode;
     final topic = _analysis?.topicLabel ?? '';
+    final spec = _modeSpec(mode);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        onTap: comingSoon ? null : () => setState(() => _selected = mode),
-        borderRadius: BorderRadius.circular(16),
-        child: Opacity(
-          opacity: comingSoon ? 0.55 : 1,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: selected
-                  ? _selectedGreen.withValues(alpha: 0.06)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected ? _selectedGreen : AppTheme.softBorder,
-                width: selected ? 2 : 1,
-              ),
-              boxShadow: [
-                if (selected)
-                  BoxShadow(
-                    color: _selectedGreen.withValues(alpha: 0.12),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Text(_emoji(mode), style: const TextStyle(fontSize: 22)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        copy.modeLabel(mode),
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textDark,
-                        ),
-                      ),
-                      Text(
-                        copy.modeCardSubtitle(mode, topic),
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: AppTheme.textMedium,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                if (comingSoon)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.neutral100,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      copy.comingSoon,
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textMedium,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return SkulMateModeCard(
+      title: copy.modeLabel(mode),
+      subtitle: copy.modeCardSubtitle(mode, topic),
+      icon: spec.icon,
+      accent: spec.accent,
+      selected: selected,
+      comingSoon: comingSoon,
+      comingSoonLabel: comingSoon ? copy.comingSoon : null,
+      onTap: () => setState(() => _selected = mode),
     );
   }
 
-  String _emoji(SkulMateIntentMode mode) {
+  ({IconData icon, Color accent}) _modeSpec(SkulMateIntentMode mode) {
     switch (mode) {
       case SkulMateIntentMode.play:
-        return '🎮';
+        return (icon: Icons.sports_esports_rounded, accent: AppTheme.skyBlue);
       case SkulMateIntentMode.scroll:
-        return '📱';
+        return (icon: Icons.view_agenda_rounded, accent: AppTheme.accentPink);
       case SkulMateIntentMode.path:
-        return '🗺️';
+        return (icon: Icons.route_rounded, accent: const Color(0xFF3B82F6));
       case SkulMateIntentMode.drill:
-        return '🃏';
+        return (icon: Icons.style_rounded, accent: AppTheme.accentGreen);
       case SkulMateIntentMode.sheet:
-        return '📄';
+        return (icon: Icons.description_rounded, accent: AppTheme.accentOrange);
       case SkulMateIntentMode.fromClass:
-        return '🎓';
+        return (icon: Icons.school_rounded, accent: AppTheme.primaryColor);
     }
+  }
+
+  String _truncateTitle(String title) {
+    if (title.length <= 36) return title;
+    return '${title.substring(0, 33)}…';
+  }
+
+  String _summaryMessage(SkulMateCopy copy) {
+    final summary = _analysis?.contextSummary?.trim();
+    if (summary != null && summary.isNotEmpty) return summary;
+    return copy.intakeChatSummary(_analysis!.topicLabel);
   }
 }
 
 class _UserAttachmentBubble extends StatelessWidget {
   final SkulMateIntakeAttachment attachment;
+  final List<XFile>? imageFiles;
 
-  const _UserAttachmentBubble({required this.attachment});
+  const _UserAttachmentBubble({
+    required this.attachment,
+    this.imageFiles,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final count = attachment.imageCount ?? 0;
+    if (count > 1) {
+      return _MultiPhotoAttachmentGrid(
+        attachment: attachment,
+        imageFiles: imageFiles,
+      );
+    }
     return _buildChip(attachment);
   }
 
@@ -456,6 +408,178 @@ class _UserAttachmentBubble extends StatelessWidget {
       default:
         return Icons.description_outlined;
     }
+  }
+}
+
+class _MultiPhotoAttachmentGrid extends StatelessWidget {
+  final SkulMateIntakeAttachment attachment;
+  final List<XFile>? imageFiles;
+
+  const _MultiPhotoAttachmentGrid({
+    required this.attachment,
+    this.imageFiles,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final count = attachment.imageCount ?? imageFiles?.length ?? 0;
+    final paths = attachment.localImagePaths ?? const <String>[];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      children: [
+        for (var i = 0; i < count; i++)
+          _PhotoPreviewTile(
+            path: i < paths.length ? paths[i] : null,
+            file: imageFiles != null && i < imageFiles!.length
+                ? imageFiles![i]
+                : null,
+            onTap: () => _showPreview(context, i),
+          ),
+      ],
+    );
+  }
+
+  void _showPreview(BuildContext context, int index) {
+    final paths = attachment.localImagePaths ?? const <String>[];
+    final files = imageFiles;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                child: _previewImage(
+                  index < paths.length ? paths[index] : null,
+                  files != null && index < files.length ? files[index] : null,
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                onPressed: () => Navigator.pop(ctx),
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _previewImage(String? path, XFile? file) {
+    if (!kIsWeb && path != null && path.isNotEmpty) {
+      return Image.file(File(path), fit: BoxFit.contain);
+    }
+    if (file != null) {
+      return FutureBuilder<List<int>>(
+        future: file.readAsBytes(),
+        builder: (context, snap) {
+          if (!snap.hasData) {
+            return const SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(color: Colors.white),
+            );
+          }
+          return Image.memory(
+            Uint8List.fromList(snap.data!),
+            fit: BoxFit.contain,
+          );
+        },
+      );
+    }
+    return const Icon(Icons.image_outlined, color: Colors.white, size: 64);
+  }
+}
+
+class _PhotoPreviewTile extends StatelessWidget {
+  final String? path;
+  final XFile? file;
+  final VoidCallback onTap;
+
+  const _PhotoPreviewTile({
+    this.path,
+    this.file,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              width: 88,
+              height: 88,
+              child: _thumb(),
+            ),
+          ),
+        ),
+        Positioned(
+          right: 4,
+          bottom: 4,
+          child: Material(
+            color: Colors.black.withValues(alpha: 0.45),
+            shape: const CircleBorder(),
+            child: InkWell(
+              onTap: onTap,
+              customBorder: const CircleBorder(),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(
+                  Icons.zoom_in_rounded,
+                  size: 16,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _thumb() {
+    if (!kIsWeb && path != null && path!.isNotEmpty) {
+      return Image.file(File(path!), fit: BoxFit.cover);
+    }
+    if (file != null) {
+      return FutureBuilder<List<int>>(
+        future: file!.readAsBytes(),
+        builder: (context, snap) {
+          if (!snap.hasData) {
+            return const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          }
+          return Image.memory(
+            Uint8List.fromList(snap.data!),
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+          );
+        },
+      );
+    }
+    return const Center(
+      child: Icon(Icons.image_outlined, color: AppTheme.textMedium),
+    );
   }
 }
 
