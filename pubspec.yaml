@@ -1,39 +1,16 @@
 name: prepskul
 description: "PrepSkul - Connect with verified tutors for personalized learning. Book trial sessions, schedule lessons, and track your progress."
-# The following line prevents the package from being accidentally published to
-# pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-
-# The following defines the version and build number for your application.
-# A version number is three numbers separated by dots, like 1.2.43
-# followed by an optional build number separated by a +.
-# Both the version and the builder number may be overridden in flutter
-# build by specifying --build-name and --build-number, respectively.
-# In Android, build-name is used as versionName while build-number used as versionCode.
-# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
-# Read more about iOS versioning at
-# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-# In Windows, build-name is used as the major, minor, and patch parts
-# of the product and file versions while build-number is used as the build suffix.
+publish_to: 'none' 
 version: 1.0.0+14
 
 environment:
   sdk: ^3.8.1
 
-# Dependencies specify other packages that your package needs in order to work.
-# To automatically upgrade your package dependencies to the latest versions
-# consider running `flutter pub upgrade --major-versions`. Alternatively,
-# dependencies can be manually updated by changing the version numbers below to
-# the latest version available on pub.dev. To see which dependencies have newer
-# versions available, run `flutter pub outdated`.
+
 dependencies:
   fl_chart: ^0.68.0
   flutter:
     sdk: flutter
-
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   
   # State Management
@@ -100,6 +77,10 @@ dependencies:
   # Audio/Sound Effects
   audioplayers: ^6.0.0
   record: ^5.2.1
+  # On-device speech recognition for say-it-back practice. Chosen over a cloud
+  # STT so a child's voice never leaves the phone and the feature still works
+  # during an internet shutdown.
+  speech_to_text: ^7.4.0
   flutter_tts: ^4.0.2  
   # Sharing
   share_plus: ^10.0.0
@@ -130,31 +111,39 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
+ 
   flutter_lints: ^5.0.0
 
-# For information on the generic Dart part of this file, see the
-# following page: https://dart.dev/tools/pub/pubspec
-
-# The following section is specific to Flutter packages.
 flutter:
 
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
   generate: true
 
   # To add assets to your application, add an assets section, like this:
+  shaders:
+    # The paper ground. See assets/shaders/paper.frag for why this stopped
+    # being a CustomPainter.
+    - assets/shaders/paper.frag
+
   assets:
+    # Baloo 2 and Nunito, bundled rather than fetched.
+    #
+    # google_fonts downloads a typeface from fonts.gstatic.com the first time a
+    # style is used and caches it. That is fine for a website and wrong for
+    # this app: SkulMate is built to run a whole session with the network off,
+    # and a child opening it for the first time on a phone with no data was
+    # getting Roboto — the one screen where letterforms are the lesson.
+    #
+    # google_fonts checks the asset bundle before the network, so dropping the
+    # exact static instances here makes the first launch offline-correct with
+    # no code change. The weights are the ones PrimarTheme actually asks for;
+    # anything else resolves to the nearest bundled one.
+    - assets/fonts/google/
     - lib/data/
     - assets/images/
     - assets/data/
     - assets/audio/
+    - assets/audio/sfx/
     - assets/audio/music/bgm_focus_loop.ogg
     - assets/audio/music/bgm_adventure_loop.ogg
     - assets/audio/music/bgm_results_soft_loop.ogg
@@ -185,32 +174,6 @@ flutter:
     - assets/fonts/
     - .env  # Root .env file (bundled for web, used for all platforms)
 
-  # An image asset can refer to one or more resolution-specific "variants", see
-  # https://flutter.dev/to/resolution-aware-images
-
-  # For details regarding adding assets from package dependencies, see
-  # https://flutter.dev/to/asset-from-package
-
-  # To add custom fonts to your application, add a fonts section here,
-  # in this "flutter" section. Each entry in this list should have a
-  # "family" key with the font family name, and a "fonts" key with a
-  # list giving the asset and other descriptors for the font. For
-  # example:
-  # fonts:
-  #   - family: Schyler
-  #     fonts:
-  #       - asset: fonts/Schyler-Regular.ttf
-  #       - asset: fonts/Schyler-Italic.ttf
-  #         style: italic
-  #   - family: Trajan Pro
-  #     fonts:
-  #       - asset: fonts/TrajanPro.ttf
-  #       - asset: fonts/TrajanPro_Bold.ttf
-  #         weight: 700
-  #
-  # For details regarding fonts from package dependencies,
-  # see https://flutter.dev/to/font-from-package
-
   fonts:
     - family: Poppins
       fonts:
@@ -233,9 +196,6 @@ l10n:
   output-localization-file: app_localizations.dart
   synthetic-package: true
 
-# record 5.2.1 resolves record_web ^1.1.5 to 1.3.0, which needs record_platform_interface
-# ^1.5 (streamBufferSize). record_linux 0.7.2 breaks against interface 1.6+.
-# Pin web + interface to the last mutually compatible pair for web + linux builds.
 dependency_overrides:
   record_platform_interface: 1.2.0
   record_web: 1.1.8

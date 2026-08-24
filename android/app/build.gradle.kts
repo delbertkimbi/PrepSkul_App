@@ -70,6 +70,14 @@ android {
 
 
        buildTypes {
+        debug {
+            // Debug builds carry their own package id so the SkulMate
+            // experiment installs *alongside* the released PrepSkul app rather
+            // than needing it uninstalled. Nothing about the release build
+            // changes.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             // Assign the new 'release' signing config created above
             signingConfig = signingConfigs.getByName("release")
