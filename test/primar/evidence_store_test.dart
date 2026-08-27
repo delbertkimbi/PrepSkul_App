@@ -37,6 +37,7 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await EvidenceStore.instance.resetBinding();
     await EvidenceStore.instance.clear();
   });
 

@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../domain/curriculum.dart';
 import '../domain/figure.dart';
@@ -21,6 +22,7 @@ import '../domain/skill.dart';
 import '../domain/subjects.dart';
 import '../services/evidence_store.dart';
 import '../services/explanation_bank.dart';
+import '../services/learner_profile_store.dart';
 import '../services/learner_traits.dart';
 import '../services/mastery_store.dart';
 import '../services/primar_voice.dart';
@@ -35,6 +37,7 @@ import 'micro_lesson_card.dart';
 import 'onboarding.dart';
 import 'order_row.dart';
 import 'paper_decor.dart';
+import 'primar_motion.dart';
 import 'primar_strings.dart';
 import 'primar_theme.dart';
 import 'progress_screen.dart';
@@ -50,7 +53,13 @@ import 'thinking_ring.dart';
 /// device, so a session works with the network off — which matters in regions
 /// where it goes off without warning.
 class PrimarScreen extends StatefulWidget {
-  const PrimarScreen({super.key, this.answers, this.activeSubject});
+  const PrimarScreen({
+    super.key,
+    this.answers,
+    this.activeSubject,
+    this.seenDemo = false,
+    this.onSeenDemo,
+  });
 
   /// Answers already collected by the shell.
   ///
@@ -61,6 +70,12 @@ class PrimarScreen extends StatefulWidget {
 
   /// Lets the profile tab switch subject without re-onboarding.
   final Subject? activeSubject;
+
+  /// Whether this child has already seen the mechanic demo.
+  final bool seenDemo;
+
+  /// Persist that the demo ran (shell / profile store).
+  final VoidCallback? onSeenDemo;
 
   @override
   State<PrimarScreen> createState() => _PrimarScreenState();
@@ -94,6 +109,7 @@ class _PrimarScreenState extends State<PrimarScreen> {
   @override
   void initState() {
     super.initState();
+    _seenDemo = widget.seenDemo;
     final answers = widget.answers;
     final locale = answers?.locale ?? 'en';
     final voiceId = answers?.voiceId ?? 'guide';
@@ -105,6 +121,24 @@ class _PrimarScreenState extends State<PrimarScreen> {
         PrimarVoice.instance.say(VoiceLines.welcomeParent);
       }
     });
+    // Returning child with evidence: skip handoff / demo / warm-up ceremony.
+    if (answers != null) {
+      unawaited(_bootstrapReturning());
+    }
+  }
+
+  Future<void> _bootstrapReturning() async {
+    await EvidenceStore.instance.bindChild(_answers.name);
+    final log = await EvidenceStore.instance.load();
+    if (!mounted) return;
+    if (log.isNotEmpty) {
+      setState(() {
+        _seenDemo = true;
+        _stage = _Stage.home;
+      });
+    } else if (widget.seenDemo) {
+      setState(() => _seenDemo = true);
+    }
   }
 
   @override
@@ -135,6 +169,7 @@ class _PrimarScreenState extends State<PrimarScreen> {
   /// evidence log as it happened rather than at the end.
   void _quit() {
     _chrome.visible.value = false;
+    _chrome.toolsVisible.value = false;
     _go(_Stage.home);
   }
 
@@ -169,7 +204,11 @@ class _PrimarScreenState extends State<PrimarScreen> {
                   child: visible
                       ? ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 520),
-                          child: LessonTopBar(chrome: _chrome, onQuit: _quit),
+                          child: LessonTopBar(
+                            chrome: _chrome,
+                            onQuit: _quit,
+                            locale: _locale,
+                          ),
                         )
                       : const SizedBox(width: double.infinity),
                 ),
@@ -199,6 +238,13 @@ class _PrimarScreenState extends State<PrimarScreen> {
                                     VoiceLines.handoffParent,
                                   ),
                                 );
+                            unawaited(
+                              LearnerProfileStore.instance
+                                  .saveAnswers(answers, seenDemo: false),
+                            );
+                            unawaited(
+                              EvidenceStore.instance.bindChild(answers.name),
+                            );
                             setState(() {
                               _answers = answers;
                               _estimate = Screener.estimate(answers);
@@ -228,6 +274,10 @@ class _PrimarScreenState extends State<PrimarScreen> {
                           locale: _locale,
                           onReady: () {
                             _seenDemo = true;
+                            widget.onSeenDemo?.call();
+                            unawaited(
+                              LearnerProfileStore.instance.markSeenDemo(),
+                            );
                             _go(_Stage.warmUp);
                           },
                         ),
@@ -313,6 +363,7 @@ class _PrimarScreenState extends State<PrimarScreen> {
 
 class _Sheet extends StatelessWidget {
   const _Sheet({
+    super.key,
     required this.child,
     this.padding = const EdgeInsets.all(24),
     this.tape = TapeTone.blue,
@@ -974,6 +1025,7 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
   void dispose() {
     _encourageTimer?.cancel();
     _tickTimer?.cancel();
+    _comboTimer?.cancel();
     _ring.dispose();
     _burst.dispose();
     PrimarVoice.instance.interrupt();
@@ -1146,6 +1198,7 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
     final progress = total == 0 ? 0.0 : done / total;
     final mood = _warming ? Mood.idle : _mood;
     final correct = _correctThisSession;
+    final sayTarget = _sayTarget;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -1153,6 +1206,51 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
       widget.chrome.progress.value = progress;
       widget.chrome.mood.value = mood;
       widget.chrome.correct.value = correct;
+      widget.chrome.streak.value = _streak;
+      widget.chrome.toolsVisible.value = !_warming;
+      widget.chrome.sayAvailable.value = sayTarget != null;
+      widget.chrome.onHear = _speakPrompt;
+      widget.chrome.onHint = _toolHint;
+      widget.chrome.onSay = sayTarget == null ? null : _toolSay;
+    });
+  }
+
+  void _toolHint() {
+    if (_warming || _revealing) return;
+    PrimarVoice.instance.chime(Sfx.tap);
+    _speakBrain(TutorMoment.retry, retryCount: _isRetry ? 1 : 0);
+  }
+
+  void _toolSay() {
+    final target = _sayTarget;
+    if (target == null) return;
+    PrimarVoice.instance.chime(Sfx.tap);
+    _speakBrain(
+      TutorMoment.speak,
+      speakTarget: target,
+      speakMatched: false,
+    );
+  }
+
+  /// Combo milestones a child can feel — 3 / 5 / 8 in a row.
+  String? _comboBanner;
+  Timer? _comboTimer;
+
+  void _maybeCelebrateCombo() {
+    if (_streak != 3 && _streak != 5 && _streak != 8) return;
+    PrimarVoice.instance.chime(Sfx.levelUp);
+    HapticFeedback.mediumImpact();
+    final fr = widget.locale == 'fr';
+    final line = switch (_streak) {
+      3 => fr ? 'En feu ! ×3' : 'On fire! ×3',
+      5 => fr ? 'Incroyable ! ×5' : 'Amazing! ×5',
+      _ => fr ? 'Champion ! ×8' : 'Champion! ×8',
+    };
+    setState(() => _comboBanner = line);
+    _comboTimer?.cancel();
+    _comboTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (!mounted) return;
+      setState(() => _comboBanner = null);
     });
   }
 
@@ -1567,9 +1665,15 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
 
     if (correct) {
       _burst.forward(from: 0);
-      PrimarVoice.instance.chime(_isRetry ? Sfx.streak : Sfx.correct);
+      HapticFeedback.lightImpact();
+      if (_streak == 3 || _streak == 5 || _streak == 8) {
+        _maybeCelebrateCombo();
+      } else {
+        PrimarVoice.instance.chime(_isRetry ? Sfx.streak : Sfx.correct);
+      }
       _speakBrain(TutorMoment.correct, retryCount: _isRetry ? 1 : 0);
     } else if (_isRetry) {
+      HapticFeedback.selectionClick();
       PrimarVoice.instance.chime(Sfx.wrong);
       // Second miss on the same item. Show the answer warmly — then, on the
       // second miss of this skill this session, a micro-lesson before moving on.
@@ -1585,6 +1689,7 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
         after: VoiceLines.teachingFor(_item.teach),
       );
     } else {
+      HapticFeedback.selectionClick();
       PrimarVoice.instance.chime(Sfx.wrong);
       // A miss is the moment a child is most ready to be taught. Name what they
       // chose and what was needed — then the item's own teaching lines.
@@ -1885,62 +1990,56 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
             },
           ),
         ] else ...[
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: PrimarTheme.tintBlue.withValues(alpha: 0.62),
-              borderRadius: BorderRadius.circular(14),
+          if (_comboBanner != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _ComboBanner(text: _comboBanner!),
             ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.touch_app_rounded,
-                  size: 18,
-                  color: PrimarTheme.answerInk,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _actionHint(),
-                    style: PrimarTheme.body(14, color: PrimarTheme.answerInk),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _ActionHintPill(text: _actionHint()),
           // Skipped entirely when there is nothing to show. An empty sheet is a
           // band of blank paper that reads as something failing to load.
           if (_item.hasVisiblePrompt || _item.options.isNotEmpty)
-            _Sheet(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 36),
-              child: LayoutBuilder(
-                builder: (context, box) {
-                  final size = _sessionPromptSize(_item, box.maxWidth);
-                  return FittedBox(
-                    // The backstop. Sizing from the constraints is the fix; this
-                    // is what stops the next unusual prompt from overflowing
-                    // before anyone notices, since a row that scales down is
-                    // always readable and a row that overflows never is.
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        for (final f in _item.prompt)
-                          FigureView(figure: f, size: size),
-                        if (_item.options.isNotEmpty)
-                          _revealing
-                              ? FigureView(
-                                  figure: _item.options[_item.answerIndex],
-                                  color: PrimarTheme.answerInk,
-                                  size: size,
-                                )
-                              : MysterySlot(size: size),
-                      ],
-                    ),
-                  );
-                },
+            AnimatedSwitcher(
+              duration: PrimarMotion.medium,
+              switchInCurve: PrimarMotion.enter,
+              switchOutCurve: PrimarMotion.exit,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.06),
+                    end: Offset.zero,
+                  ).animate(anim),
+                  child: child,
+                ),
+              ),
+              child: _Sheet(
+                key: ValueKey(_item.id),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 36),
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final size = _sessionPromptSize(_item, box.maxWidth);
+                    return FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          for (final f in _item.prompt)
+                            FigureView(figure: f, size: size),
+                          if (_item.options.isNotEmpty)
+                            _revealing
+                                ? FigureView(
+                                    figure: _item.options[_item.answerIndex],
+                                    color: PrimarTheme.answerInk,
+                                    size: size,
+                                  )
+                                : MysterySlot(size: size),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           // Say it back. Offered only once the answer is on screen and right, so
@@ -2075,8 +2174,37 @@ class _OptionTile extends StatefulWidget {
   State<_OptionTile> createState() => _OptionTileState();
 }
 
-class _OptionTileState extends State<_OptionTile> {
+class _OptionTileState extends State<_OptionTile>
+    with SingleTickerProviderStateMixin {
   bool _down = false;
+  late final AnimationController _pop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+  );
+
+  @override
+  void didUpdateWidget(covariant _OptionTile old) {
+    super.didUpdateWidget(old);
+    if (widget.revealing &&
+        widget.chosen &&
+        widget.isAnswer &&
+        !(old.revealing && old.chosen && old.isAnswer)) {
+      _pop.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  void _press() {
+    if (widget.revealing) return;
+    PrimarVoice.instance.chime(Sfx.tap);
+    HapticFeedback.selectionClick();
+    widget.onTap();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2089,42 +2217,153 @@ class _OptionTileState extends State<_OptionTile> {
       onTapDown: widget.revealing ? null : (_) => setState(() => _down = true),
       onTapUp: widget.revealing ? null : (_) => setState(() => _down = false),
       onTapCancel: () => setState(() => _down = false),
-      onTap: widget.revealing ? null : widget.onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOut,
-        transform: Matrix4.translationValues(0, _down ? 4 : 0, 0),
-        decoration: PrimarTheme.tile(
-          border: showRight ? PrimarTheme.teal : null,
-          fill: showRight
-              ? PrimarTheme.tintTeal
-              : showMiss
-              ? const Color(0xFFF4F1EA)
-              : null,
-          lift: _down ? 2 : 6,
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Opacity(
-              opacity: showMiss ? 0.62 : 1,
-              child: Center(
-                child: FigureView(
-                  figure: widget.figure,
-                  color: showMiss
-                      ? PrimarTheme.ghostInk
-                      : PrimarTheme.answerInk,
-                  size: 94,
+      onTap: widget.revealing ? null : _press,
+      child: AnimatedBuilder(
+        animation: _pop,
+        builder: (context, child) {
+          final bounce = showRight
+              ? 1.0 + Curves.easeOutBack.transform(_pop.value.clamp(0.0, 1.0)) * 0.08
+              : 1.0;
+          return Transform.scale(
+            scale: bounce * (_down ? 0.96 : 1.0),
+            child: child,
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          transform: Matrix4.translationValues(0, _down ? 4 : 0, 0),
+          decoration: PrimarTheme.tile(
+            border: showRight
+                ? PrimarTheme.teal
+                : showMiss
+                    ? PrimarTheme.ghostInk
+                    : null,
+            fill: showRight
+                ? PrimarTheme.tintTeal
+                : showMiss
+                    ? const Color(0xFFF4F1EA)
+                    : null,
+            lift: _down ? 2 : (showRight ? 8 : 6),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Opacity(
+                opacity: showMiss ? 0.62 : 1,
+                child: Center(
+                  child: FigureView(
+                    figure: widget.figure,
+                    color: showMiss
+                        ? PrimarTheme.ghostInk
+                        : PrimarTheme.answerInk,
+                    size: 94,
+                  ),
                 ),
               ),
+              if (showRight)
+                const Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Icon(Icons.check_circle_rounded,
+                      color: PrimarTheme.teal, size: 22),
+                ),
+              // Only on the tile they actually chose, and only when it was right.
+              if (widget.chosen && widget.isAnswer && widget.burst != null)
+                AnimatedBuilder(
+                  animation: widget.burst!,
+                  builder: (context, _) =>
+                      CorrectBurst(progress: widget.burst!.value, size: 130),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Short action line — Duolingo-clear, not a wall of text.
+class _ActionHintPill extends StatelessWidget {
+  const _ActionHintPill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            PrimarTheme.tintBlue,
+            PrimarTheme.tintBlue.withValues(alpha: 0.55),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: PrimarTheme.blue.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: PrimarTheme.blue.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
             ),
-            // Only on the tile they actually chose, and only when it was right.
-            if (widget.chosen && widget.isAnswer && widget.burst != null)
-              AnimatedBuilder(
-                animation: widget.burst!,
-                builder: (context, _) =>
-                    CorrectBurst(progress: widget.burst!.value, size: 130),
-              ),
+            child: const Icon(Icons.touch_app_rounded,
+                size: 18, color: PrimarTheme.blue),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: PrimarTheme.body(14.5, color: PrimarTheme.navy)
+                  .copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Brief combo celebration — pops in, then fades with the timer above.
+class _ComboBanner extends StatelessWidget {
+  const _ComboBanner({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return PrimarReveal(
+      offsetY: 8,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: PrimarTheme.tintYellow,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: PrimarTheme.orange.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: PrimarTheme.orange.withValues(alpha: 0.28),
+              blurRadius: 0,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.local_fire_department_rounded,
+                color: PrimarTheme.orange, size: 26),
+            const SizedBox(width: 8),
+            Text(text,
+                style: PrimarTheme.display(20, color: PrimarTheme.orange)),
           ],
         ),
       ),

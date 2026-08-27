@@ -50,15 +50,59 @@ class EvidenceStore {
 
   static final EvidenceStore instance = EvidenceStore._();
 
-  static const String _key = 'primar_evidence_v1';
+  static const String _legacyKey = 'primar_evidence_v1';
 
   /// How many attempts to keep per skill. Six is what the estimator reads;
   /// forty leaves room for the spacing day-count and for any future rule that
   /// wants a longer view.
   static const int _perSkillCap = 40;
 
+  /// Active prefs key. Defaults to the legacy single-child key so existing
+  /// installs and tests keep working; [bindChild] namespaces siblings.
+  String _key = _legacyKey;
+
   /// Held in memory so a session never waits on disk between questions.
   List<Evidence>? _cache;
+
+  /// Points the store at this child's log.
+  ///
+  /// Empty / blank name → legacy shared key. Named child →
+  /// `primar_evidence_v1_<slug>`. If the namespaced key is empty but the
+  /// legacy key has history, one-time migrate so relaunching after this
+  /// change does not wipe a returning learner.
+  Future<void> bindChild(String? name) async {
+    final slug = _slug(name);
+    final next = slug.isEmpty ? _legacyKey : '${_legacyKey}_$slug';
+    if (next == _key && _cache != null) return;
+
+    _key = next;
+    _cache = null;
+
+    if (slug.isEmpty) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mine = prefs.getString(_key);
+      if (mine != null && mine.isNotEmpty) return;
+
+      final legacy = prefs.getString(_legacyKey);
+      if (legacy == null || legacy.isEmpty) return;
+
+      await prefs.setString(_key, legacy);
+    } catch (e) {
+      debugPrint('[EvidenceStore] bindChild migrate failed: $e');
+    }
+  }
+
+  static String _slug(String? name) {
+    final cleaned = (name ?? '')
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (cleaned.isEmpty) return '';
+    return cleaned.length > 32 ? cleaned.substring(0, 32) : cleaned;
+  }
 
   /// Everything recorded for this child, oldest first.
   ///
@@ -165,6 +209,16 @@ class EvidenceStore {
       debugPrint('[EvidenceStore] could not clear: $e');
     }
   }
+
+  /// Test / preview: force the storage key back to the legacy default.
+  @visibleForTesting
+  Future<void> resetBinding() async {
+    _key = _legacyKey;
+    _cache = null;
+  }
+
+  @visibleForTesting
+  String get storageKeyForTest => _key;
 
   /// Replaces the in-memory log without touching disk.
   ///

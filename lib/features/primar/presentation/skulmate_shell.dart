@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../domain/screener.dart';
 import '../domain/subjects.dart';
+import '../services/evidence_store.dart';
+import '../services/learner_profile_store.dart';
 import '../services/primar_voice.dart';
 import '../services/tutor_directory.dart';
 import 'onboarding.dart';
@@ -39,6 +43,8 @@ class SkulMateShell extends StatefulWidget {
 
 class _SkulMateShellState extends State<SkulMateShell> {
   ScreenerAnswers? _answers;
+  bool _seenDemo = false;
+  bool _booting = true;
   int _tab = 0;
   Subject? _activeSubject;
 
@@ -47,7 +53,55 @@ class _SkulMateShellState extends State<SkulMateShell> {
   Key _learnKey = UniqueKey();
 
   @override
+  void initState() {
+    super.initState();
+    _restore();
+  }
+
+  Future<void> _restore() async {
+    final profile = await LearnerProfileStore.instance.load();
+    if (!mounted) return;
+
+    if (profile != null) {
+      await EvidenceStore.instance.bindChild(profile.answers.name);
+      PrimarVoice.instance.init(
+        locale: profile.answers.locale,
+        voiceId: profile.answers.voiceId,
+      );
+      setState(() {
+        _answers = profile.answers;
+        _seenDemo = profile.seenDemo;
+        _activeSubject = profile.answers.subject;
+        _booting = false;
+      });
+      return;
+    }
+
+    setState(() => _booting = false);
+  }
+
+  Future<void> _completeOnboarding(ScreenerAnswers a) async {
+    PrimarVoice.instance.newScene();
+    // Show Learn immediately — prefs writes must not gate the first home frame.
+    setState(() {
+      _answers = a;
+      _activeSubject = a.subject;
+      _seenDemo = false;
+    });
+    unawaited(PrimarVoice.instance.init(locale: a.locale, voiceId: a.voiceId));
+    unawaited(LearnerProfileStore.instance.saveAnswers(a, seenDemo: false));
+    unawaited(EvidenceStore.instance.bindChild(a.name));
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_booting) {
+      return const Scaffold(
+        backgroundColor: PrimarTheme.paper,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final answers = _answers;
 
     if (answers == null) {
@@ -55,31 +109,13 @@ class _SkulMateShellState extends State<SkulMateShell> {
         backgroundColor: PrimarTheme.paper,
         body: PaperGround(
           child: SafeArea(
-            // Top, not centre.
-            //
-            // Centring made every page float in the middle of the screen with
-            // a different amount of space above it, so the question jumped
-            // vertically on each tap and the card looked stranded on a tall
-            // phone. Anchoring to the top keeps the question where the reader
-            // last looked and lets the pages differ in height without moving
-            // each other.
             child: Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 44),
-                  child: Onboarding(
-                    onDone: (a) {
-                      PrimarVoice.instance.newScene();
-                      PrimarVoice.instance
-                          .init(locale: a.locale, voiceId: a.voiceId);
-                      setState(() {
-                        _answers = a;
-                        _activeSubject = a.subject;
-                      });
-                    },
-                  ),
+                  child: Onboarding(onDone: _completeOnboarding),
                 ),
               ),
             ),
@@ -97,6 +133,11 @@ class _SkulMateShellState extends State<SkulMateShell> {
             key: _learnKey,
             answers: answers,
             activeSubject: subject,
+            seenDemo: _seenDemo,
+            onSeenDemo: () async {
+              _seenDemo = true;
+              await LearnerProfileStore.instance.markSeenDemo();
+            },
           ),
         1 => _Tab(
             child: TutorScreen(
@@ -123,21 +164,12 @@ class _SkulMateShellState extends State<SkulMateShell> {
         index: _tab,
         onChanged: (i) => setState(() {
           _tab = i;
-          // Coming back to Learn re-reads the evidence log. Without this the
-          // path still shows the position from before the session that just
-          // finished, which reads as the app not having noticed.
           if (i == 0) _learnKey = UniqueKey();
         }),
       ),
     );
   }
 
-  /// Hand a request off to the booking flow.
-  ///
-  /// Deliberately a stub with an honest message rather than a fake success:
-  /// the booking flow lives in the main PrepSkul app and needs a signed-in
-  /// parent, which SkulMate does not have yet. Showing a child "your request
-  /// was sent" when nothing was sent is the one outcome worth avoiding.
   void _ask(BuildContext context, TutorCard tutor) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

@@ -393,11 +393,8 @@ void main() {
     await tick(tester);
     await tester.tap(find.text(SeenDoing.starting.prompt(Subject.reading, 'fr')));
     await tick(tester);
-    await tester.tap(find.text('Start'));
+    await tester.tap(find.text('Démarrer'));
     await tick(tester);
-
-    expect(find.text(fr.handoffButton), findsOneWidget,
-        reason: 'the French handoff never arrived');
     await tester.tap(find.text(fr.handoffButton));
     await tick(tester);
     await watchDemo(tester);

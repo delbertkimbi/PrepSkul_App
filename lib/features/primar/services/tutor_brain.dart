@@ -15,6 +15,7 @@ import '../domain/misconception.dart';
 import '../domain/parent_phrases.dart';
 import '../domain/policy.dart';
 import '../domain/skill.dart';
+import '../domain/skill_atelier.dart';
 import '../domain/tutor_feedback.dart';
 import 'learner_traits.dart';
 
@@ -88,7 +89,12 @@ class TutorContext {
     final itemId = item?.id ?? speakTarget ?? letter ?? skillId ?? moment.name;
     final miss = misconception?.name ?? '';
     final chosen = chosenIndex >= 0 ? '_c$chosenIndex' : '';
-    return '${moment.apiName}_${locale}_${skillId ?? 'x'}_${itemId}_$miss$chosen';
+    final frontier = traits?.masteryFrontierSkillId ?? '';
+    final missTag = (traits?.recentMissTags.isNotEmpty ?? false)
+        ? traits!.recentMissTags.first
+        : '';
+    return '${moment.apiName}_${locale}_${skillId ?? 'x'}_${itemId}_$miss'
+        '${chosen}_f${frontier}_m$missTag';
   }
 }
 
@@ -363,12 +369,16 @@ class TutorBrain {
 
   Future<String?> _fetchAi(TutorContext ctx) async {
     final base = AppConfig.effectiveApiBaseUrl;
+    final atelier = atelierForSkill(ctx.skillId);
     final body = {
       'moment': ctx.moment.apiName,
       'locale': ctx.locale,
       if (ctx.childName != null) 'childName': ctx.childName,
       if (ctx.skillId != null) 'skillId': ctx.skillId,
       if (ctx._skillLabel.isNotEmpty) 'skillLabel': ctx._skillLabel,
+      if (ctx.skillId != null)
+        'subject': skillsById[ctx.skillId!]?.subject.name,
+      if (atelier != null) 'atelierHook': atelier.hookIn(ctx.locale),
       if (ctx.item != null) ..._itemPayload(ctx.item!, ctx.locale),
       if (ctx.chosenIndex >= 0 && ctx.item != null)
         'chosen': _label(ctx.item!.options[ctx.chosenIndex], ctx.locale),
@@ -379,6 +389,8 @@ class TutorBrain {
       if (ctx.traits != null) ...{
         'strugglingSkills': ctx.traits!.strugglingSkillIds,
         'recentMissTags': ctx.traits!.recentMissTags,
+        if (ctx.traits!.masteryFrontierSkillId != null)
+          'frontierSkillId': ctx.traits!.masteryFrontierSkillId,
       },
     };
 

@@ -20,21 +20,42 @@ class LessonChrome {
   /// doing", and the second one is the question a child actually has.
   final ValueNotifier<int> correct = ValueNotifier(0);
 
+  /// Consecutive right answers this session. A streak is why children press
+  /// "one more" — without it every correct answer feels the same.
+  final ValueNotifier<int> streak = ValueNotifier(0);
+
   /// Hidden outside a session. The onboarding has its own step dots, and two
   /// progress bars on one screen measure nothing.
   final ValueNotifier<bool> visible = ValueNotifier(false);
 
+  /// Tool rail (Hear / Hint / Say it) — only while a question is live.
+  final ValueNotifier<bool> toolsVisible = ValueNotifier(false);
+  final ValueNotifier<bool> sayAvailable = ValueNotifier(false);
+
+  VoidCallback? onHear;
+  VoidCallback? onHint;
+  VoidCallback? onSay;
+
   void reset() {
     progress.value = 0;
     correct.value = 0;
+    streak.value = 0;
     mood.value = Mood.idle;
+    toolsVisible.value = false;
+    sayAvailable.value = false;
+    onHear = null;
+    onHint = null;
+    onSay = null;
   }
 
   void dispose() {
     progress.dispose();
     mood.dispose();
     correct.dispose();
+    streak.dispose();
     visible.dispose();
+    toolsVisible.dispose();
+    sayAvailable.dispose();
   }
 }
 
@@ -56,47 +77,166 @@ class LessonTopBar extends StatelessWidget {
     super.key,
     required this.chrome,
     required this.onQuit,
+    this.locale = 'en',
   });
 
   final LessonChrome chrome;
   final VoidCallback onQuit;
+  final String locale;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-      child: Row(
-        children: [
-          // Mate rides in the bar rather than above the question. He is the
-          // one thing on screen that reacts, so he belongs with the other
-          // constant, not in the part that gets replaced every few seconds.
-          ValueListenableBuilder<Mood>(
-            valueListenable: chrome.mood,
-            builder: (context, mood, _) => Mate(mood: mood, size: 46),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+          child: Row(
+            children: [
+              ValueListenableBuilder<Mood>(
+                valueListenable: chrome.mood,
+                builder: (context, mood, _) => Mate(mood: mood, size: 46),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ValueListenableBuilder<double>(
+                  valueListenable: chrome.progress,
+                  builder: (context, value, _) => _Bar(value: value),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ValueListenableBuilder<int>(
+                valueListenable: chrome.streak,
+                builder: (context, n, _) => n >= 2
+                    ? Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _StreakFlame(count: n),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              ValueListenableBuilder<int>(
+                valueListenable: chrome.correct,
+                builder: (context, n, _) => _Tally(count: n),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                onPressed: onQuit,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close_rounded, size: 22),
+                color: PrimarTheme.ghostInk,
+                tooltip: 'Stop',
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ValueListenableBuilder<double>(
-              valueListenable: chrome.progress,
-              builder: (context, value, _) => _Bar(value: value),
+        ),
+        ValueListenableBuilder<bool>(
+          valueListenable: chrome.toolsVisible,
+          builder: (context, show, _) {
+            if (!show) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: _ToolRail(chrome: chrome, locale: locale),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _ToolRail extends StatelessWidget {
+  const _ToolRail({required this.chrome, required this.locale});
+
+  final LessonChrome chrome;
+  final String locale;
+
+  @override
+  Widget build(BuildContext context) {
+    final fr = locale == 'fr';
+    return ValueListenableBuilder<bool>(
+      valueListenable: chrome.sayAvailable,
+      builder: (context, sayOn, _) {
+        return Row(
+          children: [
+            Expanded(
+              child: _ToolChip(
+                icon: Icons.volume_up_rounded,
+                label: fr ? 'Écouter' : 'Hear',
+                onTap: chrome.onHear,
+              ),
             ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ToolChip(
+                icon: Icons.lightbulb_outline_rounded,
+                label: fr ? 'Indice' : 'Hint',
+                onTap: chrome.onHint,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ToolChip(
+                icon: Icons.mic_none_rounded,
+                label: fr ? 'Dire' : 'Say it',
+                onTap: sayOn ? chrome.onSay : null,
+                muted: !sayOn,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ToolChip extends StatelessWidget {
+  const _ToolChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.muted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null && !muted;
+    return Material(
+      color: enabled
+          ? PrimarTheme.sheet
+          : const Color(0xFFF1F5F9),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: enabled ? PrimarTheme.blue : PrimarTheme.ghostInk,
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: PrimarTheme.label(
+                    11,
+                    color: enabled ? PrimarTheme.navy : PrimarTheme.ghostInk,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          ValueListenableBuilder<int>(
-            valueListenable: chrome.correct,
-            builder: (context, n, _) => _Tally(count: n),
-          ),
-          const SizedBox(width: 4),
-          // A way out that is not the system back button. A child handed a
-          // phone will find this; a parent needs it to exist.
-          IconButton(
-            onPressed: onQuit,
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close_rounded, size: 22),
-            color: PrimarTheme.ghostInk,
-            tooltip: 'Stop',
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -166,6 +306,40 @@ class _Tally extends StatelessWidget {
           Text('$count',
               style: PrimarTheme.display(17, color: PrimarTheme.navy)),
         ],
+      ),
+    );
+  }
+}
+
+/// Live combo counter — the reason a streak feels like a game.
+class _StreakFlame extends StatelessWidget {
+  const _StreakFlame({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutBack,
+      scale: 1.0,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: PrimarTheme.tintYellow,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: PrimarTheme.orange.withValues(alpha: 0.45)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.local_fire_department_rounded,
+                size: 18, color: PrimarTheme.orange),
+            const SizedBox(width: 2),
+            Text('$count',
+                style: PrimarTheme.display(15, color: PrimarTheme.orange)),
+          ],
+        ),
       ),
     );
   }

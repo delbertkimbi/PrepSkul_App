@@ -183,6 +183,55 @@ class ScreenerAnswers {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        if (age != null) 'age': age,
+        if (schooling != null) 'schooling': schooling!.name,
+        if (seenDoing != null) 'seenDoing': seenDoing!.name,
+        'subject': subject.name,
+        'name': name,
+        'locale': locale,
+        'voiceId': voiceId,
+      };
+
+  factory ScreenerAnswers.fromJson(Map<String, dynamic> j) {
+    Schooling? schooling;
+    final schoolingName = j['schooling'] as String?;
+    if (schoolingName != null) {
+      for (final s in Schooling.values) {
+        if (s.name == schoolingName) {
+          schooling = s;
+          break;
+        }
+      }
+    }
+
+    SeenDoing? seenDoing;
+    final seenName = j['seenDoing'] as String?;
+    if (seenName != null) {
+      for (final s in SeenDoing.values) {
+        if (s.name == seenName) {
+          seenDoing = s;
+          break;
+        }
+      }
+    }
+
+    final subject = Subject.values.firstWhere(
+      (s) => s.name == j['subject'],
+      orElse: () => Subject.numeracy,
+    );
+
+    return ScreenerAnswers(
+      age: (j['age'] as num?)?.toInt(),
+      schooling: schooling,
+      seenDoing: seenDoing,
+      subject: subject,
+      name: j['name'] as String? ?? '',
+      locale: j['locale'] as String? ?? 'en',
+      voiceId: j['voiceId'] as String? ?? 'guide',
+    );
+  }
+
   /// How much of the questionnaire we actually have. Used to decide how wide
   /// the probe should cast — with no information at all, it has to look
   /// further in both directions.

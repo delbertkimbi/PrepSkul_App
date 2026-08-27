@@ -9,6 +9,7 @@ import 'package:prepskul/features/primar/presentation/profile_screen.dart';
 import 'package:prepskul/features/primar/presentation/skulmate_shell.dart';
 import 'package:prepskul/features/primar/presentation/tutor_screen.dart';
 import 'package:prepskul/features/primar/services/evidence_store.dart';
+import 'package:prepskul/features/primar/services/learner_profile_store.dart';
 import 'package:prepskul/features/primar/services/primar_voice.dart';
 import 'package:prepskul/features/primar/services/tutor_directory.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,7 +31,7 @@ void main() {
     'dev.fluttercommunity.plus/connectivity',
   ];
 
-  setUp(() {
+  setUp(() async {
     for (final name in silenced) {
       binding.defaultBinaryMessenger.setMockMethodCallHandler(
         MethodChannel(name),
@@ -38,6 +39,8 @@ void main() {
       );
     }
     SharedPreferences.setMockInitialValues({});
+    LearnerProfileStore.instance.resetCache();
+    await EvidenceStore.instance.resetBinding();
     EvidenceStore.instance.resetCache();
     // No network in a widget test, so the directory would sit on a timeout.
     // Seeded empty, the tab renders its real "nobody yet" state, which is the
@@ -68,6 +71,8 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     await tester.pumpWidget(const MaterialApp(home: SkulMateShell()));
+    // Profile restore is async — leave the boot spinner.
+    await tester.pump();
     await tick(tester);
   }
 

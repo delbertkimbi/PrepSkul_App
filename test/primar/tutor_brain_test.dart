@@ -184,4 +184,26 @@ void main() {
     expect(lower, contains('cat'));
     expect(lower, isNot(contains('wrong')));
   });
+
+  test('cache fingerprint includes frontier and miss tags', () {
+    const a = TutorContext(
+      moment: TutorMoment.miss,
+      locale: 'en',
+      skillId: 'letter.shape',
+      traits: LearnerTraits(
+        masteryFrontierSkillId: 'letter.sound',
+        recentMissTags: ['reversal'],
+      ),
+    );
+    const b = TutorContext(
+      moment: TutorMoment.miss,
+      locale: 'en',
+      skillId: 'letter.shape',
+      traits: LearnerTraits(
+        masteryFrontierSkillId: 'decode.read',
+        recentMissTags: ['sound'],
+      ),
+    );
+    expect(a.cacheFingerprint(), isNot(equals(b.cacheFingerprint())));
+  });
 }

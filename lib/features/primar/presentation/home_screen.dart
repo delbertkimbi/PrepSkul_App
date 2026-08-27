@@ -9,6 +9,7 @@ import '../domain/path.dart';
 import '../domain/policy.dart';
 import '../domain/progress.dart';
 import '../domain/skill.dart';
+import '../domain/skill_atelier.dart';
 import '../domain/subjects.dart';
 import '../services/evidence_store.dart';
 import '../services/learner_traits.dart';
@@ -169,6 +170,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  SkillAtelierCard? get _atelier {
+    final id = _decision?.skillId;
+    if (id == null) return null;
+    return atelierFor(
+      skillId: id,
+      locale: widget.locale,
+      subject: widget.subject,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -182,6 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final summary = _summary!;
     final currentIndex = _steps.indexWhere((s) => s.state == PathState.current);
+    final atelier = _atelier;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -197,6 +209,9 @@ class _HomeScreenState extends State<HomeScreen> {
             label: _startLabel,
             headline: _startHeadline,
             subline: _startSubline,
+            hook: atelier?.hookIn(widget.locale),
+            didYouKnow: atelier?.didYouKnowIn(widget.locale),
+            locale: widget.locale,
             onPlay: widget.onPlay,
           ),
         ),
@@ -313,13 +328,16 @@ class _Chip extends StatelessWidget {
   }
 }
 
-/// The one thing to press.
+/// The one thing to press — Skill Atelier card.
 class _StartCard extends StatelessWidget {
   const _StartCard({
     required this.label,
     required this.onPlay,
+    required this.locale,
     this.headline = 'UP NEXT',
     this.subline,
+    this.hook,
+    this.didYouKnow,
   });
 
   /// What the child is about to work on. A skill label where there is a graph,
@@ -327,6 +345,9 @@ class _StartCard extends StatelessWidget {
   final String label;
   final String headline;
   final String? subline;
+  final String? hook;
+  final String? didYouKnow;
+  final String locale;
   final VoidCallback onPlay;
 
   @override
@@ -341,38 +362,125 @@ class _StartCard extends StatelessWidget {
       'PRACTICE' => PrimarTheme.orange,
       _ => PrimarTheme.blue,
     };
+    final atelierKicker = locale == 'fr' ? 'ATELIER' : 'ATELIER';
 
     return Container(
-      decoration: PrimarTheme.tile(border: PrimarTheme.blue, lift: 7),
+      decoration: PrimarTheme.tile(border: PrimarTheme.blue, lift: 8),
       clipBehavior: Clip.antiAlias,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(width: 6, color: accent),
+            Container(
+              width: 6,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [accent, accent.withValues(alpha: 0.55)],
+                ),
+              ),
+            ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                padding: const EdgeInsets.fromLTRB(18, 16, 14, 18),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(headline,
-                        style: PrimarTheme.label(10, color: kickerColour)),
-                    const SizedBox(height: 8),
-                    Text(label, style: PrimarTheme.display(22)),
-                    if (subline != null) ...[
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: kickerColour.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(headline,
+                              style:
+                                  PrimarTheme.label(10, color: kickerColour)),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: PrimarTheme.teal.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            atelierKicker,
+                            style: PrimarTheme.label(10,
+                                color: PrimarTheme.teal),
+                          ),
+                        ),
+                        const Spacer(),
+                        const Mate(mood: Mood.happy, size: 40),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(label, style: PrimarTheme.display(24)),
+                    if (hook != null) ...[
                       const SizedBox(height: 8),
+                      Text(
+                        hook!,
+                        style: PrimarTheme.body(15, color: PrimarTheme.navy),
+                      ),
+                    ],
+                    if (subline != null) ...[
+                      const SizedBox(height: 6),
                       Text(
                         subline!,
                         style: PrimarTheme.body(13.5, color: PrimarTheme.muted),
                       ),
                     ],
+                    if (didYouKnow != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                        decoration: BoxDecoration(
+                          color: PrimarTheme.paper,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              locale == 'fr' ? 'Le savais-tu ?' : 'Did you know?',
+                              style: PrimarTheme.label(10,
+                                  color: PrimarTheme.blue),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              didYouKnow!,
+                              style: PrimarTheme.body(13,
+                                  color: PrimarTheme.navy),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     PaperButton(
-                      onPressed: onPlay,
-                      child: Text('Start',
-                          style: PrimarTheme.display(18,
-                              color: Colors.white, weight: FontWeight.w700)),
+                      onPressed: () {
+                        PrimarVoice.instance.chime(Sfx.tap);
+                        onPlay();
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.play_arrow_rounded,
+                              color: Colors.white, size: 26),
+                          const SizedBox(width: 4),
+                          Text(
+                            locale == 'fr' ? 'Démarrer' : 'Start',
+                            style: PrimarTheme.display(18,
+                                color: Colors.white, weight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
