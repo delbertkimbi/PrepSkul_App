@@ -95,7 +95,7 @@ class LessonTopBar extends StatelessWidget {
             children: [
               ValueListenableBuilder<Mood>(
                 valueListenable: chrome.mood,
-                builder: (context, mood, _) => Mate(mood: mood, size: 46),
+                builder: (context, mood, _) => Mate(mood: mood, size: 52),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -173,15 +173,16 @@ class _ToolRail extends StatelessWidget {
                 onTap: chrome.onHint,
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _ToolChip(
-                icon: Icons.mic_none_rounded,
-                label: fr ? 'Dire' : 'Say it',
-                onTap: sayOn ? chrome.onSay : null,
-                muted: !sayOn,
+            if (sayOn) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ToolChip(
+                  icon: Icons.mic_none_rounded,
+                  label: fr ? 'Dire' : 'Say it',
+                  onTap: chrome.onSay,
+                ),
               ),
-            ),
+            ],
           ],
         );
       },

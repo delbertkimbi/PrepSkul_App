@@ -13,6 +13,7 @@ import '../domain/misconception.dart';
 import '../domain/learner.dart';
 import '../domain/literacy.dart';
 import '../domain/micro_lesson.dart';
+import '../domain/parent_phrases.dart';
 import '../domain/path.dart';
 import '../domain/policy.dart';
 import '../domain/progress.dart';
@@ -20,6 +21,7 @@ import '../domain/representation.dart';
 import '../domain/screener.dart';
 import '../domain/skill.dart';
 import '../domain/subjects.dart';
+import '../domain/tutor_feedback.dart';
 import '../services/evidence_store.dart';
 import '../services/explanation_bank.dart';
 import '../services/learner_profile_store.dart';
@@ -158,6 +160,9 @@ class _PrimarScreenState extends State<PrimarScreen> {
   /// who has been tapping for a week.
   bool _seenDemo = false;
 
+  /// When the child taps a path node, the session opens on that skill first.
+  String? _sessionSkillId;
+
   /// The pinned bar's state. Owned here because the bar outlives the session
   /// widget — it has to still be there while the result screen is showing.
   final LessonChrome _chrome = LessonChrome();
@@ -182,6 +187,11 @@ class _PrimarScreenState extends State<PrimarScreen> {
   void _go(_Stage next) {
     PrimarVoice.instance.newScene();
     setState(() => _stage = next);
+  }
+
+  void _startPlay([String? skillId]) {
+    _sessionSkillId = skillId;
+    _go(_seenDemo ? _Stage.session : _Stage.handoff);
   }
 
   @override
@@ -260,8 +270,7 @@ class _PrimarScreenState extends State<PrimarScreen> {
                           // handoff and the demonstration are for the very first
                           // time only, and showing them again every day would be
                           // three taps of ceremony before anything happens.
-                          onPlay: () =>
-                              _go(_seenDemo ? _Stage.session : _Stage.handoff),
+                          onPlay: _startPlay,
                         ),
                         _Stage.handoff => _Handoff(
                           name: _name,
@@ -304,6 +313,7 @@ class _PrimarScreenState extends State<PrimarScreen> {
                           subject: _subject,
                           locale: _locale,
                           beginAt: _beginAt,
+                          preferredSkillId: _sessionSkillId,
                           chrome: _chrome,
                           onFinish: (p, misses) {
                             _misses = misses;
@@ -337,7 +347,7 @@ class _PrimarScreenState extends State<PrimarScreen> {
                           // does not need a second warm-up — the session they just
                           // played is stronger evidence than three questions.
                           onAgain: () => _go(_Stage.session),
-                          onProgress: () => _go(_Stage.home),
+                          onProgress: () => _go(_Stage.progress),
                         ),
                         _Stage.progress => _Progress(
                           name: _name,
@@ -614,6 +624,18 @@ class _DemoReelState extends State<_DemoReel>
           ],
         ),
         const SizedBox(height: 28),
+        if (!ready)
+          TextButton(
+            onPressed: () {
+              PrimarVoice.instance.say(VoiceLines.yourTurn);
+              widget.onReady();
+            },
+            child: Text(
+              widget.locale == 'fr' ? 'Passer' : 'Skip',
+              style: PrimarTheme.body(14, color: PrimarTheme.blue),
+            ),
+          ),
+        if (!ready) const SizedBox(height: 8),
         PaperButton(
           expand: false,
           circular: true,
@@ -866,6 +888,7 @@ class _WarmUpState extends State<_WarmUp> {
     if (_revealing) return;
     final correct = index == _item.answerIndex;
 
+    HapticFeedback.lightImpact();
     setState(() {
       _chosen = index;
       _revealing = true;
@@ -1001,6 +1024,7 @@ class _Session extends StatefulWidget {
     required this.beginAt,
     required this.chrome,
     required this.onFinish,
+    this.preferredSkillId,
   });
 
   final Subject subject;
@@ -1013,6 +1037,9 @@ class _Session extends StatefulWidget {
   /// Where the first question sits, from the warm-up the child just answered.
   /// Null only if the warm-up was skipped entirely.
   final int? beginAt;
+
+  /// Path node the child tapped — first engine item uses this skill when valid.
+  final String? preferredSkillId;
 
   final void Function(Placement, MisconceptionTracker) onFinish;
 
@@ -1218,7 +1245,14 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
   void _toolHint() {
     if (_warming || _revealing) return;
     PrimarVoice.instance.chime(Sfx.tap);
-    _speakBrain(TutorMoment.retry, retryCount: _isRetry ? 1 : 0);
+    final hint = _actionHint();
+    PrimarVoice.instance.sayTutor(
+      TutorFeedback(
+        id: 'hint_${_item.id}',
+        text: hint,
+        parentMoment: ParentMoment.patience,
+      ),
+    );
   }
 
   void _toolSay() {
@@ -1332,10 +1366,7 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
     );
     if (!mounted) return;
 
-    final decision = nextSkill(
-      learnerFrom(log, locale: widget.locale),
-      subject: widget.subject,
-    );
+    final decision = _decisionForStart(log);
     if (decision.exhausted) {
       // Everything reachable is finished. Falling back to the staircase keeps
       // a child playing rather than showing them a dead end they cannot act on.
@@ -1358,6 +1389,36 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
       _shownAt = DateTime.now();
     });
     _speakPrompt();
+  }
+
+  /// First skill this session — honour a path tap when the skill is playable.
+  Decision _decisionForStart(List<Evidence> log) {
+    final learner = learnerFrom(log, locale: widget.locale);
+    final preferred = widget.preferredSkillId;
+    if (preferred != null) {
+      final skill = skillsById[preferred];
+      if (skill != null && skill.subject == widget.subject) {
+        final st = learner.stateOf(preferred);
+        final onPath = pathOrder(subject: widget.subject)
+            .any((s) => s.id == preferred);
+        final reachable = learner.frontier(subject: widget.subject)
+            .any((s) => s.id == preferred);
+        if (onPath &&
+            (st.state == MasteryState.mastered ||
+                st.attempts > 0 ||
+                reachable)) {
+          final reason = st.state == MasteryState.mastered
+              ? Reason.review
+              : Reason.advance;
+          return Decision(
+            skillId: preferred,
+            reason: reason,
+            explain: 'Working on ${skill.label}.',
+          );
+        }
+      }
+    }
+    return nextSkill(learner, subject: widget.subject);
   }
 
   /// Records one answer as evidence and asks the engine what comes next.
@@ -1897,10 +1958,28 @@ class _SessionState extends State<_Session> with TickerProviderStateMixin {
     _publishChrome();
 
     if (_warming) {
-      // A brief, calm hold rather than a flash of the wrong difficulty.
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 70),
-        child: Mate(mood: Mood.idle, size: 96),
+      final fr = widget.locale == 'fr';
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 48),
+        child: Column(
+          children: [
+            const Mate(mood: Mood.thinking, size: 88),
+            const SizedBox(height: 16),
+            Text(
+              fr ? 'On prépare ton jeu…' : 'Getting your game ready…',
+              style: PrimarTheme.body(16, color: PrimarTheme.muted),
+            ),
+            const SizedBox(height: 14),
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: PrimarTheme.blue,
+              ),
+            ),
+          ],
+        ),
       );
     }
 

@@ -63,8 +63,8 @@ class HomeScreen extends StatefulWidget {
   /// it was not listening.
   final Subject subject;
 
-  /// Start the next session. The path decides where it starts, not this call.
-  final VoidCallback onPlay;
+  /// Start the next session. Optional [skillId] when the child tapped a path node.
+  final void Function([String? skillId]) onPlay;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -212,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
             hook: atelier?.hookIn(widget.locale),
             didYouKnow: atelier?.didYouKnowIn(widget.locale),
             locale: widget.locale,
-            onPlay: widget.onPlay,
+            onPlay: () => widget.onPlay(_decision?.skillId),
           ),
         ),
         const SizedBox(height: 22),
@@ -227,7 +227,9 @@ class _HomeScreenState extends State<HomeScreen> {
               leanBelow: i == _steps.length - 1 ? null : sin((i + 1) * 0.9),
               lean: sin(i * 0.9),
               isLast: i == _steps.length - 1,
-              onTap: _steps[i].state == PathState.locked ? null : widget.onPlay,
+              onTap: _steps[i].state == PathState.locked
+                  ? null
+                  : () => widget.onPlay(_steps[i].skill.id),
             ),
           ),
         const SizedBox(height: 30),
@@ -645,32 +647,50 @@ class _PathNodeState extends State<_PathNode>
                   };
                   return Transform.scale(scale: scale, child: child);
                 },
-                child: Container(
-                  width: 66,
-                  height: 66,
-                  decoration: BoxDecoration(
-                    color: _fill,
-                    shape: BoxShape.circle,
-                    border: widget.step.state == PathState.open
-                        ? Border.all(color: PrimarTheme.blue, width: 3)
-                        : null,
-                    boxShadow: [
-                      BoxShadow(
-                        color: dim
-                            ? const Color(0xFFCBD5E1)
-                            : _fill.withValues(alpha: 0.55),
-                        blurRadius: 0,
-                        offset: const Offset(0, 5),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (widget.step.strength > 0.02 &&
+                        widget.step.state != PathState.locked)
+                      PrimarProgressRing(
+                        progress: widget.step.strength,
+                        size: 74,
                       ),
-                    ],
-                  ),
-                  child: Icon(_glyph,
-                      color: widget.step.state == PathState.open
-                          ? PrimarTheme.blue
-                          : dim
-                              ? PrimarTheme.ghostInk
-                              : Colors.white,
-                      size: 30),
+                    Container(
+                      width: 66,
+                      height: 66,
+                      decoration: BoxDecoration(
+                        color: _fill,
+                        shape: BoxShape.circle,
+                        border: widget.step.state == PathState.open
+                            ? Border.all(color: PrimarTheme.blue, width: 3)
+                            : widget.step.state == PathState.current
+                                ? Border.all(
+                                    color: Colors.white.withValues(alpha: 0.85),
+                                    width: 3,
+                                  )
+                                : null,
+                        boxShadow: [
+                          BoxShadow(
+                            color: dim
+                                ? const Color(0xFFCBD5E1)
+                                : _fill.withValues(alpha: 0.55),
+                            blurRadius: 0,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _glyph,
+                        color: widget.step.state == PathState.open
+                            ? PrimarTheme.blue
+                            : dim
+                                ? PrimarTheme.ghostInk
+                                : Colors.white,
+                        size: 30,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
