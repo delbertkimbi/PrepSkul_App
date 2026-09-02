@@ -53,6 +53,24 @@ const Map<String, SkillAtelierCard> _atelierBySkill = {
     didYouKnowFr:
         'Entendre /b/ dans « balle » est le pont vers lire « sac » plus tard.',
   ),
+  'pa.blend': SkillAtelierCard(
+    skillId: 'pa.blend',
+    hook: 'Squish sounds together to make a word.',
+    hookFr: 'Colle les sons pour faire un mot.',
+    didYouKnow:
+        'Blending is how "c-a-t" becomes cat — the mouth learns before the eyes.',
+    didYouKnowFr:
+        'Fusionner, c\'est comment « c-a-t » devient chat — la bouche apprend avant les yeux.',
+  ),
+  'pa.segment': SkillAtelierCard(
+    skillId: 'pa.segment',
+    hook: 'Pull the last sound off a word.',
+    hookFr: 'Découpe le dernier son d\'un mot.',
+    didYouKnow:
+        'Hearing endings helps kids tell "pin" from "pit" when they read.',
+    didYouKnowFr:
+        'Entendre la fin aide à distinguer « pin » et « pit » en lecture.',
+  ),
   'letter.shape': SkillAtelierCard(
     skillId: 'letter.shape',
     hook: 'Spot letters by their shape.',
@@ -93,6 +111,15 @@ const Map<String, SkillAtelierCard> _atelierBySkill = {
     didYouKnowFr:
         'Les images aident le sens, mais ce sont les lettres qui font la lecture.',
   ),
+  'decode.sentence': SkillAtelierCard(
+    skillId: 'decode.sentence',
+    hook: 'Put words in the right order.',
+    hookFr: 'Mets les mots dans le bon ordre.',
+    didYouKnow:
+        'Reading a sentence is like lining up market signs — each word has its place.',
+    didYouKnowFr:
+        'Lire une phrase, c\'est comme aligner les enseignes du marché — chaque mot a sa place.',
+  ),
   'meaning.word': SkillAtelierCard(
     skillId: 'meaning.word',
     hook: 'Choose the picture that matches the word.',
@@ -100,6 +127,15 @@ const Map<String, SkillAtelierCard> _atelierBySkill = {
     didYouKnow: 'Knowing what a word means makes reading feel useful, not just loud.',
     didYouKnowFr:
         'Comprendre le sens d’un mot rend la lecture utile, pas seulement sonore.',
+  ),
+  'meaning.sentence': SkillAtelierCard(
+    skillId: 'meaning.sentence',
+    hook: 'Match two pictures to the story.',
+    hookFr: 'Associe deux images à l\'histoire.',
+    didYouKnow:
+        'Stories in Cameroon homes often start with two things — this skill builds that habit.',
+    didYouKnowFr:
+        'Les histoires à la maison commencent souvent par deux choses — cette compétence s\'appuie là-dessus.',
   ),
   'num.count': SkillAtelierCard(
     skillId: 'num.count',
@@ -125,6 +161,24 @@ const Map<String, SkillAtelierCard> _atelierBySkill = {
     didYouKnowFr:
         'Les tas qui paraissent plus grands n’ont pas toujours plus — compte, ne juge pas à la taille.',
   ),
+  'num.match': SkillAtelierCard(
+    skillId: 'num.match',
+    hook: 'Join each group to its number.',
+    hookFr: 'Relie chaque groupe à son chiffre.',
+    didYouKnow:
+        'Market sellers match piles to prices the same way — number and amount together.',
+    didYouKnowFr:
+        'Les vendeurs associent les tas aux prix de la même façon — chiffre et quantité ensemble.',
+  ),
+  'num.order': SkillAtelierCard(
+    skillId: 'num.order',
+    hook: 'Line amounts up from smallest to biggest.',
+    hookFr: 'Range les quantités du plus petit au plus grand.',
+    didYouKnow:
+        'Ordering is like queuing at school — everyone knows who is first.',
+    didYouKnowFr:
+        'Ranger, c\'est comme faire la queue à l\'école — tout le monde sait qui est premier.',
+  ),
   'num.add': SkillAtelierCard(
     skillId: 'num.add',
     hook: 'Put two groups together.',
@@ -141,6 +195,15 @@ const Map<String, SkillAtelierCard> _atelierBySkill = {
     didYouKnowFr:
         'Enlever, c’est le quotidien : partager un goûter, payer avec des pièces.',
   ),
+  'num.missing': SkillAtelierCard(
+    skillId: 'num.missing',
+    hook: 'Find the number that is missing.',
+    hookFr: 'Trouve le nombre qui manque.',
+    didYouKnow:
+        'Missing-number puzzles are how kids learn sums work both ways.',
+    didYouKnowFr:
+        'Les nombres manquants montrent que les additions marchent dans les deux sens.',
+  ),
   'shape.compose.basic': SkillAtelierCard(
     skillId: 'shape.compose.basic',
     hook: 'Build a simple shape from pieces.',
@@ -149,6 +212,24 @@ const Map<String, SkillAtelierCard> _atelierBySkill = {
     didYouKnowFr:
         'Les motifs de tissu et les carreaux de maison sont déjà des jeux de formes.',
   ),
+  'shape.compose.curve': SkillAtelierCard(
+    skillId: 'shape.compose.curve',
+    hook: 'Fit curved pieces together.',
+    hookFr: 'Assemble des pièces courbes.',
+    didYouKnow:
+        'Round pots and bowl rims are curves kids see every day at home.',
+    didYouKnowFr:
+        'Les marmites rondes et les bords de bols sont des courbes vues chaque jour.',
+  ),
+  'shape.compose.multi': SkillAtelierCard(
+    skillId: 'shape.compose.multi',
+    hook: 'Build with three or four parts.',
+    hookFr: 'Construis avec trois ou quatre pièces.',
+    didYouKnow:
+        'More pieces means planning ahead — like fitting bags in a taxi boot.',
+    didYouKnowFr:
+        'Plus de pièces, c\'est planifier — comme ranger les sacs dans le coffre.',
+  ),
   'shape.discriminate': SkillAtelierCard(
     skillId: 'shape.discriminate',
     hook: 'Find the shape that matches.',
@@ -156,6 +237,24 @@ const Map<String, SkillAtelierCard> _atelierBySkill = {
     didYouKnow: 'Looking carefully at edges is the same skill as spotting letter shapes.',
     didYouKnowFr:
         'Bien regarder les bords, c’est la même compétence que repérer les lettres.',
+  ),
+  'shape.decompose': SkillAtelierCard(
+    skillId: 'shape.decompose',
+    hook: 'Take a piece away from a shape.',
+    hookFr: 'Enlève une pièce d\'une forme.',
+    didYouKnow:
+        'Taking apart is how kids see that big shapes are made of small ones.',
+    didYouKnowFr:
+        'Décomposer, c\'est voir que les grandes formes sont faites de petites.',
+  ),
+  'shape.flex': SkillAtelierCard(
+    skillId: 'shape.flex',
+    hook: 'Add or take away — you choose.',
+    hookFr: 'Ajoute ou enlève — à toi de choisir.',
+    didYouKnow:
+        'Flexible thinking with shapes prepares kids for flexible thinking with numbers.',
+    didYouKnowFr:
+        'Penser souplement avec les formes prépare à penser souplement avec les nombres.',
   ),
 };
 

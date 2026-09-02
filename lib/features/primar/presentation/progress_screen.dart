@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../domain/learner.dart';
 import '../domain/progress.dart';
 import '../domain/skill.dart';
+import '../domain/subjects.dart';
 import 'mascot.dart';
 import 'primar_theme.dart';
 
@@ -24,12 +25,14 @@ class ProgressScreen extends StatelessWidget {
     required this.summary,
     required this.learner,
     required this.name,
+    this.subject = Subject.reading,
     this.onPlay,
   });
 
   final ProgressSummary summary;
   final Learner learner;
   final String name;
+  final Subject subject;
   final VoidCallback? onPlay;
 
   @override
@@ -97,7 +100,7 @@ class ProgressScreen extends StatelessWidget {
         // Named abilities, in order, so a parent can see the road rather than a
         // score. Skills the app cannot yet teach are shown greyed rather than
         // hidden — the gap is part of the honest picture.
-        for (final s in readingSkills)
+        for (final s in teachableSkillsFor(subject))
           _SkillRow(skill: s, state: learner.stateOf(s.id)),
 
         if (onPlay != null) ...[

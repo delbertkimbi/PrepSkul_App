@@ -47,6 +47,8 @@ class _SkulMateShellState extends State<SkulMateShell> {
   bool _booting = true;
   int _tab = 0;
   Subject? _activeSubject;
+  String? _launchSkillId;
+  bool _launchProgress = false;
 
   /// Rebuilt when the tab is re-entered, so the path and the profile pick up
   /// what the last session wrote rather than showing a snapshot from before it.
@@ -78,6 +80,24 @@ class _SkulMateShellState extends State<SkulMateShell> {
     }
 
     setState(() => _booting = false);
+  }
+
+  void _openLearn({String? skillId, bool progress = false}) {
+    setState(() {
+      _tab = 0;
+      _launchSkillId = skillId;
+      _launchProgress = progress;
+      _learnKey = UniqueKey();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_launchSkillId != null || _launchProgress) {
+        setState(() {
+          _launchSkillId = null;
+          _launchProgress = false;
+        });
+      }
+    });
   }
 
   Future<void> _completeOnboarding(ScreenerAnswers a) async {
@@ -134,6 +154,8 @@ class _SkulMateShellState extends State<SkulMateShell> {
             answers: answers,
             activeSubject: subject,
             seenDemo: _seenDemo,
+            launchSkillId: _launchSkillId,
+            launchProgress: _launchProgress,
             onSeenDemo: () async {
               _seenDemo = true;
               await LearnerProfileStore.instance.markSeenDemo();
@@ -156,6 +178,8 @@ class _SkulMateShellState extends State<SkulMateShell> {
                 _activeSubject = s;
                 _learnKey = UniqueKey();
               }),
+              onPlay: ([skillId]) => _openLearn(skillId: skillId),
+              onViewProgress: () => _openLearn(progress: true),
             ),
           ),
         _ => const SizedBox.shrink(),

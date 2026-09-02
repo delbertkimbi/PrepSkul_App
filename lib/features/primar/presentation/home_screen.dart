@@ -125,6 +125,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _onLockedTap(PathStep step) {
+    PrimarVoice.instance.chime(Sfx.tap);
+    final current = _steps.cast<PathStep?>().firstWhere(
+          (s) => s!.state == PathState.current,
+          orElse: () => null,
+        );
+    final blocker = current?.skill.label ??
+        (widget.locale == 'fr' ? 'le jeu d\'avant' : 'the step before');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: PrimarTheme.navy,
+        content: Text(
+          lockedPathMessage(locale: widget.locale, blockerLabel: blocker),
+          style: PrimarTheme.body(14, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
   void _scrollToCurrent(List<PathStep> steps) {
     final currentIndex =
         steps.indexWhere((s) => s.state == PathState.current);
@@ -205,6 +225,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
         PrimarReveal(
           delay: PrimarMotion.stagger(1),
+          child: _DailyQuestCard(
+            quest: dailyQuestFor(
+              locale: widget.locale,
+              summary: summary,
+              decision: _decision,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        PrimarReveal(
+          delay: PrimarMotion.stagger(2),
           child: _StartCard(
             label: _startLabel,
             headline: _startHeadline,
@@ -219,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         for (var i = 0; i < _steps.length; i++)
           PrimarReveal(
-            delay: PrimarMotion.stagger(i + 2),
+            delay: PrimarMotion.stagger(i + 3),
             key: i == currentIndex ? _currentNodeKey : null,
             child: _PathNode(
               step: _steps[i],
@@ -228,12 +260,68 @@ class _HomeScreenState extends State<HomeScreen> {
               lean: sin(i * 0.9),
               isLast: i == _steps.length - 1,
               onTap: _steps[i].state == PathState.locked
-                  ? null
+                  ? () => _onLockedTap(_steps[i])
                   : () => widget.onPlay(_steps[i].skill.id),
             ),
           ),
         const SizedBox(height: 30),
       ],
+    );
+  }
+}
+
+/// Today's goal — a reason to come back without punishing a missed day.
+class _DailyQuestCard extends StatelessWidget {
+  const _DailyQuestCard({required this.quest});
+
+  final DailyQuest quest;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = quest.complete ? PrimarTheme.teal : PrimarTheme.orange;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: PrimarTheme.tile(border: accent.withValues(alpha: 0.35), lift: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 52,
+            height: 52,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                PrimarProgressRing(
+                  progress: quest.progress.clamp(0.0, 1.0),
+                  size: 52,
+                  colour: accent,
+                ),
+                Icon(
+                  quest.complete
+                      ? Icons.check_rounded
+                      : Icons.flag_rounded,
+                  color: accent,
+                  size: 24,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  quest.title.toUpperCase(),
+                  style: PrimarTheme.label(10, color: accent),
+                ),
+                const SizedBox(height: 4),
+                Text(quest.body, style: PrimarTheme.body(14.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

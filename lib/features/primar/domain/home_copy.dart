@@ -6,7 +6,91 @@
 library;
 
 import 'policy.dart';
+import 'progress.dart';
 import 'skill.dart';
+
+/// How many correct answers count as finishing today's quest.
+const int dailyQuestAnswerGoal = 5;
+
+/// Today's goal on the home path — streak framing without punishing misses.
+class DailyQuest {
+  const DailyQuest({
+    required this.title,
+    required this.body,
+    required this.progress,
+    required this.complete,
+    this.goal = dailyQuestAnswerGoal,
+  });
+
+  final String title;
+  final String body;
+
+  /// 0–1 toward [goal].
+  final double progress;
+  final bool complete;
+  final int goal;
+}
+
+DailyQuest dailyQuestFor({
+  required String locale,
+  required ProgressSummary summary,
+  Decision? decision,
+  int answerGoal = dailyQuestAnswerGoal,
+}) {
+  final fr = locale == 'fr';
+  final title = fr ? 'Quête du jour' : "Today's quest";
+
+  if (!summary.playedToday) {
+    return DailyQuest(
+      title: title,
+      body: fr ? 'Joue une fois aujourd\'hui.' : 'Play once today.',
+      progress: 0,
+      complete: false,
+      goal: 1,
+    );
+  }
+
+  if (summary.answeredToday >= answerGoal) {
+    return DailyQuest(
+      title: title,
+      body: fr ? 'Quête faite — bravo !' : 'Quest done — nice work!',
+      progress: 1,
+      complete: true,
+      goal: answerGoal,
+    );
+  }
+
+  final left = answerGoal - summary.answeredToday;
+  final reviewBonus = decision != null &&
+      !decision.exhausted &&
+      decision.reason == Reason.review;
+  final body = reviewBonus
+      ? (fr
+          ? 'Réponds à $left de plus — et revois une compétence.'
+          : 'Answer $left more — and review a skill.')
+      : (fr
+          ? 'Réponds à $left de plus aujourd\'hui.'
+          : 'Answer $left more today.');
+
+  return DailyQuest(
+    title: title,
+    body: body,
+    progress: summary.answeredToday / answerGoal,
+    complete: false,
+    goal: answerGoal,
+  );
+}
+
+/// Snackbar when a child taps a locked path node.
+String lockedPathMessage({
+  required String locale,
+  required String blockerLabel,
+}) {
+  final fr = locale == 'fr';
+  return fr
+      ? 'Finis « $blockerLabel » d\'abord.'
+      : 'Finish $blockerLabel first.';
+}
 
 /// Phrases that belong on onboarding or in-lesson intros — banned on home.
 const List<String> bannedHomePhraseFragments = [

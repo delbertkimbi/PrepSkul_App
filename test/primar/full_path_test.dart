@@ -309,15 +309,14 @@ void main() {
         reason: 'the session never reached the result screen in $guard steps');
 
     // ---- Stage 7 · back to the path --------------------------------------
-    expect(find.text('See how Ayuk is doing'), findsOneWidget,
-        reason: 'the result screen offers no way out of itself');
-    await tester.tap(find.text('See how Ayuk is doing'));
+    expect(find.text(s.backToPath), findsOneWidget,
+        reason: 'the result screen offers no way back to the path');
+    await tester.tap(find.text(s.backToPath));
     await tick(tester);
     await tick(tester);
 
     // The result now hands back to the child's own path — the place that shows
-    // what they cleared and what is next — rather than to a parent-facing
-    // summary that dead-ends.
+    // what they cleared and what is next — rather than dead-ending on a summary.
     expect(find.text(s.playAgain), findsNothing,
         reason: 'the result screen never gave way');
     expect(find.text('UP NEXT'), findsOneWidget,

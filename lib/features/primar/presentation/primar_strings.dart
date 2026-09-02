@@ -120,6 +120,7 @@ class S {
       _('$name comfortably $can.', '$name y arrive : $can.');
   String get nextStep => _('NEXT STEP', 'PROCHAINE ÉTAPE');
   String get playAgain => _('Play again', 'Rejouer');
+  String get backToPath => _('Back to path', 'Retour au parcours');
   String get statLevel => _('LEVEL', 'NIVEAU');
   String get statCorrect => _('GOT RIGHT', 'RÉUSSIS');
   String get statTime => _('THINKING TIME', 'TEMPS DE RÉFLEXION');

@@ -34,6 +34,8 @@ class ProfileScreen extends StatefulWidget {
     required this.voiceId,
     this.subject = Subject.reading,
     this.onSubjectChanged,
+    this.onPlay,
+    this.onViewProgress,
   });
 
   final String name;
@@ -45,6 +47,12 @@ class ProfileScreen extends StatefulWidget {
 
   /// Switch reading / math / other without re-onboarding.
   final ValueChanged<Subject>? onSubjectChanged;
+
+  /// Jump to Learn and start (optional skill from the engine decision).
+  final void Function([String? skillId])? onPlay;
+
+  /// Jump to Learn and open the full progress screen.
+  final VoidCallback? onViewProgress;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -225,6 +233,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
+        ],
+
+        if (widget.onPlay != null || widget.onViewProgress != null) ...[
+          const SizedBox(height: 18),
+          if (widget.onPlay != null)
+            PaperButton(
+              onPressed: () => widget.onPlay!(_decision?.skillId),
+              child: Text(
+                widget.locale == 'fr' ? 'Démarrer' : 'Start',
+                style: PrimarTheme.display(
+                  18,
+                  color: Colors.white,
+                  weight: FontWeight.w700,
+                ),
+              ),
+            ),
+          if (widget.onViewProgress != null) ...[
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: widget.onViewProgress,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  widget.locale == 'fr'
+                      ? 'Voir toute la progression'
+                      : 'See full progress',
+                  textAlign: TextAlign.center,
+                  style: PrimarTheme.body(14, color: PrimarTheme.blue),
+                ),
+              ),
+            ),
+          ],
         ],
 
         const SizedBox(height: 20),

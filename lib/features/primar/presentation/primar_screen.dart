@@ -61,6 +61,8 @@ class PrimarScreen extends StatefulWidget {
     this.activeSubject,
     this.seenDemo = false,
     this.onSeenDemo,
+    this.launchSkillId,
+    this.launchProgress = false,
   });
 
   /// Answers already collected by the shell.
@@ -78,6 +80,12 @@ class PrimarScreen extends StatefulWidget {
 
   /// Persist that the demo ran (shell / profile store).
   final VoidCallback? onSeenDemo;
+
+  /// One-shot launch from the profile tab or shell.
+  final String? launchSkillId;
+
+  /// Open the in-flow progress screen on first frame.
+  final bool launchProgress;
 
   @override
   State<PrimarScreen> createState() => _PrimarScreenState();
@@ -126,7 +134,25 @@ class _PrimarScreenState extends State<PrimarScreen> {
     // Returning child with evidence: skip handoff / demo / warm-up ceremony.
     if (answers != null) {
       unawaited(_bootstrapReturning());
+    } else {
+      _applyShellLaunchIfNeeded();
     }
+  }
+
+  void _applyShellLaunchIfNeeded() {
+    if (!widget.launchProgress && widget.launchSkillId == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.launchProgress) {
+        _go(_Stage.progress);
+        return;
+      }
+      final skill = widget.launchSkillId;
+      if (skill != null) {
+        _sessionSkillId = skill;
+        _startPlay(skill);
+      }
+    });
   }
 
   Future<void> _bootstrapReturning() async {
@@ -136,11 +162,14 @@ class _PrimarScreenState extends State<PrimarScreen> {
     if (log.isNotEmpty) {
       setState(() {
         _seenDemo = true;
-        _stage = _Stage.home;
+        if (!widget.launchProgress && widget.launchSkillId == null) {
+          _stage = _Stage.home;
+        }
       });
     } else if (widget.seenDemo) {
       setState(() => _seenDemo = true);
     }
+    _applyShellLaunchIfNeeded();
   }
 
   @override
@@ -347,11 +376,13 @@ class _PrimarScreenState extends State<PrimarScreen> {
                           // does not need a second warm-up — the session they just
                           // played is stronger evidence than three questions.
                           onAgain: () => _go(_Stage.session),
+                          onHome: () => _go(_Stage.home),
                           onProgress: () => _go(_Stage.progress),
                         ),
                         _Stage.progress => _Progress(
                           name: _name,
                           locale: _locale,
+                          subject: _subject,
                           onPlay: () => _go(_Stage.session),
                         ),
                       },
@@ -2462,6 +2493,7 @@ class _Result extends StatefulWidget {
     required this.placement,
     required this.misses,
     required this.onAgain,
+    required this.onHome,
     required this.onProgress,
   });
 
@@ -2471,6 +2503,7 @@ class _Result extends StatefulWidget {
   final Placement placement;
   final MisconceptionTracker? misses;
   final VoidCallback onAgain;
+  final VoidCallback onHome;
   final VoidCallback onProgress;
 
   @override
@@ -2719,13 +2752,26 @@ class _ResultState extends State<_Result> {
         const SizedBox(height: 22),
         PaperButton(
           expand: false,
-          onPressed: onAgain,
+          onPressed: widget.onHome,
           child: Text(
-            strings.playAgain,
+            strings.backToPath,
             style: PrimarTheme.display(
               17,
               color: Colors.white,
               weight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: onAgain,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Text(
+              strings.playAgain,
+              textAlign: TextAlign.center,
+              style: PrimarTheme.body(15, color: PrimarTheme.blue, weight: FontWeight.w700),
             ),
           ),
         ),
@@ -2862,11 +2908,13 @@ class _Progress extends StatefulWidget {
   const _Progress({
     required this.name,
     required this.locale,
+    required this.subject,
     required this.onPlay,
   });
 
   final String name;
   final String locale;
+  final Subject subject;
   final VoidCallback onPlay;
 
   @override
@@ -2889,7 +2937,7 @@ class _ProgressState extends State<_Progress> {
     final learner = learnerFrom(log, locale: widget.locale);
     setState(() {
       _learner = learner;
-      _summary = summariseProgress(log, learner);
+      _summary = summariseProgress(log, learner, subject: widget.subject);
     });
   }
 
@@ -2907,6 +2955,7 @@ class _ProgressState extends State<_Progress> {
       summary: summary,
       learner: learner,
       name: widget.name,
+      subject: widget.subject,
       onPlay: widget.onPlay,
     );
   }
