@@ -7,7 +7,7 @@ import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/models/upcoming_session_item.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
-import 'package:prepskul/features/booking/utils/session_live_utils.dart';
+import 'package:prepskul/features/booking/utils/upcoming_session_merge.dart';
 
 /// IndividualSessionService
 ///
@@ -41,6 +41,54 @@ class IndividualSessionService {
       return DateTime.parse('${dateStr}T$safeTime');
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Production `session_participants` uses `session_id`; newer dumps use
+  /// `individual_session_id`. Union both and never fail the whole upcoming list.
+  static Future<List<Map<String, dynamic>>> _fetchParticipantLinkedSessions(
+    String userId,
+    String selectClause,
+  ) async {
+    final ids = <String>{};
+    for (final column in const ['session_id', 'individual_session_id']) {
+      try {
+        final rows = await _supabase
+            .from('session_participants')
+            .select(column)
+            .eq('user_id', userId)
+            .not(column, 'is', null);
+        for (final row in (rows as List).cast<Map<String, dynamic>>()) {
+          final id = UpcomingSessionMerge.sessionIdFromParticipantRow(row);
+          if (id != null) ids.add(id);
+        }
+      } catch (e) {
+        if (UpcomingSessionMerge.isMissingParticipantColumnError(e)) {
+          if (!_legacyParticipantColumnWarningLogged) {
+            _legacyParticipantColumnWarningLogged = true;
+            LogService.warning(
+              'session_participants missing $column; trying the dual-column fallback.',
+            );
+          }
+        } else {
+          LogService.warning(
+            'session_participants lookup on $column failed: $e',
+          );
+        }
+      }
+    }
+    if (ids.isEmpty) return [];
+    try {
+      final sessions = await _supabase
+          .from('individual_sessions')
+          .select(selectClause)
+          .inFilter('id', ids.toList());
+      return (sessions as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      LogService.warning(
+        'participant-linked individual_sessions lookup failed: $e',
+      );
+      return [];
     }
   }
 
@@ -218,58 +266,10 @@ class IndividualSessionService {
       // Support both schema variants:
       // - new: session_participants.individual_session_id
       // - legacy: session_participants.session_id
-      List<Map<String, dynamic>> participantRows = [];
-      try {
-        final rows = await _supabase
-            .from('session_participants')
-            .select('''
-              individual_session_id,
-              individual_sessions(
-                *,
-                recurring_sessions(
-                  id,
-                  tutor_name,
-                  tutor_avatar_url,
-                  tutor_id,
-                  subject
-                )
-              )
-            ''')
-            .eq('user_id', userId)
-            .not('individual_session_id', 'is', null);
-        participantRows = (rows as List).cast<Map<String, dynamic>>();
-      } catch (e) {
-        final error = e.toString();
-        if (error.contains('42703') &&
-            error.contains('session_participants.individual_session_id')) {
-          if (!_legacyParticipantColumnWarningLogged) {
-            _legacyParticipantColumnWarningLogged = true;
-            LogService.warning(
-              'session_participants uses legacy session_id column; falling back for participant lookup.',
-            );
-          }
-          final rows = await _supabase
-              .from('session_participants')
-              .select('''
-                session_id,
-                individual_sessions(
-                  *,
-                  recurring_sessions(
-                    id,
-                    tutor_name,
-                    tutor_avatar_url,
-                    tutor_id,
-                    subject
-                  )
-                )
-              ''')
-              .eq('user_id', userId)
-              .not('session_id', 'is', null);
-          participantRows = (rows as List).cast<Map<String, dynamic>>();
-        } else {
-          rethrow;
-        }
-      }
+      final participantSessions = await _fetchParticipantLinkedSessions(
+        userId,
+        _studentUpcomingSelect,
+      );
 
       // Build set of group-class session IDs with paid enrollment.
       final paidGroupEnrollmentRows = await _supabase
@@ -295,10 +295,9 @@ class IndividualSessionService {
           sessionsById[id] = session;
         }
       }
-      for (final row in participantRows) {
-        final session = row['individual_sessions'] as Map<String, dynamic>?;
-        final id = session?['id'] as String?;
-        if (session != null && id != null && id.isNotEmpty) {
+      for (final session in participantSessions) {
+        final id = session['id'] as String?;
+        if (id != null && id.isNotEmpty) {
           sessionsById[id] = session;
         }
       }
@@ -361,15 +360,15 @@ class IndividualSessionService {
 
       // Final classification by full local date+time so same-day already-held
       // sessions do not remain in "Upcoming" due to date-only filtering.
-      final upcoming = paidSessions.where((session) {
-        final status = (session['status'] as String? ?? '').toLowerCase();
-        if (status == 'in_progress') {
-          return SessionLiveUtils.isSessionGenuinelyLive(session);
-        }
-        final start = _parseSessionStart(session);
-        if (start == null) return true; // fail-open if data is malformed
-        return !start.isBefore(now);
-      }).toList();
+      final upcoming = paidSessions
+          .where(
+            (session) => UpcomingSessionMerge.includeInUpcomingList(
+              session,
+              now: now,
+              parseStart: _parseSessionStart,
+            ),
+          )
+          .toList();
 
       upcoming.sort((a, b) {
         final aStart = _parseSessionStart(a);
@@ -480,58 +479,20 @@ class IndividualSessionService {
       // Support both schema variants:
       // - new: session_participants.individual_session_id
       // - legacy: session_participants.session_id
-      List<Map<String, dynamic>> participantRows = [];
-      try {
-        final rows = await _supabase
-            .from('session_participants')
-            .select('''
-              individual_session_id,
-              individual_sessions(
-                *,
-                recurring_sessions(
-                  id,
-                  tutor_name,
-                  tutor_avatar_url,
-                  tutor_id,
-                  subject
-                )
-              )
-            ''')
-            .eq('user_id', userId)
-            .not('individual_session_id', 'is', null);
-        participantRows = (rows as List).cast<Map<String, dynamic>>();
-      } catch (e) {
-        final error = e.toString();
-        if (error.contains('42703') &&
-            error.contains('session_participants.individual_session_id')) {
-          if (!_legacyParticipantColumnWarningLogged) {
-            _legacyParticipantColumnWarningLogged = true;
-            LogService.warning(
-              'session_participants uses legacy session_id column; falling back for participant lookup.',
-            );
-          }
-          final rows = await _supabase
-              .from('session_participants')
-              .select('''
-                session_id,
-                individual_sessions(
-                  *,
-                  recurring_sessions(
-                    id,
-                    tutor_name,
-                    tutor_avatar_url,
-                    tutor_id,
-                    subject
-                  )
-                )
-              ''')
-              .eq('user_id', userId)
-              .not('session_id', 'is', null);
-          participantRows = (rows as List).cast<Map<String, dynamic>>();
-        } else {
-          rethrow;
-        }
-      }
+      const pastParticipantSelect = '''
+            *,
+            recurring_sessions(
+              id,
+              tutor_name,
+              tutor_avatar_url,
+              tutor_id,
+              subject
+            )
+          ''';
+      final participantSessions = await _fetchParticipantLinkedSessions(
+        userId,
+        pastParticipantSelect,
+      );
 
       // Build set of group-class session IDs with paid enrollment.
       final paidGroupEnrollmentRows = await _supabase
@@ -557,10 +518,9 @@ class IndividualSessionService {
           sessionsById[id] = session;
         }
       }
-      for (final row in participantRows) {
-        final session = row['individual_sessions'] as Map<String, dynamic>?;
-        final id = session?['id'] as String?;
-        if (session != null && id != null && id.isNotEmpty) {
+      for (final session in participantSessions) {
+        final id = session['id'] as String?;
+        if (id != null && id.isNotEmpty) {
           sessionsById[id] = session;
         }
       }

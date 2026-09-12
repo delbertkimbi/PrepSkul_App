@@ -9,8 +9,10 @@ void main() {
       final content = await file.readAsString();
 
       expect(content.contains("from('session_participants')"), isTrue);
-      expect(content.contains("individual_sessions("), isTrue);
       expect(content.contains("eq('user_id', userId)"), isTrue);
+      expect(content.contains('session_id'), isTrue);
+      expect(content.contains('individual_session_id'), isTrue);
+      expect(content.contains('_fetchParticipantLinkedSessions'), isTrue);
     });
 
     test('individual session service includes paid group class enrollment sessions', () async {
