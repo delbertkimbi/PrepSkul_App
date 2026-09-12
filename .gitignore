@@ -62,3 +62,11 @@ ENV_SETUP_INSTRUCTIONS.md
 *_TESTING_GUIDE.md
 *_SETUP_INSTRUCTIONS.md
 
+# Diligence: do not track duplicate backend dumps or key inventories
+PREPSKUL_WEB_BACKEND_FILES/
+docs/ADMIN_SUPABASE_CONNECTED.md
+docs/API_KEYS_STATUS.md
+docs/FAPSHI_PRODUCTION_KEYS.md
+FIX_PAYMENT_CREDENTIALS.md
+tmp/
+
