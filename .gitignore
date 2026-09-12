@@ -70,3 +70,23 @@ docs/FAPSHI_PRODUCTION_KEYS.md
 FIX_PAYMENT_CREDENTIALS.md
 tmp/
 
+# Accidental nested package / build dumps (caused double-path test failures)
+/prepskul_app/
+
+# Historical SQL/MD dump folder (not the product tree)
+All\ mds/
+All mds/
+
+# Local notes, chat exports, screenshots, logs
+cursor_*.md
+FIXES_APPLIED.md
+Screenshot*.png
+flutter_*.log
+flutter_*.png
+firepit-log.txt
+*.tmp
+~
+~/
+coverage/
+.firebase/
+

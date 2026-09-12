@@ -65,13 +65,15 @@ class AppConfig {
   /// Must stay `true` while Supabase requires email confirmation on sign-up.
   static const bool enableEmailVerification = true;
   
-  /// Enable/disable SkulMate feature (game generation and library).
+  /// Enable/disable SkulMate (revision games / decks) — marketplace feature.
   ///
+  /// Not the same as Primar (kids foundational). See docs/STRUCTURE.md.
   /// v1 launch: keep `true` only if SkulMate is in UAT scope; otherwise set `false`.
   /// See docs/LAUNCH_SCOPE.md §4 (SkulMate in/out).
   static const bool enableSkulMate = true;
 
-  /// Kids Primar / SkulMate shell. Off on marketplace main; use the `primar` branch.
+  /// Kids Primar experiment (`lib/features/primar/`). Off on marketplace `main`.
+  /// Use git branch `primar` to work on it. Not controlled by [enableSkulMate].
   static const bool enablePrimar = false;
 
   /// Enable/disable PrepSkul VA (session summary, analysis, notifications)
