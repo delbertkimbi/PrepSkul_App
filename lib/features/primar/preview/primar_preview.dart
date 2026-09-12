@@ -26,6 +26,7 @@ import '../presentation/profile_screen.dart';
 import '../presentation/skulmate_shell.dart';
 import '../presentation/splash.dart';
 import '../presentation/primar_theme.dart';
+import '../../../core/config/app_config.dart';
 
 /// Standalone harness so the experiment can be run and looked at without
 /// booting the whole app or touching its router.
@@ -48,7 +49,13 @@ class _PrimarPreviewApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'SkulMate',
-        home: switch (_view) {
+        home: !AppConfig.enablePrimar
+            ? const Scaffold(
+                body: Center(
+                  child: Text('Primar is parked on the primar branch.'),
+                ),
+              )
+            : switch (_view) {
           'moods' => const _MoodGallery(),
           'art' => const _ArtGallery(),
           'order' => const _OrderPreview(),

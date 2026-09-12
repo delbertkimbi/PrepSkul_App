@@ -71,6 +71,9 @@ class AppConfig {
   /// See docs/LAUNCH_SCOPE.md §4 (SkulMate in/out).
   static const bool enableSkulMate = true;
 
+  /// Kids Primar / SkulMate shell. Off on marketplace main; use the `primar` branch.
+  static const bool enablePrimar = false;
+
   /// Enable/disable PrepSkul VA (session summary, analysis, notifications)
   ///
   /// Backend VA uses PREPSKUL_VA_ENABLED env (default true; set to 'false' to disable).
