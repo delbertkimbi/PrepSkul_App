@@ -24,6 +24,7 @@ import '../../../features/sessions/screens/onsite_session_wrap_up_screen.dart';
 import '../../../features/sessions/screens/onsite_presence_wizard_screen.dart';
 import '../../../features/sessions/services/session_safety_service.dart';
 import '../../../features/sessions/services/live_session_overlay_controller.dart';
+import '../../../features/tutor/utils/tutor_online_join.dart';
 import '../../../core/utils/responsive_helper.dart';
 import '../../../features/booking/widgets/report_issue_bottom_sheet.dart';
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
@@ -1198,7 +1199,6 @@ class _TutorSessionDetailFullScreenState
   Widget _buildActionButtons() {
     final status = _getStatus();
     final location = _getLocation();
-    final meetLink = _getMeetLink();
     final sessionId = _getSessionId();
     final isIndividual = _isIndividualSession();
     final isOnline = location == 'online';
@@ -1218,8 +1218,12 @@ class _TutorSessionDetailFullScreenState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Join only at session time (match learner UX): countdown when scheduled, enabled when in_progress or time reached
-          if (isOnline && (status == 'scheduled' || (status == 'in_progress' && meetLink != null && meetLink.isNotEmpty))) ...[
+          // Online Agora join — do not require a Google Meet link (classroom is in-app).
+          if (TutorOnlineJoin.shouldShowJoinAction(
+            location: location,
+            status: status,
+            meetLink: _getMeetLink(),
+          )) ...[
             Builder(
               builder: (context) {
                 final start = _getScheduledDateTime();

@@ -7,6 +7,8 @@ import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/booking/screens/session_detail_screen.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
+import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
+import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
 import 'package:prepskul/features/sessions/services/live_session_overlay_controller.dart';
 import 'package:prepskul/features/tutor/screens/tutor_session_detail_full_screen.dart';
 
@@ -95,6 +97,35 @@ class _LiveSessionFloatingBarOverlayState
     if (nav == null) return;
 
     final sessionId = session['id']?.toString() ?? '';
+    final location = (session['location'] as String? ?? 'online').toLowerCase();
+    if (role == 'tutor' && location == 'online' && sessionId.isNotEmpty) {
+      nav
+          .push<Map<String, dynamic>>(
+        MaterialPageRoute(
+          settings: RouteSettings(name: '/live-session-prejoin-$sessionId'),
+          builder: (_) => AgoraPreJoinScreen(
+            sessionId: sessionId,
+            userRole: 'tutor',
+          ),
+        ),
+      )
+          .then((preJoinResult) {
+        if (preJoinResult != null && preJoinResult['join'] == true) {
+          nav.push(
+            MaterialPageRoute(
+              settings: RouteSettings(name: '/live-session-$sessionId'),
+              builder: (_) => AgoraVideoSessionScreen(
+                sessionId: sessionId,
+                userRole: 'tutor',
+                initialCameraEnabled: preJoinResult['camera'] as bool? ?? false,
+                initialMicEnabled: preJoinResult['mic'] as bool? ?? false,
+              ),
+            ),
+          );
+        }
+      });
+      return;
+    }
     if (role == 'tutor') {
       nav.push(
         MaterialPageRoute(
