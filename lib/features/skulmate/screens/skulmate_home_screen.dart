@@ -4,30 +4,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/features/discovery/screens/find_tutors_screen.dart';
 
 import '../l10n/skulmate_copy.dart';
 import '../models/skulmate_intake_models.dart';
-import '../models/deck_library_entry.dart';
-import '../models/game_model.dart';
-import '../services/deck_library_service.dart';
-import '../services/game_sound_service.dart';
-import '../services/skulmate_intake_coordinator.dart';
-import '../services/skulmate_service.dart';
-import '../services/skulmate_streak_reminder_service.dart';
+import '../models/tutor_session_models.dart';
 import '../services/skulmate_home_refresh_bus.dart';
-import '../services/skulmate_pricing_service.dart';
-import '../widgets/skulmate_hero_mascot.dart';
-import '../widgets/skulmate_home_decks_row.dart';
-import '../widgets/skulmate_home_games_row.dart';
+import '../services/skulmate_streak_reminder_service.dart';
+import '../services/skulmate_session_cache.dart';
+import '../services/skulmate_tutor_intake_bus.dart';
+import '../services/skulmate_tutor_session_service.dart';
+import '../services/skulmate_tutor_voice_service.dart';
 import '../widgets/skulmate_home_top_bar.dart';
-import '../widgets/skulmate_import_action_grid.dart';
-import '../widgets/skulmate_next_stop_card.dart';
-import '../widgets/skulmate_reroute_nudge.dart';
-import '../widgets/skulmate_study_intent_card.dart';
+import '../widgets/skulmate_in_thread_surface.dart';
 import '../widgets/skulmate_surface_styles.dart';
+import '../widgets/skulmate_tutor_composer.dart';
 import '../widgets/skulmate_typography.dart';
+import '../widgets/skulmate_voice_pill.dart';
+import '../widgets/tutor_chat_bubble.dart';
 
-/// SkulMate tab landing — Gizmo structure, PrepSkul identity (single scroll).
+/// SkulMate tab — voice + chat tutor. Learners and parents are both students.
 class SkulMateHomeScreen extends StatefulWidget {
   final String? childId;
 
@@ -39,36 +35,47 @@ class SkulMateHomeScreen extends StatefulWidget {
 
 class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     with WidgetsBindingObserver {
-  final _topicController = TextEditingController();
-  List<GameModel> _games = [];
-  List<DeckLibraryEntry> _decks = [];
-  bool _loadingGames = true;
-  bool _loadingDecks = true;
+  final _composer = TextEditingController();
+  final _scroll = ScrollController();
+  final _voice = SkulMateTutorVoiceService.instance;
+  final List<TutorTurn> _turns = [];
+
+  String? _sessionId;
+  bool _busy = false;
+  bool _attachOpen = false;
+  bool _recording = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    SkulMateHomeRefreshBus.tick.addListener(_onLibraryRefresh);
+    SkulMateHomeRefreshBus.tick.addListener(_onRefresh);
+    SkulMateTutorIntakeBus.pending.addListener(_onIntake);
     _applyStatusBarStyle();
-    unawaited(GameSoundService().stopMusic(force: true));
-    unawaited(SkulmatePricingService.resolveMaxImagesPerPrompt());
-    _loadGames();
-    _loadDecks();
+    unawaited(_voice.prepare());
+    unawaited(_bootstrap());
     SkulMateStreakReminderService.recordActivityAndReschedule();
   }
 
   @override
   void dispose() {
-    SkulMateHomeRefreshBus.tick.removeListener(_onLibraryRefresh);
+    SkulMateHomeRefreshBus.tick.removeListener(_onRefresh);
+    SkulMateTutorIntakeBus.pending.removeListener(_onIntake);
     WidgetsBinding.instance.removeObserver(this);
-    _topicController.dispose();
+    _composer.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  void _onLibraryRefresh() {
+  void _onRefresh() {
     if (!mounted) return;
-    unawaited(_refreshHome());
+  }
+
+  void _onIntake() {
+    final payload = SkulMateTutorIntakeBus.take();
+    if (payload == null) return;
+    unawaited(_ingest(payload));
   }
 
   @override
@@ -84,71 +91,177 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     );
   }
 
-  Future<void> _loadDecks() async {
+  Future<void> _bootstrap() async {
     try {
-      final decks = await DeckLibraryService.listDecks(
+      final opened = await SkulMateTutorSessionService.openSession(
         childId: widget.childId,
-        games: _games.isNotEmpty ? _games : null,
       );
-      if (mounted) {
-        safeSetState(() {
-          _decks = decks;
-          _loadingDecks = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) safeSetState(() => _loadingDecks = false);
+      final session = opened['session'] as Map<String, dynamic>?;
+      final id = session?['id'] as String?;
+      if (id == null) return;
+      final cached = await SkulMateSessionCache.loadTurns(id);
+      final remoteTurns = opened['turns'] as List<dynamic>? ?? [];
+      if (!mounted) return;
+      safeSetState(() {
+        _sessionId = id;
+        _turns
+          ..clear()
+          ..addAll(cached);
+        if (_turns.isEmpty) {
+          for (final row in remoteTurns) {
+            if (row is! Map) continue;
+            final map = Map<String, dynamic>.from(row);
+            final role = map['role'] as String? ?? '';
+            final text = map['text'] as String? ?? '';
+            if (text.isEmpty) continue;
+            _turns.add(
+              TutorTurn(
+                id: map['id'] as String?,
+                isUser: role == 'user',
+                text: text,
+                surface: map['tool_payload'] is Map
+                    ? PracticeSurface.fromJson(
+                        Map<String, dynamic>.from(map['tool_payload'] as Map),
+                      )
+                    : null,
+              ),
+            );
+          }
+        }
+      });
+      await SkulMateSessionCache.saveTurns(sessionId: id, turns: _turns);
+    } catch (e) {
+      if (mounted) safeSetState(() => _error = e.toString());
     }
   }
 
-  Future<void> _refreshHome() async {
-    await _loadGames();
-    await _loadDecks();
-  }
+  Future<void> _sendText(String raw) async {
+    final text = raw.trim();
+    if (text.isEmpty || _busy) return;
+    final sessionId = _sessionId;
+    if (sessionId == null) await _bootstrap();
+    final id = _sessionId;
+    if (id == null) return;
 
-  Future<void> _loadGames() async {
+    _composer.clear();
+    final userTurn = TutorTurn(isUser: true, text: text);
+    safeSetState(() {
+      _turns.add(userTurn);
+      _busy = true;
+      _error = null;
+      _attachOpen = false;
+    });
+    await SkulMateSessionCache.appendTurn(sessionId: id, turn: userTurn);
+    _voice.setThinking();
+    _scrollSoon();
+
     try {
-      final cached =
-          await SkulMateService.getCachedGames(childId: widget.childId);
-      if (mounted && cached.isNotEmpty) {
-        safeSetState(() {
-          _games = cached;
-          _loadingGames = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) safeSetState(() => _loadingGames = false);
-    }
-
-    try {
-      final games = await SkulMateService.getGames(childId: widget.childId);
-      if (mounted) {
-        safeSetState(() {
-          _games = games;
-          _loadingGames = false;
-        });
-        unawaited(_loadDecks());
-      }
-    } catch (_) {
-      if (mounted) {
-        safeSetState(() => _loadingGames = false);
-      }
-    }
-  }
-
-  Future<void> _submitTopic() async {
-    final trimmed = _topicController.text.trim();
-    if (trimmed.isEmpty) return;
-    await SkulMateIntakeCoordinator.start(
-      context,
-      SkulMateIntakePayload(
-        source: SkulMateIntakeSource.typedTopic,
-        topicHint: trimmed,
+      final result = await SkulMateTutorSessionService.sendTurn(
+        sessionId: id,
+        message: text,
         childId: widget.childId,
-      ),
-    );
-    _topicController.clear();
-    await _refreshHome();
+      );
+      final assistant = TutorTurn(
+        id: result.turnId,
+        isUser: false,
+        text: result.message,
+        surface: result.surface,
+        speak: result.speak,
+        escalate: result.escalate,
+        move: result.move,
+      );
+      if (!mounted) return;
+      safeSetState(() {
+        _turns.add(assistant);
+        _busy = false;
+      });
+      _scrollSoon();
+      if (result.speak) {
+        unawaited(_voice.speakTutor(result.message));
+      } else {
+        await _voice.interrupt();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      safeSetState(() {
+        _busy = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+      await _voice.interrupt();
+    }
+  }
+
+  Future<void> _ingest(SkulMateIntakePayload payload) async {
+    final sessionId = _sessionId;
+    if (sessionId == null) await _bootstrap();
+    final id = _sessionId;
+    if (id == null) return;
+    safeSetState(() => _busy = true);
+    _voice.setThinking();
+    try {
+      final result = await SkulMateTutorSessionService.ingestPayload(
+        sessionId: id,
+        payload: payload,
+      );
+      if (!mounted) return;
+      if (result != null) {
+        safeSetState(() {
+          _turns.add(
+            TutorTurn(
+              isUser: true,
+              text: payload.title ?? payload.topicHint ?? payload.text ?? 'Notes',
+            ),
+          );
+          _turns.add(
+            TutorTurn(
+              id: result.turnId,
+              isUser: false,
+              text: result.message,
+              surface: result.surface,
+              speak: result.speak,
+              escalate: result.escalate,
+              move: result.move,
+            ),
+          );
+          _busy = false;
+          _attachOpen = false;
+        });
+        if (result.speak) unawaited(_voice.speakTutor(result.message));
+      } else {
+        safeSetState(() => _busy = false);
+      }
+      _scrollSoon();
+    } catch (e) {
+      if (!mounted) return;
+      safeSetState(() {
+        _busy = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _holdStart() async {
+    final ok = await _voice.startListening();
+    if (mounted) safeSetState(() => _recording = ok);
+  }
+
+  Future<void> _holdEnd() async {
+    final heard = await _voice.stopListening();
+    if (mounted) safeSetState(() => _recording = false);
+    if (heard != null && heard.isNotEmpty) {
+      await _sendText(heard);
+    }
+  }
+
+  void _scrollSoon() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent + 80,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
@@ -159,97 +272,97 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
       value: SkulMateSurfaceStyles.lightStatusBarOverlay,
       child: Scaffold(
         backgroundColor: AppTheme.softBackground,
-        body: ColoredBox(
-          color: AppTheme.softBackground,
-          child: SafeArea(
-            bottom: false,
-            child: RefreshIndicator(
-              onRefresh: _refreshHome,
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: SkulMateHomeTopBar(childId: widget.childId),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                      child: Column(
-                        children: [
-                          const SkulMateHeroMascot(),
-                          const SizedBox(height: 8),
-                          Text(
-                            copy.heroQuestion,
-                            textAlign: TextAlign.center,
-                            style: SkulMateTypography.heroTitle(),
-                          ),
-                          const SizedBox(height: 18),
-                          SkulMateStudyIntentCard(
-                            controller: _topicController,
-                            onSubmit: _submitTopic,
-                            childId: widget.childId,
-                          ),
-                          const SizedBox(height: 10),
-                          SkulMateImportActionGrid(childId: widget.childId),
-                        ],
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              SkulMateHomeTopBar(childId: widget.childId),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        copy.heroQuestion,
+                        style: SkulMateTypography.heroTitle(),
                       ),
                     ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        20,
-                        SkulMateSurfaceStyles.sectionGap,
-                        20,
-                        0,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SkulMateNextStopCard(
-                            games: _games,
-                            childId: widget.childId,
-                          ),
-                          SkulMateRerouteNudge(
-                            games: _games,
-                            childId: widget.childId,
-                          ),
-                        ],
-                      ),
+                    ValueListenableBuilder<TutorVoiceState>(
+                      valueListenable: _voice.state,
+                      builder: (_, state, __) =>
+                          SkulMateVoicePill(state: state),
                     ),
-                  ),
-                  if (!_loadingGames && _games.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          20,
-                          SkulMateSurfaceStyles.sectionGap,
-                          20,
-                          SkulMateSurfaceStyles.homeSectionSpacing,
-                        ),
-                        child: SkulMateHomeGamesRow(
-                          games: _games,
-                          loading: _loadingGames,
-                          childId: widget.childId,
-                          onAfterGameOpen: _refreshHome,
-                        ),
-                      ),
-                    ),
-                  if (!_loadingDecks && _decks.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                        child: SkulMateHomeDecksRow(
-                          decks: _decks,
-                          loading: _loadingDecks,
-                          childId: widget.childId,
-                          onAfterDeckOpen: _refreshHome,
-                        ),
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              Expanded(
+                child: ListView(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  children: [
+                    if (_turns.isEmpty)
+                      TutorChatBubble.text(
+                        isUser: false,
+                        text: copy.tutorEmptyPrompt,
+                      ),
+                    for (final turn in _turns) ...[
+                      TutorChatBubble.text(
+                        isUser: turn.isUser,
+                        text: turn.text,
+                      ),
+                      if (turn.surface != null)
+                        SkulMateInThreadSurface(
+                          surface: turn.surface!,
+                          onOutcome: (correct) async {
+                            if (_sessionId == null) return;
+                            await SkulMateTutorSessionService.recordOutcome(
+                              sessionId: _sessionId!,
+                              correct: correct,
+                              childId: widget.childId,
+                              turnId: turn.id,
+                              conceptId: turn.surface?.conceptId,
+                              surfaceType: turn.surface?.gameType,
+                            );
+                          },
+                        ),
+                      if (turn.escalate)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const FindTutorsScreen(),
+                                ),
+                              );
+                            },
+                            child: Text(copy.tutorEscalateLive),
+                          ),
+                        ),
+                    ],
+                    if (_busy)
+                      TutorChatBubble.text(
+                        isUser: false,
+                        text: copy.tutorThinking,
+                      ),
+                    if (_error != null)
+                      TutorChatBubble.text(isUser: false, text: _error!),
+                  ],
+                ),
+              ),
+              SkulMateTutorComposer(
+                controller: _composer,
+                onSend: () => _sendText(_composer.text),
+                onHoldStart: () => unawaited(_holdStart()),
+                onHoldEnd: () => unawaited(_holdEnd()),
+                busy: _busy,
+                recording: _recording,
+                childId: widget.childId,
+                attachOpen: _attachOpen,
+                onToggleAttach: () =>
+                    safeSetState(() => _attachOpen = !_attachOpen),
+              ),
+            ],
           ),
         ),
       ),

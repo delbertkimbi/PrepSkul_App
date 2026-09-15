@@ -27,6 +27,25 @@ class SkulMateCopy {
       ? 'Qu\'est-ce qu\'on révise aujourd\'hui ?'
       : 'What shall we revise today?';
 
+  String get tutorComposerHint => isFrench
+      ? 'Parle ou envoie tes notes…'
+      : 'Talk or drop your notes…';
+
+  String get tutorEmptyPrompt => isFrench
+      ? 'Je suis ton tuteur SkulMate. Envoie un cours, une photo, une vidéo ou dis-moi ce que tu révises — on commence tout de suite.'
+      : 'I am your SkulMate tutor. Send a lesson, a photo, a video, or tell me what you are revising — we start in this thread.';
+
+  String get tutorThinking =>
+      isFrench ? 'Je prépare la suite…' : 'Working on the next move…';
+
+  String get tutorListenHint => isFrench
+      ? 'Maintiens le micro pour parler'
+      : 'Hold the mic to talk';
+
+  String get tutorEscalateLive => isFrench
+      ? 'On peut appeler un tuteur PrepSkul pour ça.'
+      : 'We can bring in a live PrepSkul tutor for this.';
+
   String get intentPlaceholder =>
       isFrench ? 'Je veux réviser…' : 'I want to revise…';
 
@@ -729,25 +748,15 @@ class SkulMateCopy {
       isFrench ? 'Bienvenue sur SkulMate' : 'Welcome to SkulMate';
 
   String welcomeHeadline({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'Aidez votre enfant à transformer ses notes en jeux de révision'
-          : 'Help your child turn notes into revision games';
-    }
     return isFrench
-        ? 'Transforme tes notes en jeux de révision'
-        : 'Turn your notes into revision games';
+        ? 'Un tuteur qui apprend avec toi, dans le fil'
+        : 'A tutor that learns with you, in the thread';
   }
 
   String welcomeBenefitNotes({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'Importez ses notes, documents ou photos pour générer quiz et cartes.'
-          : 'Import their notes, documents, or photos to generate quizzes and flashcards.';
-    }
     return isFrench
-        ? 'Importe tes notes, documents ou photos pour générer des quiz et cartes.'
-        : 'Import notes, documents, or photos to generate quizzes and flashcards.';
+        ? 'Envoie tes notes, photos ou cours. Le tuteur enseigne et te teste dans la conversation.'
+        : 'Send notes, photos, or a class. The tutor teaches and checks you in the conversation.';
   }
 
   String welcomeBenefitResume({bool isParent = false}) {
@@ -773,14 +782,9 @@ class SkulMateCopy {
   }
 
   String welcomeAiLine({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'L\'IA crée des quiz, cartes et jeux d\'association à partir de leur contenu.'
-          : 'AI builds quizzes, flashcards, and matching games from their content.';
-    }
     return isFrench
-        ? 'L\'IA crée des quiz, cartes et jeux d\'association à partir de ton contenu.'
-        : 'AI builds quizzes, flashcards, and matching games from your content.';
+        ? 'Chaque réponse change la suite. Tu es l\'élève — que tu sois inscrit comme learner ou parent.'
+        : 'Every check changes the next move. You are the student — whether you signed up as a learner or a parent.';
   }
 
   String get welcomeCta =>
