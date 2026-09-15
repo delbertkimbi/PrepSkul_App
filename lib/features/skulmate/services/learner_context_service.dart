@@ -24,7 +24,9 @@ class LearnerContextService {
         'accountRole': accountRole,
       };
 
-      final survey = await SurveyRepository.getParentSurvey(user.id);
+      final survey = accountRole == 'parent'
+          ? await SurveyRepository.getParentSurvey(user.id)
+          : await SurveyRepository.getStudentSurvey(user.id);
       if (survey != null) {
         const keys = [
           'student_grade',
@@ -51,6 +53,7 @@ class LearnerContextService {
       }
 
       if (childId != null && childId.isNotEmpty) {
+        // Optional linked-profile notes only. The signed-in parent is still the student.
         context['childId'] = childId;
         final userId = user.id;
         try {

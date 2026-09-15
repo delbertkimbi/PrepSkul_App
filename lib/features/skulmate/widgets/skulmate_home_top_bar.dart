@@ -14,8 +14,17 @@ import 'skulmate_surface_styles.dart';
 /// Gizmo-style top pills: History (left) · More menu (right).
 class SkulMateHomeTopBar extends StatelessWidget {
   final String? childId;
+  final String? activeSessionId;
+  final ValueChanged<String>? onSelectSession;
+  final VoidCallback? onNewSession;
 
-  const SkulMateHomeTopBar({super.key, this.childId});
+  const SkulMateHomeTopBar({
+    super.key,
+    this.childId,
+    this.activeSessionId,
+    this.onSelectSession,
+    this.onNewSession,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +37,13 @@ class SkulMateHomeTopBar extends StatelessWidget {
           _PillButton(
             icon: Icons.history_rounded,
             label: copy.history,
-            onTap: () => SkulMateHistorySheet.show(context, childId: childId),
+            onTap: () => SkulMateHistorySheet.show(
+              context,
+              childId: childId,
+              activeSessionId: activeSessionId,
+              onSelectSession: onSelectSession,
+              onNewSession: onNewSession,
+            ),
           ),
           const Spacer(),
           PopupMenuButton<String>(

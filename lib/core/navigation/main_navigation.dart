@@ -74,10 +74,7 @@ class _MainNavigationState extends State<MainNavigation>
           );
       if (!mounted || !showWelcome) return;
 
-      await SkulMateWelcomeSheet.show(
-        context,
-        isParent: widget.userRole == 'parent',
-      );
+      await SkulMateWelcomeSheet.show(context);
     } finally {
       _skulMateWelcomeCheckInFlight = false;
     }

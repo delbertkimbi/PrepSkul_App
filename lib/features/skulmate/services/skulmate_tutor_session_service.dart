@@ -31,7 +31,10 @@ class SkulMateTutorSessionService {
         if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
       };
 
-  static Future<Map<String, dynamic>> openSession({String? childId}) async {
+  static Future<Map<String, dynamic>> openSession({
+    String? childId,
+    bool forceNew = false,
+  }) async {
     final token = await _token();
     final userId = await _userId();
     final response = await SkulMateService.postJson(
@@ -40,6 +43,7 @@ class SkulMateTutorSessionService {
       body: {
         if (userId != null) 'userId': userId,
         if (childId != null) 'childId': childId,
+        if (forceNew) 'forceNew': true,
       },
     );
     final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -49,13 +53,32 @@ class SkulMateTutorSessionService {
     return json;
   }
 
+  static Future<Map<String, dynamic>> loadSession(String sessionId) async {
+    final token = await _token();
+    final userId = await _userId();
+    final uri = Uri.parse('$_base/skulmate/session').replace(
+      queryParameters: {
+        'sessionId': sessionId,
+        if (userId != null) 'userId': userId,
+      },
+    );
+    final response = await http.get(uri, headers: _headers(token));
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(json['error'] ?? 'Could not load tutor session');
+    }
+    return json;
+  }
+
   static Future<List<TutorSessionSummary>> listSessions({
     String? childId,
   }) async {
     final token = await _token();
+    final userId = await _userId();
     final uri = Uri.parse('$_base/skulmate/session').replace(
       queryParameters: {
         if (childId != null) 'childId': childId,
+        if (userId != null) 'userId': userId,
       },
     );
     final response = await http.get(uri, headers: _headers(token));

@@ -2,11 +2,15 @@ class TutorSessionSummary {
   final String id;
   final String? title;
   final DateTime lastTurnAt;
+  final String? preview;
+  final String? accountRole;
 
   TutorSessionSummary({
     required this.id,
     this.title,
     required this.lastTurnAt,
+    this.preview,
+    this.accountRole,
   });
 
   factory TutorSessionSummary.fromJson(Map<String, dynamic> json) {
@@ -18,6 +22,9 @@ class TutorSessionSummary {
             json['last_turn_at'] as String? ??
             DateTime.now().toIso8601String(),
       ),
+      preview: json['preview'] as String?,
+      accountRole: json['accountRole'] as String? ??
+          json['account_role'] as String?,
     );
   }
 }

@@ -3,22 +3,40 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
-import '../models/game_model.dart';
-import '../services/skulmate_service.dart';
-import '../utils/game_type_visuals.dart';
-import '../utils/skulmate_game_router.dart';
+import '../models/tutor_session_models.dart';
+import '../services/skulmate_tutor_session_service.dart';
 import 'skulmate_sheet_scaffold.dart';
 
-/// Game history bottom sheet with search.
+/// Tutor-thread history. Learners and parents both open their own sessions.
 class SkulMateHistorySheet extends StatefulWidget {
   final String? childId;
+  final String? activeSessionId;
+  final ValueChanged<String>? onSelectSession;
+  final VoidCallback? onNewSession;
 
-  const SkulMateHistorySheet({super.key, this.childId});
+  const SkulMateHistorySheet({
+    super.key,
+    this.childId,
+    this.activeSessionId,
+    this.onSelectSession,
+    this.onNewSession,
+  });
 
-  static Future<void> show(BuildContext context, {String? childId}) {
+  static Future<void> show(
+    BuildContext context, {
+    String? childId,
+    String? activeSessionId,
+    ValueChanged<String>? onSelectSession,
+    VoidCallback? onNewSession,
+  }) {
     return SkulMateSheetScaffold.show<void>(
       context,
-      child: SkulMateHistorySheet(childId: childId),
+      child: SkulMateHistorySheet(
+        childId: childId,
+        activeSessionId: activeSessionId,
+        onSelectSession: onSelectSession,
+        onNewSession: onNewSession,
+      ),
     );
   }
 
@@ -28,7 +46,7 @@ class SkulMateHistorySheet extends StatefulWidget {
 
 class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
   final _searchController = TextEditingController();
-  List<GameModel> _games = [];
+  List<TutorSessionSummary> _sessions = [];
   bool _loading = true;
 
   @override
@@ -44,19 +62,13 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
   }
 
   Future<void> _load() async {
-    final cached =
-        await SkulMateService.getCachedGames(childId: widget.childId);
-    if (mounted && cached.isNotEmpty) {
-      setState(() {
-        _games = cached;
-        _loading = false;
-      });
-    }
     try {
-      final games = await SkulMateService.getGames(childId: widget.childId);
+      final sessions = await SkulMateTutorSessionService.listSessions(
+        childId: widget.childId,
+      );
       if (mounted) {
         setState(() {
-          _games = games;
+          _sessions = sessions;
           _loading = false;
         });
       }
@@ -65,14 +77,20 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
     }
   }
 
-  List<GameModel> get _filtered {
+  List<TutorSessionSummary> get _filtered {
     final q = _searchController.text.trim().toLowerCase();
-    if (q.isEmpty) return _games;
-    return _games.where((g) => g.title.toLowerCase().contains(q)).toList();
+    if (q.isEmpty) return _sessions;
+    return _sessions.where((s) {
+      final title = (s.title ?? '').toLowerCase();
+      final preview = (s.preview ?? '').toLowerCase();
+      return title.contains(q) || preview.contains(q);
+    }).toList();
   }
 
-  String _subtitle(GameModel game) {
-    return '${GameTypeVisuals.labelFor(game.gameType)} · ${game.items.length} items';
+  String _subtitle(TutorSessionSummary session) {
+    final preview = session.preview?.trim();
+    if (preview != null && preview.isNotEmpty) return preview;
+    return session.lastTurnAt.toLocal().toString().split('.').first;
   }
 
   @override
@@ -120,6 +138,17 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
             ),
           ),
           const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onNewSession?.call();
+              },
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(copy.newThread),
+            ),
+          ),
           SizedBox(
             height: listHeight,
             child: _loading && items.isEmpty
@@ -140,16 +169,14 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
                         itemCount: items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 4),
                         itemBuilder: (context, index) {
-                          final game = items[index];
-                          final accent =
-                              GameTypeVisuals.accentColorFor(game.gameType);
+                          final session = items[index];
+                          final active = session.id == widget.activeSessionId;
                           return Material(
                             color: Colors.transparent,
                             child: InkWell(
                               onTap: () {
                                 Navigator.pop(context);
-                                if (!context.mounted) return;
-                                SkulMateGameRouter.open(context, game);
+                                widget.onSelectSession?.call(session.id);
                               },
                               borderRadius: BorderRadius.circular(14),
                               child: Padding(
@@ -163,19 +190,15 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
                                       width: 44,
                                       height: 44,
                                       decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            accent.withValues(alpha: 0.18),
-                                            accent.withValues(alpha: 0.08),
-                                          ],
-                                        ),
+                                        color: AppTheme.skyBlueLight
+                                            .withValues(alpha: 0.55),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Icon(
-                                        GameTypeVisuals.iconFor(game.gameType),
-                                        color: accent,
+                                        active
+                                            ? Icons.chat_bubble_rounded
+                                            : Icons.chat_bubble_outline_rounded,
+                                        color: AppTheme.primaryColor,
                                         size: 20,
                                       ),
                                     ),
@@ -186,7 +209,10 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            game.title,
+                                            session.title?.trim().isNotEmpty ==
+                                                    true
+                                                ? session.title!
+                                                : copy.heroQuestion,
                                             style: GoogleFonts.poppins(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 14,
@@ -196,11 +222,13 @@ class _SkulMateHistorySheetState extends State<SkulMateHistorySheet> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
-                                            _subtitle(game),
+                                            _subtitle(session),
                                             style: GoogleFonts.poppins(
                                               fontSize: 13,
                                               color: AppTheme.textMedium,
                                             ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ],
                                       ),

@@ -521,8 +521,10 @@ class SkulMateCopy {
   String get searchHint => isFrench ? 'Rechercher' : 'Search';
 
   String get historyEmpty => isFrench
-      ? 'Aucun jeu pour le moment. Importe des notes pour commencer.'
-      : 'No games yet. Import notes to get started.';
+      ? 'Aucun fil pour le moment. Envoie tes notes ou dis ce que tu révises.'
+      : 'No threads yet. Send notes or tell me what you are revising.';
+
+  String get newThread => isFrench ? 'Nouveau fil' : 'New thread';
 
   String get startRecording =>
       isFrench ? 'Commencer l\'enregistrement' : 'Start recording';
@@ -760,22 +762,12 @@ class SkulMateCopy {
   }
 
   String welcomeBenefitResume({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'Reprenez là où il/elle s\'est arrêté(e). La progression est sauvegardée.'
-          : 'Pick up where they left off. Progress is saved automatically.';
-    }
     return isFrench
         ? 'Reprends là où tu t\'es arrêté. Ta progression est sauvegardée.'
         : 'Resume where you left off. Your progress is saved automatically.';
   }
 
   String welcomeBenefitLeaderboard({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'Suivez l\'XP et le classement de votre enfant avec ses amis.'
-          : 'Track their XP and leaderboard progress with friends.';
-    }
     return isFrench
         ? 'Gagne de l\'XP et grimpe au classement avec tes amis.'
         : 'Earn XP and climb the leaderboard with friends.';

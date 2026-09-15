@@ -29,6 +29,18 @@ void main() {
     expect(surface.items.first['question'], 'Where is DNA?');
   });
 
+  test('tutor session summary parses parent or learner threads the same way', () {
+    final session = TutorSessionSummary.fromJson({
+      'id': 's1',
+      'title': 'Photosynthesis',
+      'lastTurnAt': '2026-09-15T12:00:00.000Z',
+      'preview': 'Let’s start from your notes.',
+      'accountRole': 'parent',
+    });
+    expect(session.accountRole, 'parent');
+    expect(session.preview, contains('your notes'));
+  });
+
   test('session cache round-trips a tutor turn', () async {
     await SkulMateSessionCache.saveTurns(
       sessionId: 's1',

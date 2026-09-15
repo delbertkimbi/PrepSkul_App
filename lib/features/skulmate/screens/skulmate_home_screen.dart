@@ -96,43 +96,90 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
       final opened = await SkulMateTutorSessionService.openSession(
         childId: widget.childId,
       );
-      final session = opened['session'] as Map<String, dynamic>?;
-      final id = session?['id'] as String?;
-      if (id == null) return;
-      final cached = await SkulMateSessionCache.loadTurns(id);
-      final remoteTurns = opened['turns'] as List<dynamic>? ?? [];
-      if (!mounted) return;
-      safeSetState(() {
-        _sessionId = id;
-        _turns
-          ..clear()
-          ..addAll(cached);
-        if (_turns.isEmpty) {
-          for (final row in remoteTurns) {
-            if (row is! Map) continue;
-            final map = Map<String, dynamic>.from(row);
-            final role = map['role'] as String? ?? '';
-            final text = map['text'] as String? ?? '';
-            if (text.isEmpty) continue;
-            _turns.add(
-              TutorTurn(
-                id: map['id'] as String?,
-                isUser: role == 'user',
-                text: text,
-                surface: map['tool_payload'] is Map
-                    ? PracticeSurface.fromJson(
-                        Map<String, dynamic>.from(map['tool_payload'] as Map),
-                      )
-                    : null,
-              ),
-            );
-          }
-        }
-      });
-      await SkulMateSessionCache.saveTurns(sessionId: id, turns: _turns);
+      await _applyOpened(opened);
     } catch (e) {
       if (mounted) safeSetState(() => _error = e.toString());
     }
+  }
+
+  Future<void> _startNew() async {
+    try {
+      safeSetState(() {
+        _busy = true;
+        _error = null;
+      });
+      final opened = await SkulMateTutorSessionService.openSession(
+        childId: widget.childId,
+        forceNew: true,
+      );
+      await _applyOpened(opened);
+    } catch (e) {
+      if (mounted) {
+        safeSetState(() {
+          _busy = false;
+          _error = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    }
+  }
+
+  Future<void> _openExisting(String sessionId) async {
+    try {
+      safeSetState(() {
+        _busy = true;
+        _error = null;
+      });
+      final opened = await SkulMateTutorSessionService.loadSession(sessionId);
+      await _applyOpened(opened);
+    } catch (e) {
+      if (mounted) {
+        safeSetState(() {
+          _busy = false;
+          _error = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    }
+  }
+
+  Future<void> _applyOpened(Map<String, dynamic> opened) async {
+    final session = opened['session'] as Map<String, dynamic>?;
+    final id = (session?['id'] as String?) ?? opened['sessionId'] as String?;
+    if (id == null) {
+      if (mounted) safeSetState(() => _busy = false);
+      return;
+    }
+    final cached = await SkulMateSessionCache.loadTurns(id);
+    final remoteTurns = opened['turns'] as List<dynamic>? ?? [];
+    final parsedRemote = <TutorTurn>[];
+    for (final row in remoteTurns) {
+      if (row is! Map) continue;
+      final map = Map<String, dynamic>.from(row);
+      final role = map['role'] as String? ?? '';
+      final text = map['text'] as String? ?? '';
+      if (text.isEmpty) continue;
+      parsedRemote.add(
+        TutorTurn(
+          id: map['id'] as String?,
+          isUser: role == 'user',
+          text: text,
+          surface: map['tool_payload'] is Map
+              ? PracticeSurface.fromJson(
+                  Map<String, dynamic>.from(map['tool_payload'] as Map),
+                )
+              : null,
+        ),
+      );
+    }
+    if (!mounted) return;
+    safeSetState(() {
+      _sessionId = id;
+      _busy = false;
+      _turns
+        ..clear()
+        ..addAll(parsedRemote.isNotEmpty ? parsedRemote : cached);
+    });
+    await SkulMateSessionCache.saveTurns(sessionId: id, turns: _turns);
+    _scrollSoon();
   }
 
   Future<void> _sendText(String raw) async {
@@ -276,7 +323,12 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
           bottom: false,
           child: Column(
             children: [
-              SkulMateHomeTopBar(childId: widget.childId),
+              SkulMateHomeTopBar(
+                childId: widget.childId,
+                activeSessionId: _sessionId,
+                onSelectSession: (id) => unawaited(_openExisting(id)),
+                onNewSession: () => unawaited(_startNew()),
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                 child: Row(

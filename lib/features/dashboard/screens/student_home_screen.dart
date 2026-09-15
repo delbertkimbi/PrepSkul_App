@@ -23,7 +23,6 @@ import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
-import '../../../features/skulmate/screens/parent_skulmate_progress_screen.dart';
 import '../../../features/skulmate/services/skulmate_service.dart';
 import '../../../features/skulmate/models/game_model.dart';
 import '../../../features/skulmate/utils/skulmate_game_launcher.dart';
@@ -1002,21 +1001,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       Navigator.pushNamed(context, '/payment-history');
                     },
                   ),
-                  // Learning Progress (for parents)
-                  if (_userType == 'parent') ...[
+                  if (AppConfig.enableSkulMate) ...[
                     SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                     _buildActionCard(
-                      icon: PhosphorIcons.trendUp,
-                      title: 'Learning Progress',
-                      subtitle: 'Track your child\'s learning journey and improvement',
+                      icon: PhosphorIcons.chatCircle,
+                      title: 'SkulMate tutor',
+                      subtitle: 'You are the student — open your voice and chat thread',
                       color: AppTheme.primaryColor,
                       onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ParentSkulMateProgressScreen(),
-                          ),
-                        );
+                        final tab = StudentTabIndex.skulMate;
+                        if (tab >= 0) _switchStudentTab(tab);
                       },
                     ),
                   ],

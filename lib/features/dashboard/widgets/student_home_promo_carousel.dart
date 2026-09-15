@@ -207,24 +207,18 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
       return '$typeLabel on $title. $count $unit to clear in today\'s challenge.';
     }
     return _isParent
-        ? 'Today\'s challenge is ready. Help them beat it and lock in the lesson.'
+        ? 'Today\'s challenge is ready. Beat it and lock in the lesson.'
         : 'Today\'s challenge is ready. Beat it and lock in what you learned.';
   }
 
   String _noGameDescription({required bool noGames, required bool dailyCompleted}) {
     if (noGames) {
-      return _isParent
-          ? 'Upload notes or photos to generate their first interactive quiz.'
-          : 'Upload notes or photos to generate your first interactive quiz.';
+      return 'Upload notes or photos to generate your first interactive quiz.';
     }
     if (dailyCompleted) {
-      return _isParent
-          ? 'Browse their library or create a new quiz from fresh notes.'
-          : 'Browse your library or create a new quiz from fresh notes.';
+      return 'Browse your library or create a new quiz from fresh notes.';
     }
-    return _isParent
-        ? 'Quick games between lessons to keep them practicing.'
-        : 'Jump into quick games between lessons.';
+    return 'Jump into quick games between lessons.';
   }
 
   _PromoSlide _skulMateSlideForGames(List<GameModel> games) {
@@ -249,13 +243,9 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
     if (noGames || _dailyCompleted) {
       return _PromoSlide(
         eyebrow: 'SKULMATE',
-        title: noGames
-            ? (_isParent ? 'Create their first game' : 'Create your first game')
-            : (_isParent ? 'Explore more games' : 'Explore more games'),
+        title: noGames ? 'Create your first game' : 'Explore more games',
         subtitle: noGames
-            ? (_isParent
-                ? 'Turn their notes into fun practice'
-                : 'Turn notes into fun practice')
+            ? 'Turn notes into fun practice'
             : 'New games unlock daily',
         description: _noGameDescription(
           noGames: noGames,
@@ -272,7 +262,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
 
     return _PromoSlide(
       eyebrow: 'SKULMATE',
-      title: _isParent ? 'Games for your child' : 'Play & learn',
+      title: 'Play & learn',
       subtitle: 'Games from your own notes',
       description: _noGameDescription(noGames: false, dailyCompleted: false),
       buttonLabel: 'Browse games',
