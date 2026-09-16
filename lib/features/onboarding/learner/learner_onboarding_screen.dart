@@ -58,7 +58,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_tts.ensureInitialized());
-      _speak();
+      unawaited(_speakWelcome());
     });
   }
 
@@ -99,28 +99,10 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
 
   LearnerOnboardStep get _step => _steps[_index.clamp(0, _steps.length - 1)];
 
-  Future<void> _speak() async {
-    final line = switch (_step) {
-      LearnerOnboardStep.welcome => _c.welcomeTitle,
-      LearnerOnboardStep.language => _c.languageTitle,
-      LearnerOnboardStep.who => _c.whoTitle,
-      LearnerOnboardStep.name => _c.nameTitle,
-      LearnerOnboardStep.country => _c.countryTitle,
-      LearnerOnboardStep.city => _c.cityTitle,
-      LearnerOnboardStep.system => _c.systemTitle,
-      LearnerOnboardStep.level => _c.levelTitle,
-      LearnerOnboardStep.subject => _c.subjectTitle,
-      LearnerOnboardStep.exam => _c.examTitle,
-      LearnerOnboardStep.examWhen => _c.whenTitle,
-      LearnerOnboardStep.channel => _c.channelTitle,
-      LearnerOnboardStep.pace => _c.paceTitle,
-      LearnerOnboardStep.examFeel => _c.feelTitle,
-      LearnerOnboardStep.interests => _c.interestTitle,
-      LearnerOnboardStep.ready => _c.readyTitle,
-    };
+  Future<void> _speakWelcome() async {
     try {
       await _tts.stop();
-      await _tts.speakAndWait(line);
+      await _tts.speakAndWait(_c.welcomeTitle);
     } catch (_) {}
   }
 
@@ -133,7 +115,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       _forward = true;
       _index++;
     });
-    unawaited(_speak());
   }
 
   void _back() {
@@ -142,12 +123,11 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       _forward = false;
       _index--;
     });
-    unawaited(_speak());
   }
 
   void _choose(LearnerOnboardingAnswers next) {
     setState(() => _answers = next);
-    Future.delayed(const Duration(milliseconds: 360), () {
+    Future.delayed(const Duration(milliseconds: 220), () {
       if (mounted) _next();
     });
   }
@@ -167,9 +147,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
 
   Mood get _mood {
     return switch (_step) {
-      LearnerOnboardStep.welcome || LearnerOnboardStep.ready => Mood.cheer,
-      LearnerOnboardStep.name || LearnerOnboardStep.language => Mood.happy,
-      LearnerOnboardStep.exam || LearnerOnboardStep.level => Mood.thinking,
+      LearnerOnboardStep.ready => Mood.cheer,
+      LearnerOnboardStep.exam => Mood.thinking,
       _ => Mood.happy,
     };
   }
@@ -181,8 +160,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       body: Container(
         decoration: OnboardPalette.page,
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -193,40 +172,40 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                   at: _index,
                   label: _c.ofCount(_index, steps.length),
                 ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 280),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) {
-                      final offset = Tween<Offset>(
-                        begin: Offset(_forward ? 0.12 : -0.12, 0),
-                        end: Offset.zero,
-                      ).animate(animation);
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(position: offset, child: child),
-                      );
-                    },
-                    child: KeyedSubtree(
-                      key: ValueKey(_step.name),
-                      child: SingleChildScrollView(child: _page()),
-                    ),
-                  ),
-                ),
                 if (_index > 0)
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
                       onPressed: _back,
-                      icon: const Icon(Icons.arrow_back_rounded),
+                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
                       label: Text(_c.back),
                       style: TextButton.styleFrom(
                         foregroundColor: AppTheme.primaryColor,
+                        padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
                       ),
                     ),
+                  )
+                else
+                  const SizedBox(height: 12),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final offset = Tween<Offset>(
+                      begin: Offset(_forward ? 0.08 : -0.08, 0),
+                      end: Offset.zero,
+                    ).animate(animation);
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(position: offset, child: child),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey(_step.name),
+                    child: _page(),
                   ),
+                ),
               ],
             ),
           ),
@@ -235,29 +214,14 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     );
   }
 
-  Widget _ask({required String kicker, required String title, String? note, required Widget child}) {
+  Widget _ask({required String title, String? note, required Widget child}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            prepMate(mood: _mood, size: 76),
-            const SizedBox(width: 8),
-            Expanded(child: OnboardBubble(title: title, note: note)),
-          ],
-        ),
-        const SizedBox(height: 18),
-        Text(
-          kicker,
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            letterSpacing: 1.6,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textMedium,
-          ),
-        ),
+        Center(child: prepMate(mood: _mood, size: 120)),
         const SizedBox(height: 12),
+        OnboardBubble(title: title, note: note),
+        const SizedBox(height: 22),
         child,
       ],
     );
@@ -269,7 +233,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       LearnerOnboardStep.welcome => Column(
           children: [
             const SizedBox(height: 12),
-            prepMate(mood: Mood.cheer, size: 168),
+            prepMate(mood: Mood.happy, size: 140),
             const SizedBox(height: 18),
             OnboardBubble(title: _c.welcomeTitle, note: _c.welcomeNote),
             const SizedBox(height: 28),
@@ -277,30 +241,24 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ],
         ),
       LearnerOnboardStep.language => _ask(
-          kicker: _c.languageKicker,
           title: _c.languageTitle,
           note: _c.languageNote,
           child: Column(
             children: [
               OnboardChoice(
                 title: 'English',
-                subtitle: 'English',
                 selected: locale == 'en',
-                leading: const OnboardGlyph(seed: 'EN'),
                 onTap: () => _choose(_answers.copyWith(locale: 'en')),
               ),
               OnboardChoice(
                 title: 'Français',
-                subtitle: 'French',
                 selected: locale == 'fr',
-                leading: const OnboardGlyph(seed: 'FR', selected: true),
                 onTap: () => _choose(_answers.copyWith(locale: 'fr')),
               ),
             ],
           ),
         ),
       LearnerOnboardStep.who => _ask(
-          kicker: _c.whoKicker,
           title: _c.whoTitle,
           note: _c.whoNote,
           child: Column(
@@ -308,20 +266,17 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               OnboardChoice(
                 title: _c.whoStudent,
                 selected: _answers.accountRole == 'learner',
-                artColor: AppTheme.skyBlue,
                 onTap: () => _choose(_answers.copyWith(accountRole: 'learner')),
               ),
               OnboardChoice(
                 title: _c.whoParent,
                 selected: _answers.accountRole == 'parent',
-                artColor: AppTheme.softYellow,
                 onTap: () => _choose(_answers.copyWith(accountRole: 'parent')),
               ),
             ],
           ),
         ),
       LearnerOnboardStep.name => _ask(
-          kicker: _c.nameKicker,
           title: _c.nameTitle,
           child: Column(
             children: [
@@ -331,8 +286,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _next(),
                 style: GoogleFonts.poppins(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
                 ),
                 textAlign: TextAlign.center,
@@ -341,9 +296,18 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                   filled: true,
                   fillColor: Colors.white,
                   hintStyle: GoogleFonts.poppins(color: AppTheme.textLight),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
+                    borderSide: const BorderSide(color: AppTheme.softBorder),
                   ),
                 ),
               ),
@@ -353,7 +317,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.country => _ask(
-          kicker: _c.countryKicker,
           title: _c.countryTitle,
           note: _c.countryNote,
           child: Column(
@@ -365,7 +328,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                       ? (locale == 'fr' ? 'Chez nous' : 'Home')
                       : null,
                   selected: _answers.countryId == pack.id,
-                  leading: OnboardGlyph(seed: pack.countryCode, selected: pack.id == 'cm'),
                   onTap: () => _choose(
                     _answers.copyWith(
                       countryId: pack.id,
@@ -380,7 +342,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.city => _ask(
-          kicker: _c.cityKicker,
           title: _c.cityTitle,
           child: Column(
             children: [
@@ -388,14 +349,12 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                 OnboardChoice(
                   title: city.label.t(locale),
                   selected: _answers.cityId == city.id,
-                  leading: OnboardGlyph(seed: city.id),
                   onTap: () => _choose(_answers.copyWith(cityId: city.id)),
                 ),
             ],
           ),
         ),
       LearnerOnboardStep.system => _ask(
-          kicker: _c.systemKicker,
           title: _c.systemTitle,
           note: _c.systemNote,
           child: Column(
@@ -412,7 +371,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.level => _ask(
-          kicker: _c.levelKicker,
           title: _c.levelTitle,
           child: Wrap(
             spacing: 8,
@@ -428,7 +386,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.subject => _ask(
-          kicker: _c.subjectKicker,
           title: _c.subjectTitle,
           child: Column(
             children: [
@@ -436,14 +393,12 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                 OnboardChoice(
                   title: subject.label.t(locale),
                   selected: _answers.subjectId == subject.id,
-                  leading: OnboardGlyph(seed: subject.id),
                   onTap: () => _choose(_answers.copyWith(subjectId: subject.id)),
                 ),
             ],
           ),
         ),
       LearnerOnboardStep.exam => _ask(
-          kicker: _c.examKicker,
           title: _c.examTitle,
           note: _c.examNote,
           child: Column(
@@ -458,7 +413,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.examWhen => _ask(
-          kicker: _c.whenKicker,
           title: _c.whenTitle,
           child: Column(
             children: [
@@ -472,7 +426,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.channel => _ask(
-          kicker: _c.channelKicker,
           title: _c.channelTitle,
           note: _c.channelNote,
           child: Column(
@@ -487,7 +440,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.pace => _ask(
-          kicker: _c.paceKicker,
           title: _c.paceTitle,
           child: Column(
             children: [
@@ -501,7 +453,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.examFeel => _ask(
-          kicker: _c.feelKicker,
           title: _c.feelTitle,
           child: Column(
             children: [
@@ -516,7 +467,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ),
         ),
       LearnerOnboardStep.interests => _ask(
-          kicker: _c.interestKicker,
           title: _c.interestTitle,
           note: _c.interestNote,
           child: Column(

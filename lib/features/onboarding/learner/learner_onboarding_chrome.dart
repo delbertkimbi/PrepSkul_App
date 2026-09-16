@@ -68,37 +68,41 @@ class OnboardRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final progress = count == 0 ? 0.0 : (at + 1) / count;
     return Column(
       children: [
-        Row(
-          children: [
-            for (var i = 0; i < count; i++)
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(right: i == count - 1 ? 0 : 4),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 280),
-                    height: i == at ? 7 : 5,
-                    decoration: BoxDecoration(
-                      color: i < at
-                          ? AppTheme.skyBlue
-                          : i == at
-                              ? AppTheme.softYellow
-                              : AppTheme.primaryColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: SizedBox(
+                height: 4,
+                width: double.infinity,
+                child: Stack(
+                  children: [
+                    const ColoredBox(
+                      color: Color(0x1A1B2C4F),
+                      child: SizedBox.expand(),
                     ),
-                  ),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOutCubic,
+                      width: constraints.maxWidth * progress.clamp(0.0, 1.0),
+                      height: 4,
+                      color: AppTheme.skyBlue,
+                    ),
+                  ],
                 ),
               ),
-          ],
+            );
+          },
         ),
         const SizedBox(height: 8),
         Text(
           label,
           style: GoogleFonts.poppins(
             fontSize: 11,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.2,
+            fontWeight: FontWeight.w500,
             color: AppTheme.textMedium,
           ),
         ),
@@ -115,7 +119,6 @@ class OnboardBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(left: 6),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: OnboardPalette.card(selected: false),
       child: Column(
@@ -155,7 +158,6 @@ class OnboardChoice extends StatelessWidget {
     required this.onTap,
     this.subtitle,
     this.leading,
-    this.artColor,
   });
 
   final String title;
@@ -163,7 +165,6 @@ class OnboardChoice extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final Widget? leading;
-  final Color? artColor;
 
   @override
   Widget build(BuildContext context) {
@@ -177,28 +178,15 @@ class OnboardChoice extends StatelessWidget {
           curve: Curves.easeOutCubic,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            constraints: const BoxConstraints(minHeight: 56),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: OnboardPalette.card(selected: selected),
             child: Row(
               children: [
-                leading ??
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: (artColor ?? AppTheme.skyBlue).withValues(
-                          alpha: 0.16,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        selected
-                            ? Icons.check_rounded
-                            : Icons.circle_outlined,
-                        color: artColor ?? AppTheme.primaryColor,
-                      ),
-                    ),
-                const SizedBox(width: 12),
+                if (leading != null) ...[
+                  leading!,
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,29 +240,35 @@ class OnboardPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: AppTheme.primaryColor,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.primaryColor.withValues(alpha: 0.22),
-              offset: const Offset(0, 8),
-              blurRadius: 16,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        splashColor: Colors.white24,
+        child: Ink(
+          width: double.infinity,
+          height: 56,
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.primaryColor.withValues(alpha: 0.22),
+                offset: const Offset(0, 8),
+                blurRadius: 16,
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
             ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
           ),
         ),
       ),
