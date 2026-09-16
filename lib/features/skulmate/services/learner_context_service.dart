@@ -32,9 +32,11 @@ class LearnerContextService {
           'student_grade',
           'class_level',
           'curriculum',
+          'school_system',
           'exam',
           'exam_type',
           'target_exam',
+          'exam_when',
           'subjects',
           'subject_preferences',
           'learning_goals',
@@ -43,6 +45,11 @@ class LearnerContextService {
           'preferred_language',
           'language_preference',
           'student_age_group',
+          'country',
+          'city',
+          'pace',
+          'channel',
+          'interests',
         ];
         for (final key in keys) {
           final value = survey[key];

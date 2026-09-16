@@ -1,21 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/navigation/navigation_service.dart';
+import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
+import 'package:prepskul/features/primar/presentation/mascot.dart';
+import 'package:prepskul/features/skulmate/widgets/skulmate_mascot_media_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Survey Intro Screen
-///
-/// Friendly screen that appears after signup, encouraging users to complete
-/// the survey to help find the best tutor match.
-///
-/// Features:
-/// - Different messaging for students vs parents
-/// - "Get Started" (primary) and "Skip for Now" (secondary) buttons
-/// - Tracks if user has seen this screen
-/// - Navigates to survey or home based on user choice
+/// First beat after signup. Mate greets; the next screen asks school-world
+/// questions, not marketplace tutor-match questions.
 class SurveyIntroScreen extends StatefulWidget {
-  final String userType; // 'student' or 'parent'
+  final String userType;
 
   const SurveyIntroScreen({super.key, required this.userType});
 
@@ -23,262 +18,91 @@ class SurveyIntroScreen extends StatefulWidget {
   State<SurveyIntroScreen> createState() => _SurveyIntroScreenState();
 }
 
-class _SurveyIntroScreenState extends State<SurveyIntroScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
-    );
-
-    _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeOutCubic,
-          ),
-        );
-
-    _animationController.forward();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  /// Mark that user has seen the intro screen
+class _SurveyIntroScreenState extends State<SurveyIntroScreen> {
   Future<void> _markIntroSeen() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('survey_intro_seen', true);
   }
 
-  /// Handle "Get Started" - navigate to survey
   Future<void> _handleGetStarted() async {
     await _markIntroSeen();
-
-    if (mounted) {
-      // Navigate to profile-setup with userRole argument
-      // The profile-setup route will show the appropriate survey based on userRole
-      Navigator.pushReplacementNamed(
-        context,
-        '/profile-setup',
-        arguments: {'userRole': widget.userType},
-      );
-    }
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(
+      context,
+      '/profile-setup',
+      arguments: {'userRole': widget.userType},
+    );
   }
 
-  /// Handle "Skip for Now" - navigate to home
   Future<void> _handleSkip() async {
     await _markIntroSeen();
-
-    if (mounted) {
-      // Navigate to appropriate home screen
-      if (widget.userType == 'tutor') {
-        NavigationService.resetStackNamed(context, '/tutor-nav');
-      } else if (widget.userType == 'parent') {
-        NavigationService.resetStackNamed(context, '/parent-nav');
-      } else {
-        NavigationService.resetStackNamed(context, '/student-nav');
-      }
+    if (!mounted) return;
+    if (widget.userType == 'tutor') {
+      NavigationService.resetStackNamed(context, '/tutor-nav');
+    } else if (widget.userType == 'parent') {
+      NavigationService.resetStackNamed(context, '/parent-nav');
+    } else {
+      NavigationService.resetStackNamed(context, '/student-nav');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isParent = widget.userType == 'parent';
-
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SlideTransition(
-            position: _slideAnimation,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(height: 24),
-
-                        // Title – simple and brand-aligned
-                        Text(
-                          'Help us find the best tutor for ${isParent ? 'your child' : 'you'}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textDark,
-                            height: 1.25,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        // Description
-                        Text(
-                          isParent
-                              ? 'Take 2 minutes to tell us about your child\'s learning needs, and we\'ll match them with the perfect tutor.'
-                              : 'Take 2 minutes to tell us about your learning goals, and we\'ll match you with the perfect tutor.',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            color: AppTheme.textMedium,
-                            height: 1.6,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        if (isParent) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            'We\'ll start with one learner, you can add more children later in your profile.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: AppTheme.textLight,
-                              height: 1.4,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-
-                        const SizedBox(height: 20),
-
-                        _buildBenefitsList(isParent),
-
-                        const SizedBox(height: 32),
-
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _handleGetStarted,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryColor,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              elevation: 0,
-                              shadowColor: Colors.transparent,
-                            ),
-                            child: Text(
-                              'Get Started',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        TextButton(
-                          onPressed: _handleSkip,
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          child: Text(
-                            'Skip for Now',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: AppTheme.primaryColor,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        Text(
-                          'You can complete this later from your home screen',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppTheme.textLight,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBenefitsList(bool isParent) {
-    final benefits = isParent
-        ? [
-            'Personalized tutor matching',
-            'Faster booking with pre-filled preferences',
-            'Better learning outcomes',
-          ]
-        : [
-            'Personalized tutor matching',
-            'Faster booking with pre-filled preferences',
-            'Track your learning progress',
-          ];
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.softBackground,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.softBorder,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: benefits.asMap().entries.map((entry) {
-          final index = entry.key;
-          final benefit = entry.value;
-          return Padding(
-            padding: EdgeInsets.only(bottom: index < benefits.length - 1 ? 8 : 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+      body: Container(
+        decoration: OnboardPalette.page,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+            child: Column(
               children: [
-                Icon(
-                  Icons.check_circle_outline,
-                  size: 20,
-                  color: AppTheme.primaryColor,
+                Text(
+                  'SkulMate',
+                  style: GoogleFonts.poppins(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryColor,
+                  ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+                const Spacer(),
+                const SkulMateMascotMediaWidget(
+                  state: SkulMateMascotState.celebration,
+                  width: 200,
+                  height: 200,
+                  loop: true,
+                  showFrame: false,
+                ),
+                const SizedBox(height: 8),
+                const Mate(mood: Mood.cheer, size: 72),
+                const SizedBox(height: 16),
+                OnboardBubble(
+                  title: isParent
+                      ? 'You’re a student here too. Tell me about your school.'
+                      : 'Tell me about your school. I’ll tutor you from there.',
+                  note: isParent
+                      ? 'Two minutes. No tutor-matching quiz. You can add a child profile later.'
+                      : 'Two minutes. Cameroon-first, then we adapt if you’re elsewhere.',
+                ),
+                const Spacer(),
+                OnboardPrimaryButton(
+                  label: 'Let’s go',
+                  onTap: _handleGetStarted,
+                ),
+                TextButton(
+                  onPressed: _handleSkip,
                   child: Text(
-                    benefit,
+                    'Skip for now',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: AppTheme.textDark,
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
               ],
             ),
-          );
-        }).toList(),
+          ),
+        ),
       ),
     );
   }

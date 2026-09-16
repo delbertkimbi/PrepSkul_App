@@ -8,8 +8,7 @@ import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
 import 'package:prepskul/features/onboarding/screens/simple_onboarding_screen.dart';
-import 'package:prepskul/features/profile/screens/student_survey.dart';
-import 'package:prepskul/features/profile/screens/parent_survey.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_screen.dart';
 import 'package:prepskul/features/profile/screens/survey_intro_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_login_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_signup_screen.dart';
@@ -1581,16 +1580,18 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             );
           }
 
-          // Use surveys for students and parents
-          // Note: NavigationService handles showing intro screen first if needed
-          if (userRole == 'learner' || userRole == 'student') {
-            return _createFadeRoute(() => const StudentSurvey());
-          } else if (userRole == 'parent') {
-            return _createFadeRoute(() => const ParentSurvey());
+          // Mate-first tutor onboarding for learners and parents.
+          if (userRole == 'learner' ||
+              userRole == 'student' ||
+              userRole == 'parent') {
+            return _createFadeRoute(
+              () => LearnerOnboardingScreen(userRole: userRole),
+            );
           }
 
-          // Fallback to student survey
-          return _createFadeRoute(() => const StudentSurvey());
+          return _createFadeRoute(
+            () => const LearnerOnboardingScreen(userRole: 'student'),
+          );
         }
         if (settings.name == '/survey-intro') {
           final args = settings.arguments as Map<String, dynamic>?;
@@ -2315,10 +2316,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           final userRole = args?['userRole'] ?? 'student';
           if (userRole == 'tutor') {
             page = const TutorOnboardingScreen(basicInfo: {});
-          } else if (userRole == 'parent') {
-            page = const ParentSurvey();
           } else {
-            page = const StudentSurvey();
+            page = LearnerOnboardingScreen(userRole: userRole);
           }
           break;
         case '/tutor-onboarding':
