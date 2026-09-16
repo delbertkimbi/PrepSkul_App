@@ -218,7 +218,7 @@ abstract class AppLocalizations {
   /// No description provided for @navSkulMate.
   ///
   /// In en, this message translates to:
-  /// **'SkulMate'**
+  /// **'Mate'**
   String get navSkulMate;
 
   /// No description provided for @navRequests.
