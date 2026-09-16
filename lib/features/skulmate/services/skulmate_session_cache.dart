@@ -26,6 +26,7 @@ class SkulMateSessionCache {
               'escalate': t.escalate,
               'move': t.move,
               'surface': t.surface?.toJson(),
+              'board': t.board?.toJson(),
             },
           )
           .toList(),
@@ -66,6 +67,11 @@ class SkulMateSessionCache {
           surface: map['surface'] is Map
               ? PracticeSurface.fromJson(
                   Map<String, dynamic>.from(map['surface'] as Map),
+                )
+              : null,
+          board: map['board'] is Map
+              ? TutorBoard.fromJson(
+                  Map<String, dynamic>.from(map['board'] as Map),
                 )
               : null,
         );

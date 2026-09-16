@@ -18,7 +18,7 @@ void main() {
       en.welcomeBenefitLeaderboard(isParent: true).toLowerCase(),
       isNot(contains('their xp')),
     );
-    expect(en.tutorEmptyPrompt.toLowerCase(), contains('your skulmate tutor'));
+    expect(en.tutorEmptyPrompt.toLowerCase(), contains('i am listening'));
     expect(en.historyEmpty.toLowerCase(), contains('thread'));
     expect(en.newThread.toLowerCase(), contains('new thread'));
   });

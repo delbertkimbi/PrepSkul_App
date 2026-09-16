@@ -17,6 +17,7 @@ import '../services/skulmate_tutor_session_service.dart';
 import '../services/skulmate_tutor_voice_service.dart';
 import '../widgets/skulmate_home_top_bar.dart';
 import '../widgets/skulmate_in_thread_surface.dart';
+import '../widgets/skulmate_tutor_board.dart';
 import '../widgets/skulmate_surface_styles.dart';
 import '../widgets/skulmate_tutor_composer.dart';
 import '../widgets/skulmate_typography.dart';
@@ -162,11 +163,11 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
           id: map['id'] as String?,
           isUser: role == 'user',
           text: text,
-          surface: map['tool_payload'] is Map
-              ? PracticeSurface.fromJson(
-                  Map<String, dynamic>.from(map['tool_payload'] as Map),
-                )
-              : null,
+          surface: practiceSurfaceFromPayload(map['tool_payload']),
+          board: tutorBoardFromPayload(
+            map['tool_payload'],
+            boardField: map['board'],
+          ),
         ),
       );
     }
@@ -213,6 +214,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
         isUser: false,
         text: result.message,
         surface: result.surface,
+        board: result.board,
         speak: result.speak,
         escalate: result.escalate,
         move: result.move,
@@ -224,7 +226,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
       });
       _scrollSoon();
       if (result.speak) {
-        unawaited(_voice.speakTutor(result.message));
+        unawaited(_speakThenListen(result.message));
       } else {
         await _voice.interrupt();
       }
@@ -265,6 +267,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
               isUser: false,
               text: result.message,
               surface: result.surface,
+              board: result.board,
               speak: result.speak,
               escalate: result.escalate,
               move: result.move,
@@ -273,7 +276,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
           _busy = false;
           _attachOpen = false;
         });
-        if (result.speak) unawaited(_voice.speakTutor(result.message));
+        if (result.speak) unawaited(_speakThenListen(result.message));
       } else {
         safeSetState(() => _busy = false);
       }
@@ -287,7 +290,17 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     }
   }
 
+  Future<void> _speakThenListen(String text) async {
+    await _voice.speakTutor(text);
+    if (!mounted) return;
+    final ok = await _voice.startListening();
+    if (mounted) safeSetState(() => _recording = ok);
+  }
+
   Future<void> _holdStart() async {
+    if (_voice.state.value == TutorVoiceState.speaking) {
+      await _voice.interrupt();
+    }
     final ok = await _voice.startListening();
     if (mounted) safeSetState(() => _recording = ok);
   }
@@ -362,6 +375,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                         isUser: turn.isUser,
                         text: turn.text,
                       ),
+                      if (turn.board != null && turn.board!.steps.isNotEmpty)
+                        SkulMateTutorBoard(board: turn.board!),
                       if (turn.surface != null)
                         SkulMateInThreadSurface(
                           surface: turn.surface!,

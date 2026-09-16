@@ -34,6 +34,7 @@ class TutorTurn {
   final bool isUser;
   final String text;
   final PracticeSurface? surface;
+  final TutorBoard? board;
   final bool speak;
   final bool escalate;
   final String? move;
@@ -43,10 +44,50 @@ class TutorTurn {
     required this.isUser,
     required this.text,
     this.surface,
+    this.board,
     this.speak = false,
     this.escalate = false,
     this.move,
   });
+}
+
+class TutorBoardStep {
+  final String kind;
+  final String text;
+
+  const TutorBoardStep({required this.kind, required this.text});
+
+  factory TutorBoardStep.fromJson(Map<String, dynamic> json) {
+    return TutorBoardStep(
+      kind: (json['kind'] as String?) ?? 'note',
+      text: (json['text'] as String?) ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'kind': kind, 'text': text};
+}
+
+class TutorBoard {
+  final String title;
+  final List<TutorBoardStep> steps;
+
+  const TutorBoard({required this.title, required this.steps});
+
+  factory TutorBoard.fromJson(Map<String, dynamic> json) {
+    return TutorBoard(
+      title: (json['title'] as String?) ?? 'Board',
+      steps: (json['steps'] as List<dynamic>? ?? [])
+          .whereType<Map>()
+          .map((e) => TutorBoardStep.fromJson(Map<String, dynamic>.from(e)))
+          .where((s) => s.text.trim().isNotEmpty)
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'steps': steps.map((s) => s.toJson()).toList(),
+      };
 }
 
 class PracticeSurface {
@@ -82,6 +123,38 @@ class PracticeSurface {
       };
 }
 
+PracticeSurface? practiceSurfaceFromPayload(dynamic raw) {
+  if (raw is! Map) return null;
+  final map = Map<String, dynamic>.from(raw);
+  final nested = map['surface'];
+  final candidate = nested is Map ? Map<String, dynamic>.from(nested) : map;
+  if (candidate['gameType'] == null &&
+      candidate['game_type'] == null &&
+      candidate['items'] == null) {
+    return null;
+  }
+  try {
+    return PracticeSurface.fromJson(candidate);
+  } catch (_) {
+    return null;
+  }
+}
+
+TutorBoard? tutorBoardFromPayload(dynamic raw, {dynamic boardField}) {
+  if (boardField is Map) {
+    return TutorBoard.fromJson(Map<String, dynamic>.from(boardField));
+  }
+  if (raw is! Map) return null;
+  final map = Map<String, dynamic>.from(raw);
+  if (map['board'] is Map) {
+    return TutorBoard.fromJson(Map<String, dynamic>.from(map['board'] as Map));
+  }
+  if (map['steps'] is List) {
+    return TutorBoard.fromJson(map);
+  }
+  return null;
+}
+
 class TutorTurnResult {
   final String sessionId;
   final String turnId;
@@ -89,6 +162,7 @@ class TutorTurnResult {
   final String move;
   final bool speak;
   final PracticeSurface? surface;
+  final TutorBoard? board;
   final bool escalate;
 
   const TutorTurnResult({
@@ -98,20 +172,29 @@ class TutorTurnResult {
     required this.move,
     required this.speak,
     this.surface,
+    this.board,
     this.escalate = false,
   });
 
   factory TutorTurnResult.fromJson(Map<String, dynamic> json) {
+    final payload = json['tool_payload'] is Map
+        ? Map<String, dynamic>.from(json['tool_payload'] as Map)
+        : <String, dynamic>{};
+    final surfaceRaw = json['surface'] is Map
+        ? json['surface']
+        : payload['surface'];
+    final boardRaw = json['board'] is Map ? json['board'] : payload['board'];
     return TutorTurnResult(
       sessionId: json['sessionId'] as String? ?? '',
       turnId: json['turnId'] as String? ?? '',
       message: json['message'] as String? ?? '',
-      move: json['move'] as String? ?? 'teach',
+      move: json['move'] as String? ?? 'focus',
       speak: json['speak'] as bool? ?? true,
-      surface: json['surface'] is Map
-          ? PracticeSurface.fromJson(
-              Map<String, dynamic>.from(json['surface'] as Map),
-            )
+      surface: surfaceRaw is Map
+          ? PracticeSurface.fromJson(Map<String, dynamic>.from(surfaceRaw))
+          : null,
+      board: boardRaw is Map
+          ? TutorBoard.fromJson(Map<String, dynamic>.from(boardRaw))
           : null,
       escalate: json['escalate'] as bool? ?? false,
     );

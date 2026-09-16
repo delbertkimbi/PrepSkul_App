@@ -128,6 +128,7 @@ class SkulMateTutorSessionService {
         speak: result.speak,
         escalate: result.escalate,
         move: result.move,
+        board: result.board,
       ),
     );
     return result;

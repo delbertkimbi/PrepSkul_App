@@ -32,8 +32,8 @@ class SkulMateCopy {
       : 'Talk or drop your notes…';
 
   String get tutorEmptyPrompt => isFrench
-      ? 'Je suis ton tuteur SkulMate. Envoie un cours, une photo, une vidéo ou dis-moi ce que tu révises — on commence tout de suite.'
-      : 'I am your SkulMate tutor. Send a lesson, a photo, a video, or tell me what you are revising — we start in this thread.';
+      ? 'Parle. Je t\'écoute. Dis-moi ce que tu révises — je ne te donnerai pas la réponse, on la construit ensemble.'
+      : 'Talk. I am listening. Tell me what you are revising — I will not hand you the answer. We work it out together.';
 
   String get tutorThinking =>
       isFrench ? 'Je prépare la suite…' : 'Working on the next move…';

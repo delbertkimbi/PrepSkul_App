@@ -12,6 +12,16 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test('tutor board parses focusing steps', () {
+    final board = TutorBoard.fromJson({
+      'title': 'Forces',
+      'steps': [
+        {'kind': 'prompt', 'text': 'Which force is along the ramp?'},
+      ],
+    });
+    expect(board.steps.first.kind, 'prompt');
+  });
+
   test('PracticeSurface parses quiz JSON', () {
     final surface = PracticeSurface.fromJson({
       'gameType': 'quiz',

@@ -34,7 +34,7 @@ void main() {
     expect(find.text('History'), findsOneWidget);
     expect(find.byType(SkulMateTutorComposer), findsOneWidget);
     expect(
-      find.textContaining('I am your SkulMate tutor'),
+      find.textContaining('Talk. I am listening'),
       findsOneWidget,
     );
     expect(find.byType(FloatingActionButton), findsNothing);
