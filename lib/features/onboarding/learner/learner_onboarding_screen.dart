@@ -12,7 +12,6 @@ import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.
 import 'package:prepskul/features/onboarding/region/region_packs.dart';
 import 'package:prepskul/features/primar/presentation/mascot.dart';
 import 'package:prepskul/features/skulmate/services/tts_service.dart';
-import 'package:prepskul/features/skulmate/widgets/skulmate_mascot_media_widget.dart';
 
 enum LearnerOnboardStep {
   welcome,
@@ -187,15 +186,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'SkulMate',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
+                const PrepSkulWordmark(),
                 const SizedBox(height: 12),
                 OnboardRail(
                   count: steps.length,
@@ -251,7 +242,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Mate(mood: _mood, size: 72),
+            prepMate(mood: _mood, size: 76),
             const SizedBox(width: 8),
             Expanded(child: OnboardBubble(title: title, note: note)),
           ],
@@ -277,18 +268,9 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     return switch (_step) {
       LearnerOnboardStep.welcome => Column(
           children: [
-            const SizedBox(height: 8),
-            const SkulMateMascotMediaWidget(
-              state: SkulMateMascotState.celebration,
-              width: 220,
-              height: 220,
-              loop: true,
-              showFrame: false,
-              preferStaticImage: false,
-            ),
             const SizedBox(height: 12),
-            Mate(mood: Mood.cheer, size: 64),
-            const SizedBox(height: 16),
+            prepMate(mood: Mood.cheer, size: 168),
+            const SizedBox(height: 18),
             OnboardBubble(title: _c.welcomeTitle, note: _c.welcomeNote),
             const SizedBox(height: 28),
             OnboardPrimaryButton(label: _c.welcomeCta, onTap: _next),
@@ -566,14 +548,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         ),
       LearnerOnboardStep.ready => Column(
           children: [
-            const SkulMateMascotMediaWidget(
-              state: SkulMateMascotState.encouraging,
-              width: 180,
-              height: 180,
-              loop: true,
-              showFrame: false,
-            ),
-            const SizedBox(height: 12),
+            prepMate(mood: Mood.cheer, size: 148),
+            const SizedBox(height: 16),
             OnboardBubble(title: _c.readyTitle, note: _c.readyNote),
             const SizedBox(height: 24),
             OnboardPrimaryButton(
@@ -599,7 +575,7 @@ class _Chip extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: OnboardPalette.neumorph(selected: selected),
+        decoration: OnboardPalette.card(selected: selected),
         child: Text(
           label,
           style: GoogleFonts.poppins(

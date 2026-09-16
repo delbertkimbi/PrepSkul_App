@@ -2,7 +2,7 @@ class LearnerOnboardingCopy {
   const LearnerOnboardingCopy(this.isFrench);
   final bool isFrench;
 
-  String get brand => 'SkulMate';
+  String get brand => 'PrepSkul';
 
   String get welcomeKicker => isFrench ? 'TON TUTEUR' : 'YOUR TUTOR';
   String get welcomeTitle => isFrench

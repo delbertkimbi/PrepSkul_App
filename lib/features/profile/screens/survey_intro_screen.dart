@@ -4,10 +4,9 @@ import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/features/primar/presentation/mascot.dart';
-import 'package:prepskul/features/skulmate/widgets/skulmate_mascot_media_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// First beat after signup. Mate greets; the next screen asks school-world
+/// First beat after signup. Cartoon Mate greets; next screen asks school-world
 /// questions, not marketplace tutor-match questions.
 class SurveyIntroScreen extends StatefulWidget {
   final String userType;
@@ -57,25 +56,10 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen> {
             padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
             child: Column(
               children: [
-                Text(
-                  'SkulMate',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
+                const PrepSkulWordmark(),
                 const Spacer(),
-                const SkulMateMascotMediaWidget(
-                  state: SkulMateMascotState.celebration,
-                  width: 200,
-                  height: 200,
-                  loop: true,
-                  showFrame: false,
-                ),
-                const SizedBox(height: 8),
-                const Mate(mood: Mood.cheer, size: 72),
-                const SizedBox(height: 16),
+                prepMate(mood: Mood.cheer, size: 168),
+                const SizedBox(height: 20),
                 OnboardBubble(
                   title: isParent
                       ? 'You’re a student here too. Tell me about your school.'

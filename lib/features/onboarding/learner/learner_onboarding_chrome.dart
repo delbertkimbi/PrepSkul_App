@@ -1,51 +1,67 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/primar/presentation/mascot.dart';
+import 'package:prepskul/features/skulmate/widgets/skulmate_surface_styles.dart';
 
+/// PrepSkul marketplace chrome — white, deep-blue header, sky/yellow accents.
 class OnboardPalette {
-  static const cream = Color(0xFFF4F7FB);
-  static const sheet = Color(0xFFFEFEFE);
-  static BoxDecoration page = const BoxDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        Color(0xFFE8F6FE),
-        Color(0xFFF4F7FB),
-        Color(0xFFFEF9C3),
-      ],
-      stops: [0, 0.45, 1],
-    ),
-  );
+  static const sheet = Color(0xFFFFFFFF);
 
-  static BoxDecoration neumorph({required bool selected, Color? fill}) {
+  static BoxDecoration get page => SkulMateSurfaceStyles.softScreenGradient();
+
+  static BoxDecoration card({required bool selected}) {
     return BoxDecoration(
-      color: selected
-          ? AppTheme.skyBlueLight
-          : (fill ?? sheet),
-      borderRadius: BorderRadius.circular(22),
+      color: selected ? AppTheme.skyBlueLight : Colors.white,
+      borderRadius: BorderRadius.circular(SkulMateSurfaceStyles.homeCardRadius),
       border: Border.all(
-        color: selected ? AppTheme.skyBlue : Colors.white,
-        width: selected ? 2 : 1.4,
+        color: selected
+            ? AppTheme.skyBlue.withValues(alpha: 0.7)
+            : AppTheme.softBorder.withValues(alpha: 0.9),
       ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.white.withValues(alpha: 0.95),
-          offset: const Offset(-5, -5),
-          blurRadius: 10,
-        ),
-        BoxShadow(
-          color: AppTheme.primaryColor.withValues(alpha: selected ? 0.16 : 0.10),
-          offset: const Offset(6, 8),
-          blurRadius: selected ? 18 : 14,
-        ),
-      ],
+      boxShadow: SkulMateSurfaceStyles.homeCardShadow(compact: true),
+    );
+  }
+}
+
+Widget prepMate({required Mood mood, double size = 96}) {
+  return Mate(
+    mood: mood,
+    size: size,
+    ink: AppTheme.primaryColor,
+    body: AppTheme.skyBlue,
+    belly: AppTheme.skyBlueLight,
+    accent: AppTheme.softYellow,
+  );
+}
+
+class PrepSkulWordmark extends StatelessWidget {
+  const PrepSkulWordmark({super.key, this.onDark = false});
+  final bool onDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onDark ? Colors.white : AppTheme.primaryColor;
+    return Text(
+      'PrepSkul',
+      textAlign: TextAlign.center,
+      style: GoogleFonts.poppins(
+        fontSize: 22,
+        fontWeight: FontWeight.w800,
+        color: color,
+        letterSpacing: -0.3,
+      ),
     );
   }
 }
 
 class OnboardRail extends StatelessWidget {
-  const OnboardRail({super.key, required this.count, required this.at, required this.label});
+  const OnboardRail({
+    super.key,
+    required this.count,
+    required this.at,
+    required this.label,
+  });
   final int count;
   final int at;
   final String label;
@@ -62,7 +78,7 @@ class OnboardRail extends StatelessWidget {
                   padding: EdgeInsets.only(right: i == count - 1 ? 0 : 4),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 280),
-                    height: i == at ? 8 : 6,
+                    height: i == at ? 7 : 5,
                     decoration: BoxDecoration(
                       color: i < at
                           ? AppTheme.skyBlue
@@ -101,7 +117,7 @@ class OnboardBubble extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(left: 6),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: OnboardPalette.neumorph(selected: false),
+      decoration: OnboardPalette.card(selected: false),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -156,25 +172,29 @@ class OnboardChoice extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedScale(
-          scale: selected ? 1.015 : 1,
+          scale: selected ? 1.01 : 1,
           duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutBack,
+          curve: Curves.easeOutCubic,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: OnboardPalette.neumorph(selected: selected),
+            decoration: OnboardPalette.card(selected: selected),
             child: Row(
               children: [
                 leading ??
                     Container(
-                      width: 46,
-                      height: 46,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        color: (artColor ?? AppTheme.skyBlue).withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(14),
+                        color: (artColor ?? AppTheme.skyBlue).withValues(
+                          alpha: 0.16,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        selected ? Icons.check_rounded : Icons.circle_outlined,
+                        selected
+                            ? Icons.check_rounded
+                            : Icons.circle_outlined,
                         color: artColor ?? AppTheme.primaryColor,
                       ),
                     ),
@@ -207,14 +227,9 @@ class OnboardChoice extends StatelessWidget {
                 AnimatedOpacity(
                   duration: const Duration(milliseconds: 160),
                   opacity: selected ? 1 : 0,
-                  child: Container(
-                    width: 26,
-                    height: 26,
-                    decoration: const BoxDecoration(
-                      color: AppTheme.skyBlue,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.check_rounded, size: 16, color: Colors.white),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: AppTheme.skyBlue,
                   ),
                 ),
               ],
@@ -227,7 +242,11 @@ class OnboardChoice extends StatelessWidget {
 }
 
 class OnboardPrimaryButton extends StatelessWidget {
-  const OnboardPrimaryButton({super.key, required this.label, required this.onTap});
+  const OnboardPrimaryButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+  });
   final String label;
   final VoidCallback onTap;
 
@@ -239,13 +258,13 @@ class OnboardPrimaryButton extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          gradient: AppTheme.primaryGradient,
-          borderRadius: BorderRadius.circular(18),
+          color: AppTheme.primaryColor,
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.primaryColor.withValues(alpha: 0.28),
-              offset: const Offset(0, 10),
-              blurRadius: 18,
+              color: AppTheme.primaryColor.withValues(alpha: 0.22),
+              offset: const Offset(0, 8),
+              blurRadius: 16,
             ),
           ],
         ),
@@ -270,27 +289,20 @@ class OnboardGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = [
-      AppTheme.skyBlue,
-      AppTheme.softYellow,
-      AppTheme.primaryColor,
-      AppTheme.accentBlue,
-    ];
-    final color = colors[seed.hashCode.abs() % colors.length];
     return Container(
-      width: 46,
-      height: 46,
+      width: 44,
+      height: 44,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: selected ? 0.28 : 0.14),
-        borderRadius: BorderRadius.circular(14),
+        color: AppTheme.skyBlue.withValues(alpha: selected ? 0.28 : 0.12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         seed.substring(0, 1).toUpperCase(),
         style: GoogleFonts.poppins(
           fontSize: 18,
           fontWeight: FontWeight.w800,
-          color: color == AppTheme.softYellow ? AppTheme.primaryColor : color,
+          color: AppTheme.primaryColor,
         ),
       ),
     );

@@ -39,10 +39,22 @@ enum Mood {
 }
 
 class Mate extends StatefulWidget {
-  const Mate({super.key, required this.mood, this.size = 96});
+  const Mate({
+    super.key,
+    required this.mood,
+    this.size = 96,
+    this.ink = PrimarTheme.navy,
+    this.body = PrimarTheme.blue,
+    this.belly = PrimarTheme.teal,
+    this.accent = PrimarTheme.yellow,
+  });
 
   final Mood mood;
   final double size;
+  final Color ink;
+  final Color body;
+  final Color belly;
+  final Color accent;
 
   @override
   State<Mate> createState() => _MateState();
@@ -196,6 +208,10 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
           gaze: _gaze,
           reaction: _reaction,
           breath: _breath,
+          ink: widget.ink,
+          body: widget.body,
+          belly: widget.belly,
+          accent: widget.accent,
         ),
       ),
     );
@@ -214,6 +230,10 @@ class _MatePainter extends CustomPainter {
     required this.gaze,
     required this.reaction,
     required this.breath,
+    required this.ink,
+    required this.body,
+    required this.belly,
+    required this.accent,
   });
 
   final Mood mood;
@@ -226,11 +246,15 @@ class _MatePainter extends CustomPainter {
   final double gaze;
   final double reaction;
   final double breath;
+  final Color ink;
+  final Color body;
+  final Color belly;
+  final Color accent;
 
-  static const _navy = PrimarTheme.navy;
-  static const _blue = PrimarTheme.blue;
-  static const _teal = PrimarTheme.teal;
-  static const _yellow = PrimarTheme.yellow;
+  Color get _navy => ink;
+  Color get _blue => body;
+  Color get _teal => belly;
+  Color get _yellow => accent;
 
   bool get _elated => mood == Mood.happy || mood == Mood.cheer;
 

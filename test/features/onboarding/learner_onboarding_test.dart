@@ -20,7 +20,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('SkulMate'), findsWidgets);
+    expect(find.text('PrepSkul'), findsWidgets);
     expect(find.textContaining('tutor-matching form'), findsOneWidget);
     expect(find.textContaining('best tutor'), findsNothing);
     expect(find.textContaining('your child'), findsNothing);
