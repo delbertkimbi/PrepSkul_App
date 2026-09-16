@@ -1282,7 +1282,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              'SkulMate',
+                              'Mate',
                               style: GoogleFonts.poppins(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,

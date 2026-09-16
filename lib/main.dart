@@ -1451,10 +1451,10 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             } else {
               return _createFadeRoute(
                 () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
+                  appBar: AppBar(title: const Text('PrepSkul')),
                   body: const Center(
                     child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
+                      'Mate is currently unavailable. Please check back later.',
                     ),
                   ),
                 ),
@@ -1468,10 +1468,10 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             } else {
               return _createFadeRoute(
                 () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
+                  appBar: AppBar(title: const Text('PrepSkul')),
                   body: const Center(
                     child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
+                      'Mate is currently unavailable. Please check back later.',
                     ),
                   ),
                 ),
@@ -1489,10 +1489,10 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             } else {
               return _createFadeRoute(
                 () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
+                  appBar: AppBar(title: const Text('PrepSkul')),
                   body: const Center(
                     child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
+                      'Mate is currently unavailable. Please check back later.',
                     ),
                   ),
                 ),
@@ -1504,10 +1504,10 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             } else {
               return _createFadeRoute(
                 () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
+                  appBar: AppBar(title: const Text('PrepSkul')),
                   body: const Center(
                     child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
+                      'Mate is currently unavailable. Please check back later.',
                     ),
                   ),
                 ),
@@ -1520,10 +1520,10 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
           if (!AppConfig.enableSkulMate) {
             return _createFadeRoute(
               () => Scaffold(
-                appBar: AppBar(title: const Text('SkulMate')),
+                appBar: AppBar(title: const Text('PrepSkul')),
                 body: const Center(
                   child: Text(
-                    'SkulMate is currently unavailable. Please check back later.',
+                    'Mate is currently unavailable. Please check back later.',
                   ),
                 ),
               ),

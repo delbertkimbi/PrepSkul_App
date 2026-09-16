@@ -477,8 +477,8 @@ class SkulMateCopy {
       isFrench ? 'Coller des notes' : 'Paste notes';
 
   String get pasteNotesSubtitle => isFrench
-      ? 'Colle ton texte ici. SkulMate le transformera en jeux de révision.'
-      : 'Drop your notes here. SkulMate will turn them into revision games.';
+      ? 'Colle ton texte ici. Mate le transformera en jeux de révision.'
+      : 'Drop your notes here. Mate will turn them into revision games.';
 
   String get pasteTitleOptional =>
       isFrench ? 'Titre (optionnel)' : 'Title (optional)';
@@ -747,7 +747,7 @@ class SkulMateCopy {
       isFrench ? 'Bientôt disponible' : 'Coming soon';
 
   String get welcomeSheetTitle =>
-      isFrench ? 'Bienvenue sur SkulMate' : 'Welcome to SkulMate';
+      isFrench ? 'Salut. Je suis Mate.' : 'Hey. I’m Mate.';
 
   String welcomeHeadline({bool isParent = false}) {
     return isFrench

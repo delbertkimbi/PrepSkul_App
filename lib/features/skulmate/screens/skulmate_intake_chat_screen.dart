@@ -170,7 +170,7 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      'SkulMate',
+                      'Mate',
                       style: GoogleFonts.poppins(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,

@@ -69,7 +69,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navFindTutors => 'Find Tutors';
 
   @override
-  String get navSkulMate => 'SkulMate';
+  String get navSkulMate => 'Mate';
 
   @override
   String get navRequests => 'Requests';

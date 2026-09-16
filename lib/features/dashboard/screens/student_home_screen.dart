@@ -1005,7 +1005,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                     _buildActionCard(
                       icon: PhosphorIcons.chatCircle,
-                      title: 'SkulMate tutor',
+                      title: 'Mate',
                       subtitle: 'You are the student — open your voice and chat thread',
                       color: AppTheme.primaryColor,
                       onTap: () {
