@@ -18,7 +18,7 @@ class SkulMateCompanionBanner extends StatefulWidget {
     super.key,
     required this.message,
     this.tone = CompanionTone.neutral,
-    this.label = 'SkulMate',
+    this.label = 'Mate',
     this.celebrate = false,
   });
 
