@@ -16,7 +16,9 @@ import '../services/skulmate_tutor_intake_bus.dart';
 import '../services/skulmate_tutor_session_service.dart';
 import '../services/skulmate_tutor_voice_service.dart';
 import '../widgets/skulmate_home_top_bar.dart';
+import '../widgets/skulmate_hero_mascot.dart';
 import '../widgets/skulmate_in_thread_surface.dart';
+import '../widgets/skulmate_mascot_media_widget.dart';
 import '../widgets/skulmate_tutor_board.dart';
 import '../widgets/skulmate_surface_styles.dart';
 import '../widgets/skulmate_tutor_composer.dart';
@@ -390,9 +392,25 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                 onNewSession: () => unawaited(_startNew()),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                padding: const EdgeInsets.fromLTRB(16, 4, 20, 8),
                 child: Row(
                   children: [
+                    ValueListenableBuilder<TutorVoiceState>(
+                      valueListenable: _voice.state,
+                      builder: (_, state, __) => SkulMateHeroMascot(
+                        state: switch (state) {
+                          TutorVoiceState.thinking =>
+                            SkulMateMascotState.thinking,
+                          TutorVoiceState.speaking =>
+                            SkulMateMascotState.encouraging,
+                          TutorVoiceState.recording =>
+                            SkulMateMascotState.encouraging,
+                          TutorVoiceState.idle =>
+                            SkulMateMascotState.encouraging,
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         copy.heroQuestion,

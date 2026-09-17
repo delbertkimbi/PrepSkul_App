@@ -1,98 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 
 import 'skulmate_mascot_media_widget.dart';
 
-/// Hero mascot with gentle float animation and a soft circular ground shadow.
-class SkulMateHeroMascot extends StatefulWidget {
+/// Live vector Mate with a paper ground shadow, matching the site SVG hop.
+class SkulMateHeroMascot extends StatelessWidget {
   final SkulMateMascotState state;
+  final double size;
 
   const SkulMateHeroMascot({
     super.key,
     this.state = SkulMateMascotState.encouraging,
+    this.size = 72,
   });
 
   @override
-  State<SkulMateHeroMascot> createState() => _SkulMateHeroMascotState();
-}
-
-class _SkulMateHeroMascotState extends State<SkulMateHeroMascot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _float;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2600),
-    )..repeat(reverse: true);
-    _float = Tween<double>(begin: 0, end: -7).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final mood = moodForMascotState(state);
     return SizedBox(
-      width: 132,
-      height: 144,
-      child: AnimatedBuilder(
-        animation: _float,
-        builder: (context, child) {
-          final lift = -_float.value;
-          final shadowScale = 1 - (lift / 28);
-
-          return Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                bottom: 6,
-                child: Transform.scale(
-                  scale: shadowScale.clamp(0.72, 1.0),
-                  child: Container(
-                    width: 52,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      color: AppTheme.textDark.withValues(alpha: 0.1),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.textDark.withValues(alpha: 0.14),
-                          blurRadius: 10,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+      width: size,
+      height: size + 12,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            bottom: 2,
+            child: Container(
+              width: size * 0.42,
+              height: 8,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                color: AppTheme.textDark.withValues(alpha: 0.12),
               ),
-              Transform.translate(
-                offset: Offset(0, _float.value),
-                child: child,
-              ),
-            ],
-          );
-        },
-        child: SizedBox(
-          width: 132,
-          height: 132,
-          child: SkulMateMascotMediaWidget(
-            state: widget.state,
-            showFrame: false,
-            loop: true,
-            autoplay: false,
-            preferStaticImage: true,
+            ),
           ),
-        ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: AliveMate(mood: mood, size: size),
+          ),
+        ],
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/core/widgets/premium_promo_card_shell.dart';
 import 'package:prepskul/features/booking/models/upcoming_session_item.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
@@ -234,7 +235,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
             : 'Today\'s challenge is ready',
         description: _dailyChallengeDescription(_todayGame!),
         buttonLabel: 'Play',
-        mascotAsset: 'assets/onboard/art/mate-wave.png',
+        mascotMood: Mood.point,
         accent: AppTheme.skyBlue,
         onTap: () => widget.onPlayGame(_todayGame!, isDailyChallenge: true),
       );
@@ -252,7 +253,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
           dailyCompleted: _dailyCompleted && !noGames,
         ),
         buttonLabel: noGames ? 'Create game' : 'Open SkulMate',
-        mascotAsset: 'assets/onboard/art/mate-think.png',
+        mascotMood: Mood.thinking,
         accent: AppTheme.primaryLight,
         onTap: noGames
             ? (widget.onCreateGame ?? widget.onOpenSkulMate ?? () {})
@@ -266,7 +267,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
       subtitle: 'Games from your own notes',
       description: _noGameDescription(noGames: false, dailyCompleted: false),
       buttonLabel: 'Browse games',
-      mascotAsset: 'assets/onboard/art/mate-encourage.png',
+      mascotMood: Mood.point,
       accent: AppTheme.skyBlue,
       onTap: widget.onOpenSkulMate ?? () {},
     );
@@ -307,7 +308,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
           : 'Browse verified tutors and pick a time that works for you.',
       subtitle: 'Online or on-site sessions',
       buttonLabel: 'Find tutors',
-      mascotAsset: 'assets/onboard/art/mate-cheer.png',
+      mascotMood: Mood.point,
       accent: AppTheme.softYellow,
       onTap: widget.onFindTutors,
     );
@@ -442,7 +443,7 @@ class _PromoSlide {
   final String description;
   final String subtitle;
   final String buttonLabel;
-  final String? mascotAsset;
+  final Mood? mascotMood;
   final String? avatarUrl;
   final String? avatarFallback;
   final Color accent;
@@ -455,7 +456,7 @@ class _PromoSlide {
     required this.description,
     required this.subtitle,
     required this.buttonLabel,
-    this.mascotAsset,
+    this.mascotMood,
     this.avatarUrl,
     this.avatarFallback,
     this.accent = AppTheme.skyBlue,
@@ -478,7 +479,7 @@ class _PromoCard extends StatelessWidget {
       accent: slide.accent,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
       child: Stack(
-        clipBehavior: Clip.hardEdge,
+        clipBehavior: Clip.none,
         fit: StackFit.expand,
         children: [
           Column(
@@ -588,19 +589,14 @@ class _PromoCard extends StatelessWidget {
         (slide.avatarUrl == null || slide.avatarUrl!.isEmpty)) {
       return _avatarFallback();
     }
-    if (slide.mascotAsset != null) {
+    if (slide.mascotMood != null) {
       return SizedBox(
         width: 88,
         height: 88,
-        child: Image.asset(
-          slide.mascotAsset!,
-          fit: BoxFit.contain,
-          alignment: Alignment.centerRight,
-          errorBuilder: (_, __, ___) => Icon(
-            Icons.auto_awesome,
-            color: Colors.white.withValues(alpha: 0.8),
-            size: 40,
-          ),
+        child: AliveMate(
+          mood: slide.mascotMood!,
+          size: 88,
+          flip: true,
         ),
       );
     }

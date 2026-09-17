@@ -42,6 +42,9 @@ enum Mood {
 
   /// End of a session, or Super.
   cheer,
+
+  /// Pointing at something beside him, the same pose as the site SVG Mate.
+  point,
 }
 
 class Mate extends StatefulWidget {
@@ -53,6 +56,8 @@ class Mate extends StatefulWidget {
     this.body = PrimarTheme.blue,
     this.belly = PrimarTheme.teal,
     this.accent = PrimarTheme.yellow,
+    this.keepHopping = false,
+    this.flip = false,
   });
 
   final Mood mood;
@@ -61,6 +66,12 @@ class Mate extends StatefulWidget {
   final Color body;
   final Color belly;
   final Color accent;
+
+  /// Marketplace Mate keeps a 0.9s hop, matching the site SVG.
+  final bool keepHopping;
+
+  /// Mirror so a Mate on the right can point at copy on the left.
+  final bool flip;
 
   @override
   State<Mate> createState() => _MateState();
@@ -97,11 +108,25 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
   double _gazeTarget = 0;
   double _gazeTimer = 1.5;
 
+  /// Time until the next keep-alive hop (site SVG is 0.9s).
+  double _hopWait = 0.45;
+
   @override
   void initState() {
     super.initState();
     _ticker = createTicker(_tick)..start();
     if (widget.mood != Mood.idle) _trigger();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    if (reduce && _ticker.isActive) {
+      _ticker.stop();
+    } else if (!reduce && !_ticker.isActive) {
+      _ticker.start();
+    }
   }
 
   @override
@@ -129,6 +154,9 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
         _antennaV = -7;
       case Mood.thinking:
         _gazeTarget = 0.8;
+      case Mood.point:
+        _bodyV = 28;
+        _gazeTarget = 1.0;
       case Mood.idle:
         _gazeTarget = 0;
     }
@@ -181,9 +209,19 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
       _gazeTimer = 1.2 + _rng.nextDouble() * 2.2;
       if (widget.mood == Mood.idle || widget.mood == Mood.talk) {
         _gazeTarget = (_rng.nextDouble() - 0.5) * 1.4;
+      } else if (widget.mood == Mood.point) {
+        _gazeTarget = 1.0;
       }
     }
     _gaze += (_gazeTarget - _gaze) * (dt * 6).clamp(0.0, 1.0);
+
+    if (widget.keepHopping) {
+      _hopWait -= dt;
+      if (_hopWait <= 0 && _bodyY.abs() < 3 && _bodyV.abs() < 10) {
+        _bodyV = widget.mood == Mood.thinking ? 16 : 30;
+        _hopWait = 0.9;
+      }
+    }
 
     if (mounted) setState(() {});
   }
@@ -206,7 +244,7 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
     // stops a jump reading as a lift on a string.
     final tilt = (-_bodyV * 0.0016).clamp(-0.11, 0.11);
 
-    return SizedBox(
+    Widget child = SizedBox(
       width: widget.size,
       height: widget.size,
       child: CustomPaint(
@@ -228,6 +266,10 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
         ),
       ),
     );
+    if (widget.flip) {
+      child = Transform.flip(flipX: true, child: child);
+    }
+    return child;
   }
 }
 
@@ -395,6 +437,7 @@ class _MatePainter extends CustomPainter {
     final waving = mood == Mood.wave;
     final talking = mood == Mood.talk;
     final thumb = mood == Mood.encourage;
+    final pointing = mood == Mood.point;
     final lift = _elated
         ? 1.0
         : thumb
@@ -403,7 +446,9 @@ class _MatePainter extends CustomPainter {
                 ? 0.42
                 : waving
                     ? 0.2
-                    : 0.0;
+                    : pointing
+                        ? 0.15
+                        : 0.0;
     final idleWave = _elated
         ? sin(breath * 6) * 3
         : talking
@@ -416,6 +461,7 @@ class _MatePainter extends CustomPainter {
       final thinkArm = mood == Mood.thinking && side < 0;
       final waveArm = waving && side > 0;
       final thumbArm = thumb && side < 0;
+      final pointArm = pointing && side > 0;
       final shoulder = Offset(50 + side * 30, 56);
       final Offset hand;
       if (thinkArm) {
@@ -424,6 +470,12 @@ class _MatePainter extends CustomPainter {
         hand = Offset(74 + sin(breath * 8) * 7, 22 + cos(breath * 8) * 4);
       } else if (thumbArm) {
         hand = const Offset(22, 34);
+      } else if (pointArm) {
+        // Site SVG rotates this arm about -16deg on a 1.05s loop.
+        final jab = sin(breath * 4) * 6;
+        hand = Offset(102 + jab, 38 - jab * 0.35);
+      } else if (pointing && side < 0) {
+        hand = const Offset(18, 46);
       } else {
         hand = Offset(
           50 + side * (40 + lift * 6) + side * idleWave,
@@ -456,6 +508,13 @@ class _MatePainter extends CustomPainter {
       } else if (thumbArm) {
         canvas.drawCircle(hand, 3.2, Paint()..color = _navy);
         canvas.drawLine(Offset(hand.dx, hand.dy - 2), Offset(hand.dx, hand.dy - 9), outline);
+      } else if (pointArm) {
+        canvas.drawCircle(hand, 3.4, Paint()..color = _navy);
+        canvas.drawLine(
+          hand,
+          Offset(hand.dx + 9, hand.dy - 5),
+          outline,
+        );
       } else {
         canvas.drawCircle(hand, 2.6, Paint()..color = _navy);
       }
@@ -521,7 +580,7 @@ class _MatePainter extends CustomPainter {
       }
     }
 
-    if (mood == Mood.talk || mood == Mood.wave) {
+    if (mood == Mood.talk || mood == Mood.wave || mood == Mood.point) {
       for (final side in [-1.0, 1.0]) {
         final x = 50 + side * 11;
         canvas.drawPath(
@@ -539,6 +598,7 @@ class _MatePainter extends CustomPainter {
         _openMouth(canvas, mouthY, 4.5 + sin(breath * 14).abs() * 7.5);
       case Mood.wave:
         _openMouth(canvas, mouthY, 7 + reaction * 2);
+      case Mood.point:
       case Mood.idle:
         canvas.drawPath(
           Path()

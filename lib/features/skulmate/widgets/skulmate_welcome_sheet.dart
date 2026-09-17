@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-
-import 'package:prepskul/features/primar/presentation/mascot.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 import '../l10n/skulmate_copy.dart';
 import '../services/skulmate_onboarding_prefs.dart';
 import '../services/skulmate_welcome_service.dart';
@@ -73,13 +72,9 @@ class _WelcomeBody extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               Center(
-                child: Mate(
+                child: AliveMate(
                   mood: Mood.cheer,
                   size: 112,
-                  ink: AppTheme.primaryColor,
-                  body: AppTheme.skyBlue,
-                  belly: AppTheme.skyBlueLight,
-                  accent: AppTheme.softYellow,
                 ),
               ),
               const SizedBox(height: 12),

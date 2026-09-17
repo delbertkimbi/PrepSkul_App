@@ -2,10 +2,20 @@ import 'dart:async' show Timer, unawaited;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/features/skulmate/services/game_sound_service.dart';
 import 'package:video_player/video_player.dart';
 
 enum SkulMateMascotState { neutral, thinking, encouraging, celebration }
+
+Mood moodForMascotState(SkulMateMascotState state) {
+  return switch (state) {
+    SkulMateMascotState.neutral => Mood.idle,
+    SkulMateMascotState.thinking => Mood.thinking,
+    SkulMateMascotState.encouraging => Mood.point,
+    SkulMateMascotState.celebration => Mood.cheer,
+  };
+}
 
 class SkulMateMascotMediaWidget extends StatefulWidget {
   final SkulMateMascotState state;
@@ -19,7 +29,7 @@ class SkulMateMascotMediaWidget extends StatefulWidget {
   /// 0.0 = muted (default). Mascot clips should not compete with game BGM/TTS.
   final double videoVolume;
 
-  /// When true, skips video and shows the static mascot image only (e.g. tiny HUD chips).
+  /// When true, skips video and shows the live vector Mate (HUD chips, chrome).
   final bool preferStaticImage;
 
   /// When false, mascot floats with no card frame (home hero).
@@ -78,13 +88,6 @@ class _SkulMateMascotMediaWidgetState extends State<SkulMateMascotMediaWidget>
     SkulMateMascotState.thinking: 'assets/characters/mascots/thinking.png',
     SkulMateMascotState.encouraging: 'assets/characters/mascots/encouraging.png',
     SkulMateMascotState.celebration: 'assets/characters/mascots/celebration.png',
-  };
-
-  static const Map<SkulMateMascotState, String> _paperPaths = {
-    SkulMateMascotState.neutral: 'assets/onboard/art/mate-idle.png',
-    SkulMateMascotState.thinking: 'assets/onboard/art/mate-think.png',
-    SkulMateMascotState.encouraging: 'assets/onboard/art/mate-wave.png',
-    SkulMateMascotState.celebration: 'assets/onboard/art/mate-cheer.png',
   };
 
   @override
@@ -282,14 +285,16 @@ class _SkulMateMascotMediaWidgetState extends State<SkulMateMascotMediaWidget>
 
   @override
   Widget build(BuildContext context) {
-    final imagePath = widget.preferStaticImage
-        ? _paperPaths[widget.state]!
-        : _videoPosterPaths[widget.state]!;
-
+    final imagePath = _videoPosterPaths[widget.state]!;
     final fillStill = widget.showFrame && !widget.preferStaticImage;
-
     final Widget inner = widget.preferStaticImage
-        ? _buildImage(imagePath, fillFrame: false)
+        ? FittedBox(
+            fit: BoxFit.contain,
+            child: AliveMate(
+              mood: moodForMascotState(widget.state),
+              size: 96,
+            ),
+          )
         : Stack(
             alignment: Alignment.center,
             fit: StackFit.expand,

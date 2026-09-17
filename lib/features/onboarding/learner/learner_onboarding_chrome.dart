@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import 'package:prepskul/features/primar/presentation/mascot.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 
 TextStyle onboardFont({
   double size = 16,
@@ -60,75 +60,7 @@ class OnboardPalette {
 }
 
 Widget prepMate({required Mood mood, double size = 96}) {
-  return PaperMate(mood: mood, size: size);
-}
-
-class PaperMate extends StatefulWidget {
-  const PaperMate({super.key, required this.mood, this.size = 96});
-
-  final Mood mood;
-  final double size;
-
-  @override
-  State<PaperMate> createState() => _PaperMateState();
-}
-
-class _PaperMateState extends State<PaperMate> with SingleTickerProviderStateMixin {
-  static const _art = <Mood, String>{
-    Mood.idle: 'assets/onboard/art/mate-idle.png',
-    Mood.wave: 'assets/onboard/art/mate-wave.png',
-    Mood.talk: 'assets/onboard/art/mate-talk.png',
-    Mood.thinking: 'assets/onboard/art/mate-think.png',
-    Mood.happy: 'assets/onboard/art/mate-encourage.png',
-    Mood.encourage: 'assets/onboard/art/mate-encourage.png',
-    Mood.cheer: 'assets/onboard/art/mate-cheer.png',
-  };
-
-  late final AnimationController _hop;
-  late final Animation<double> _lift;
-  late final Animation<double> _tilt;
-
-  @override
-  void initState() {
-    super.initState();
-    _hop = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-    final curve = CurvedAnimation(parent: _hop, curve: Curves.easeInOut);
-    _lift = Tween<double>(begin: 0, end: -8).animate(curve);
-    _tilt = Tween<double>(begin: -0.05, end: 0.05).animate(curve);
-  }
-
-  @override
-  void dispose() {
-    _hop.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final art = Image.asset(
-      _art[widget.mood] ?? _art[Mood.idle]!,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-      gaplessPlayback: true,
-    );
-    final mate = SizedBox(width: widget.size, height: widget.size, child: art);
-    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
-      return mate;
-    }
-    return AnimatedBuilder(
-      animation: _hop,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(0, _lift.value),
-          child: Transform.rotate(angle: _tilt.value, child: child),
-        );
-      },
-      child: mate,
-    );
-  }
+  return AliveMate(mood: mood, size: size);
 }
 
 class PrepSkulWordmark extends StatelessWidget {

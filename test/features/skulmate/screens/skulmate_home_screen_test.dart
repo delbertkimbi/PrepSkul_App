@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_home_screen.dart';
+import 'package:prepskul/features/skulmate/widgets/skulmate_hero_mascot.dart';
 import 'package:prepskul/features/skulmate/widgets/skulmate_home_top_bar.dart';
 import 'package:prepskul/features/skulmate/widgets/skulmate_tutor_composer.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -19,6 +21,10 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true),
+          child: child!,
+        ),
         home: ChangeNotifierProvider(
           create: (_) => LanguageNotifier(),
           child: const SkulMateHomeScreen(),
@@ -30,6 +36,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('What shall we revise today?'), findsOneWidget);
+    expect(find.byType(SkulMateHeroMascot), findsOneWidget);
+    expect(find.byType(AliveMate), findsOneWidget);
     expect(find.byType(SkulMateHomeTopBar), findsOneWidget);
     expect(find.text('History'), findsOneWidget);
     expect(find.byType(SkulMateTutorComposer), findsOneWidget);
