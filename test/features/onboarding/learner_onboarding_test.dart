@@ -14,19 +14,23 @@ void main() {
   ) async {
     await tester.pumpWidget(
       const MediaQuery(
-        data: MediaQueryData(size: Size(390, 844)),
+        data: MediaQueryData(size: Size(390, 844), disableAnimations: true),
         child: MaterialApp(home: LearnerOnboardingScreen()),
       ),
     );
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+    await tester.pump();
 
-    expect(find.text('PrepSkul'), findsWidgets);
+    expect(find.text('PrepSkul'), findsNothing);
+    expect(find.textContaining('Hi there'), findsOneWidget);
     expect(find.textContaining('tutor-matching form'), findsOneWidget);
     expect(find.textContaining('best tutor'), findsNothing);
     expect(find.textContaining('your child'), findsNothing);
 
     await tester.tap(find.text('Let’s go'));
     await settle(tester);
+    await tester.pump();
+    await tester.pump();
 
     expect(find.text('English'), findsOneWidget);
     expect(find.text('Français'), findsOneWidget);

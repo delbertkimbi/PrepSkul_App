@@ -25,16 +25,22 @@ enum Mood {
   /// Waiting. Breathes, blinks, glances around.
   idle,
 
+  /// Intro hop. One arm waving hello.
+  wave,
+
+  /// Mouth flaps while a question is being typed.
+  talk,
+
   /// A question is on screen and the child is deciding.
   thinking,
 
   /// They got it.
   happy,
 
-  /// They missed it — warm, never disappointed.
+  /// They missed it. Warm, never disappointed.
   encourage,
 
-  /// End of a session.
+  /// End of a session, or Super.
   cheer,
 }
 
@@ -112,9 +118,14 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
         // Crouch first. The dip before a jump is anticipation, and without it
         // the jump reads as a glitch rather than a decision.
         _bodyV = 34;
+      case Mood.wave:
+        _bodyV = 34;
+      case Mood.talk:
+        _bodyV = 12;
       case Mood.cheer:
         _bodyV = 46;
       case Mood.encourage:
+        _bodyV = 22;
         _antennaV = -7;
       case Mood.thinking:
         _gazeTarget = 0.8;
@@ -168,7 +179,9 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
     _gazeTimer -= dt;
     if (_gazeTimer <= 0) {
       _gazeTimer = 1.2 + _rng.nextDouble() * 2.2;
-      if (widget.mood == Mood.idle) _gazeTarget = (_rng.nextDouble() - 0.5) * 1.4;
+      if (widget.mood == Mood.idle || widget.mood == Mood.talk) {
+        _gazeTarget = (_rng.nextDouble() - 0.5) * 1.4;
+      }
     }
     _gaze += (_gazeTarget - _gaze) * (dt * 6).clamp(0.0, 1.0);
 
@@ -379,15 +392,44 @@ class _MatePainter extends CustomPainter {
   }
 
   void _drawArms(Canvas canvas, Paint outline) {
-    final lift = _elated ? 1.0 : (mood == Mood.encourage ? 0.35 : 0.0);
-    final wave = _elated ? sin(breath * 6) * 3 : 0.0;
+    final waving = mood == Mood.wave;
+    final talking = mood == Mood.talk;
+    final thumb = mood == Mood.encourage;
+    final lift = _elated
+        ? 1.0
+        : thumb
+            ? 0.35
+            : talking
+                ? 0.42
+                : waving
+                    ? 0.2
+                    : 0.0;
+    final idleWave = _elated
+        ? sin(breath * 6) * 3
+        : talking
+            ? sin(breath * 3.2) * 2.2
+            : mood == Mood.idle
+                ? sin(breath * 2.2) * 1.4
+                : 0.0;
 
     for (final side in [-1.0, 1.0]) {
+      final thinkArm = mood == Mood.thinking && side < 0;
+      final waveArm = waving && side > 0;
+      final thumbArm = thumb && side < 0;
       final shoulder = Offset(50 + side * 30, 56);
-      final hand = Offset(
-        50 + side * (40 + lift * 6) + side * wave,
-        56 - lift * 30 - (mood == Mood.encourage ? 0 : 0) + (lift == 0 ? 8 : 0),
-      );
+      final Offset hand;
+      if (thinkArm) {
+        hand = const Offset(42, 58);
+      } else if (waveArm) {
+        hand = Offset(74 + sin(breath * 8) * 7, 22 + cos(breath * 8) * 4);
+      } else if (thumbArm) {
+        hand = const Offset(22, 34);
+      } else {
+        hand = Offset(
+          50 + side * (40 + lift * 6) + side * idleWave,
+          56 - lift * 30 + (lift == 0 ? 8 : 0),
+        );
+      }
       final ctrl = Offset(
         50 + side * (40 + lift * 4),
         (shoulder.dy + hand.dy) / 2 - 4,
@@ -402,7 +444,7 @@ class _MatePainter extends CustomPainter {
 
       // Little splayed hands, straight off the concept sheet. Three short
       // strokes read as fingers at this size; anything more turns to mush.
-      if (_elated) {
+      if (_elated || waveArm) {
         for (var i = -1; i <= 1; i++) {
           final a = -pi / 2 + i * 0.5 + (side < 0 ? -0.35 : 0.35);
           canvas.drawLine(
@@ -411,6 +453,9 @@ class _MatePainter extends CustomPainter {
             outline,
           );
         }
+      } else if (thumbArm) {
+        canvas.drawCircle(hand, 3.2, Paint()..color = _navy);
+        canvas.drawLine(Offset(hand.dx, hand.dy - 2), Offset(hand.dx, hand.dy - 9), outline);
       } else {
         canvas.drawCircle(hand, 2.6, Paint()..color = _navy);
       }
@@ -423,8 +468,8 @@ class _MatePainter extends CustomPainter {
     const eyeR = 63.5;
     final look = gaze * 2.6;
 
-    if (blink || _elated) {
-      // Closed and curved upward — the shape of a smile, which is what makes a
+    if (blink || _elated || mood == Mood.encourage) {
+      // Closed and curved upward. The shape of a smile, which is what makes a
       // face read as delighted rather than merely awake.
       for (final x in [eyeL, eyeR]) {
         canvas.drawPath(
@@ -476,8 +521,24 @@ class _MatePainter extends CustomPainter {
       }
     }
 
+    if (mood == Mood.talk || mood == Mood.wave) {
+      for (final side in [-1.0, 1.0]) {
+        final x = 50 + side * 11;
+        canvas.drawPath(
+          Path()
+            ..moveTo(x - side * 6, eyeY - 12)
+            ..quadraticBezierTo(x, eyeY - 16, x + side * 6, eyeY - 11),
+          outline,
+        );
+      }
+    }
+
     final mouthY = 63.0;
     switch (mood) {
+      case Mood.talk:
+        _openMouth(canvas, mouthY, 4.5 + sin(breath * 14).abs() * 7.5);
+      case Mood.wave:
+        _openMouth(canvas, mouthY, 7 + reaction * 2);
       case Mood.idle:
         canvas.drawPath(
           Path()
@@ -500,26 +561,29 @@ class _MatePainter extends CustomPainter {
         );
       case Mood.happy:
       case Mood.cheer:
-        // Open mouth with a teal tongue — the detail that turned a smile into
+        // Open mouth with a teal tongue. The detail that turned a smile into
         // a laugh on the concept sheet.
-        final open = 8.0 + reaction * 3;
-        final mouth = Path()
-          ..moveTo(41, mouthY - 3)
-          ..quadraticBezierTo(50, mouthY + open, 59, mouthY - 3)
-          ..close();
-        canvas.drawPath(mouth, Paint()..color = _navy);
-        canvas.save();
-        canvas.clipPath(mouth);
-        canvas.drawOval(
-          Rect.fromCenter(
-            center: Offset(50, mouthY + open * 0.72),
-            width: 11,
-            height: 8,
-          ),
-          Paint()..color = _teal,
-        );
-        canvas.restore();
+        _openMouth(canvas, mouthY, 8.0 + reaction * 3);
     }
+  }
+
+  void _openMouth(Canvas canvas, double mouthY, double open) {
+    final mouth = Path()
+      ..moveTo(41, mouthY - 3)
+      ..quadraticBezierTo(50, mouthY + open, 59, mouthY - 3)
+      ..close();
+    canvas.drawPath(mouth, Paint()..color = _navy);
+    canvas.save();
+    canvas.clipPath(mouth);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(50, mouthY + open * 0.72),
+        width: 11,
+        height: 8,
+      ),
+      Paint()..color = _teal,
+    );
+    canvas.restore();
   }
 
   /// Short dashes kicking out at the feet on landing. Two frames of this sell

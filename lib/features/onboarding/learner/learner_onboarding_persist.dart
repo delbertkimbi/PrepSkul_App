@@ -70,6 +70,9 @@ class LearnerOnboardingPersist {
     await prefs.setBool('survey_completed', true);
     await prefs.setBool('survey_intro_seen', true);
     await prefs.setString('preferred_language', answers.locale);
+    if (answers.superChoice != null) {
+      await prefs.setString('skulmate.super', answers.superChoice!);
+    }
 
     final data = toSurveyMap(answers);
     try {

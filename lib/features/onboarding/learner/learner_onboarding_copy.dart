@@ -113,7 +113,31 @@ class LearnerOnboardingCopy {
   String get readyNote => isFrench
       ? 'Plus de 100 matières. BEPC, Bac, GCE, et ce que tu m’apportes.'
       : 'A hundred subjects. BEPC, Bac, GCE, and whatever you bring me.';
-  String get readyCta => isFrench ? 'Commencer' : 'Start tutoring';
+  String get readyCta => isFrench ? 'Continuer' : 'Continue';
+
+  String payTitle(String name) {
+    if (name.trim().isEmpty) {
+      return isFrench ? 'Essaie Super.' : 'Try Super.';
+    }
+    return isFrench ? '${name.trim()}, essaie Super.' : '${name.trim()}, try Super.';
+  }
+
+  String get payNote => isFrench
+      ? '7 jours offerts. Ensuite 2 500 XAF par mois.'
+      : '7 days free. Then 2,500 XAF a month.';
+  String get payCta => isFrench ? 'Essayer Super' : 'Try Super';
+  String get paySkip => isFrench ? 'Pas maintenant' : 'Not now';
+  List<String> get payBenefits => isFrench
+      ? const [
+          'Leçons Mate illimitées',
+          'Drills BEPC, Bac et GCE',
+          'Un tuteur live si on bloque',
+        ]
+      : const [
+          'Unlimited Mate lessons',
+          'Exam drills for BEPC, Bac, and GCE',
+          'A live tutor if we get stuck',
+        ];
 
   String ofCount(int at, int total) =>
       isFrench ? '${at + 1} sur $total' : '${at + 1} of $total';

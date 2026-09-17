@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -137,14 +139,75 @@ class OnboardTopBar extends StatelessWidget {
   }
 }
 
-class OnboardSpeech extends StatelessWidget {
-  const OnboardSpeech({super.key, required this.title, this.note, this.tail = true});
+class OnboardSpeech extends StatefulWidget {
+  const OnboardSpeech({
+    super.key,
+    required this.title,
+    this.note,
+    this.tail = true,
+    this.onTyped,
+  });
   final String title;
   final String? note;
   final bool tail;
+  final VoidCallback? onTyped;
+
+  @override
+  State<OnboardSpeech> createState() => _OnboardSpeechState();
+}
+
+class _OnboardSpeechState extends State<OnboardSpeech> {
+  int _shown = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _arm();
+  }
+
+  @override
+  void didUpdateWidget(covariant OnboardSpeech oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.title != widget.title) _arm();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _arm() {
+    _timer?.cancel();
+    _shown = 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final reduce = MediaQuery.disableAnimationsOf(context);
+      if (reduce || widget.title.isEmpty) {
+        setState(() => _shown = widget.title.length);
+        widget.onTyped?.call();
+        return;
+      }
+      _timer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        if (_shown >= widget.title.length) {
+          timer.cancel();
+          widget.onTyped?.call();
+          return;
+        }
+        setState(() => _shown++);
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final done = _shown >= widget.title.length;
+    final visible = widget.title.substring(0, _shown.clamp(0, widget.title.length));
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
@@ -158,11 +221,22 @@ class OnboardSpeech extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: onboardDisplay(size: 22)),
-          if (note != null) ...[
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: visible, style: onboardDisplay(size: 22)),
+                if (!done)
+                  TextSpan(
+                    text: '|',
+                    style: onboardDisplay(size: 22, color: AppTheme.primaryColor),
+                  ),
+              ],
+            ),
+          ),
+          if (done && widget.note != null) ...[
             const SizedBox(height: 4),
             Text(
-              note!,
+              widget.note!,
               style: onboardFont(
                 size: 13,
                 weight: FontWeight.w700,
@@ -176,7 +250,7 @@ class OnboardSpeech extends StatelessWidget {
   }
 }
 
-class OnboardAsk extends StatelessWidget {
+class OnboardAsk extends StatefulWidget {
   const OnboardAsk({
     super.key,
     required this.title,
@@ -190,7 +264,23 @@ class OnboardAsk extends StatelessWidget {
   final Widget child;
 
   @override
+  State<OnboardAsk> createState() => _OnboardAskState();
+}
+
+class _OnboardAskState extends State<OnboardAsk> {
+  bool _typed = false;
+
+  @override
+  void didUpdateWidget(covariant OnboardAsk oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.title != widget.title) {
+      _typed = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final mood = _typed ? widget.mood : Mood.talk;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -199,11 +289,29 @@ class OnboardAsk extends StatelessWidget {
           children: [
             prepMate(mood: mood, size: 108),
             const SizedBox(width: 10),
-            Expanded(child: OnboardSpeech(title: title, note: note)),
+            Expanded(
+              child: OnboardSpeech(
+                title: widget.title,
+                note: widget.note,
+                onTyped: () {
+                  if (mounted && !_typed) setState(() => _typed = true);
+                },
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 18),
-        child,
+        AnimatedOpacity(
+          opacity: _typed ? 1 : 0,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          child: AnimatedSlide(
+            offset: _typed ? Offset.zero : const Offset(0, 0.06),
+            duration: const Duration(milliseconds: 380),
+            curve: Curves.easeOutCubic,
+            child: IgnorePointer(ignoring: !_typed, child: widget.child),
+          ),
+        ),
       ],
     );
   }

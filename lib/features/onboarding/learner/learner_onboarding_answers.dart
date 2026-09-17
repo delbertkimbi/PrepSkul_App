@@ -14,6 +14,7 @@ class LearnerOnboardingAnswers {
     this.paceId = 'balanced',
     this.examFeelId,
     this.interestIds = const [],
+    this.superChoice,
   });
 
   final String locale;
@@ -30,6 +31,7 @@ class LearnerOnboardingAnswers {
   final String paceId;
   final String? examFeelId;
   final List<String> interestIds;
+  final String? superChoice;
 
   LearnerOnboardingAnswers copyWith({
     String? locale,
@@ -46,6 +48,7 @@ class LearnerOnboardingAnswers {
     String? paceId,
     String? examFeelId,
     List<String>? interestIds,
+    String? superChoice,
     bool clearCity = false,
     bool clearSystem = false,
     bool clearLevel = false,
@@ -66,6 +69,7 @@ class LearnerOnboardingAnswers {
       paceId: paceId ?? this.paceId,
       examFeelId: examFeelId ?? this.examFeelId,
       interestIds: interestIds ?? this.interestIds,
+      superChoice: superChoice ?? this.superChoice,
     );
   }
 }

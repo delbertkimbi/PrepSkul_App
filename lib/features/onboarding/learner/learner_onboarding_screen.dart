@@ -29,6 +29,7 @@ enum LearnerOnboardStep {
   examFeel,
   interests,
   ready,
+  paywall,
 }
 
 class LearnerOnboardingScreen extends StatefulWidget {
@@ -47,6 +48,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   late LearnerOnboardingAnswers _answers;
   final _name = TextEditingController();
   final _tts = TTSService();
+  bool _welcomeTyped = false;
 
   @override
   void initState() {
@@ -85,6 +87,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       LearnerOnboardStep.level,
       LearnerOnboardStep.subject,
       LearnerOnboardStep.ready,
+      LearnerOnboardStep.paywall,
     ]);
     return steps;
   }
@@ -124,10 +127,10 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     });
   }
 
-  Future<void> _finish() async {
+  Future<void> _finish({String superChoice = 'skip'}) async {
     if (_saving) return;
     setState(() => _saving = true);
-    final named = _answers.copyWith(name: _name.text.trim());
+    final named = _answers.copyWith(name: _name.text.trim(), superChoice: superChoice);
     await LearnerOnboardingPersist.save(named);
     if (!mounted) return;
     final role = named.accountRole == 'parent' ? 'parent' : 'student';
@@ -139,9 +142,10 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
 
   Mood get _mood {
     return switch (_step) {
-      LearnerOnboardStep.ready => Mood.cheer,
-      LearnerOnboardStep.exam => Mood.thinking,
-      _ => Mood.happy,
+      LearnerOnboardStep.welcome => Mood.wave,
+      LearnerOnboardStep.ready || LearnerOnboardStep.paywall => Mood.cheer,
+      LearnerOnboardStep.subject || LearnerOnboardStep.level || LearnerOnboardStep.exam => Mood.thinking,
+      _ => Mood.idle,
     };
   }
 
@@ -183,11 +187,11 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                   ),
                 ),
               ),
-              if (_index > 0) ...[
+              if (_index > 0 && _step != LearnerOnboardStep.paywall) ...[
                 const SizedBox(height: 12),
                 OnboardPrimaryButton(
                   label: _step == LearnerOnboardStep.ready ? _c.readyCta : _c.next,
-                  onTap: _step == LearnerOnboardStep.ready ? _finish : _next,
+                  onTap: _next,
                 ),
               ],
             ],
@@ -212,11 +216,25 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       LearnerOnboardStep.welcome => Column(
           children: [
             const SizedBox(height: 16),
-            prepMate(mood: Mood.happy, size: 228),
+            prepMate(mood: _welcomeTyped ? Mood.idle : Mood.wave, size: 228),
             const SizedBox(height: 18),
-            OnboardSpeech(title: _c.welcomeTitle, note: _c.welcomeNote, tail: false),
+            OnboardSpeech(
+              title: _c.welcomeTitle,
+              note: _c.welcomeNote,
+              tail: false,
+              onTyped: () {
+                if (mounted && !_welcomeTyped) setState(() => _welcomeTyped = true);
+              },
+            ),
             const SizedBox(height: 28),
-            OnboardPrimaryButton(label: _c.welcomeCta, onTap: _next),
+            AnimatedOpacity(
+              opacity: _welcomeTyped ? 1 : 0,
+              duration: const Duration(milliseconds: 320),
+              child: IgnorePointer(
+                ignoring: !_welcomeTyped,
+                child: OnboardPrimaryButton(label: _c.welcomeCta, onTap: _next),
+              ),
+            ),
           ],
         ),
       LearnerOnboardStep.language => _ask(
@@ -479,6 +497,53 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
             prepMate(mood: Mood.cheer, size: 228),
             const SizedBox(height: 16),
             OnboardSpeech(title: _c.readyTitle, note: _c.readyNote, tail: false),
+          ],
+        ),
+      LearnerOnboardStep.paywall => Column(
+          children: [
+            prepMate(mood: Mood.cheer, size: 196),
+            const SizedBox(height: 16),
+            OnboardSpeech(
+              title: _c.payTitle(_name.text.trim()),
+              note: _c.payNote,
+              tail: false,
+            ),
+            const SizedBox(height: 16),
+            for (final item in _c.payBenefits)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 56),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: OnboardPalette.card(selected: false),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF9C3),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppTheme.primaryColor, width: 2),
+                        ),
+                        child: Text('★', style: onboardDisplay(size: 16)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(item, style: onboardDisplay(size: 16))),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            OnboardPrimaryButton(
+              label: _c.payCta,
+              onTap: () => unawaited(_finish(superChoice: 'try')),
+            ),
+            TextButton(
+              onPressed: () => unawaited(_finish(superChoice: 'skip')),
+              child: Text(_c.paySkip, style: onboardFont(size: 14, color: AppTheme.textMedium)),
+            ),
           ],
         ),
     };
