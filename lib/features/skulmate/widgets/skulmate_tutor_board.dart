@@ -6,8 +6,9 @@ import 'package:prepskul/features/skulmate/models/tutor_session_models.dart';
 /// In-thread tutor board. Steps, not a finished solution dump.
 class SkulMateTutorBoard extends StatelessWidget {
   final TutorBoard board;
+  final String? imageUrl;
 
-  const SkulMateTutorBoard({super.key, required this.board});
+  const SkulMateTutorBoard({super.key, required this.board, this.imageUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +32,19 @@ class SkulMateTutorBoard extends StatelessWidget {
               letterSpacing: 0.2,
             ),
           ),
+          if (imageUrl != null && imageUrl!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.network(
+                imageUrl!,
+                height: 140,
+                width: double.infinity,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           for (final step in board.steps) ...[
             _StepLine(step: step),

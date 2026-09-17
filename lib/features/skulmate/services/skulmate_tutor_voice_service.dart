@@ -57,11 +57,22 @@ class SkulMateTutorVoiceService {
 
   void setThinking() => state.value = TutorVoiceState.thinking;
 
-  Future<void> speakTutor(String text) async {
+  Future<void> speakTutor(String text, {bool keepListening = true}) async {
     if (!voiceOut) return;
     if (text.trim().isEmpty) return;
     state.value = TutorVoiceState.speaking;
     try {
+      if (keepListening && _sttReady && !_stt.isListening) {
+        await _stt.listen(
+          localeId: 'en_NG',
+          onResult: (result) {
+            _heard = result.recognizedWords;
+            if (result.recognizedWords.trim().split(RegExp(r'\s+')).length >= 2) {
+              _tts.stop();
+            }
+          },
+        );
+      }
       await _tts.speakAndWait(text);
     } finally {
       if (state.value == TutorVoiceState.speaking) {

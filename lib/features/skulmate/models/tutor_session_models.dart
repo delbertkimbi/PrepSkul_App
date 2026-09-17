@@ -164,6 +164,9 @@ class TutorTurnResult {
   final PracticeSurface? surface;
   final TutorBoard? board;
   final bool escalate;
+  final String? displayKind;
+  final String? imageUrl;
+  final String? uniqueImage;
   final String? model;
   final bool demo;
 
@@ -176,6 +179,9 @@ class TutorTurnResult {
     this.surface,
     this.board,
     this.escalate = false,
+    this.displayKind,
+    this.imageUrl,
+    this.uniqueImage,
     this.model,
     this.demo = false,
   });
@@ -201,6 +207,13 @@ class TutorTurnResult {
           ? TutorBoard.fromJson(Map<String, dynamic>.from(boardRaw))
           : null,
       escalate: json['escalate'] as bool? ?? false,
+      displayKind: (json['display'] is Map
+              ? (json['display'] as Map)['kind']
+              : json['displayKind']) as String?,
+      imageUrl: json['imageUrl'] as String?,
+      uniqueImage: json['display'] is Map
+          ? (json['display'] as Map)['uniqueImage'] as String?
+          : json['uniqueImage'] as String?,
       model: json['model'] as String?,
       demo: json['demo'] as bool? ?? false,
     );
