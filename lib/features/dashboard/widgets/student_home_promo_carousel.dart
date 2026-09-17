@@ -234,7 +234,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
             : 'Today\'s challenge is ready',
         description: _dailyChallengeDescription(_todayGame!),
         buttonLabel: 'Play',
-        mascotAsset: 'assets/characters/mascots/default.png',
+        mascotAsset: 'assets/onboard/art/mate-wave.png',
         accent: AppTheme.skyBlue,
         onTap: () => widget.onPlayGame(_todayGame!, isDailyChallenge: true),
       );
@@ -252,7 +252,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
           dailyCompleted: _dailyCompleted && !noGames,
         ),
         buttonLabel: noGames ? 'Create game' : 'Open SkulMate',
-        mascotAsset: 'assets/characters/mascots/thinking.png',
+        mascotAsset: 'assets/onboard/art/mate-think.png',
         accent: AppTheme.primaryLight,
         onTap: noGames
             ? (widget.onCreateGame ?? widget.onOpenSkulMate ?? () {})
@@ -266,7 +266,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
       subtitle: 'Games from your own notes',
       description: _noGameDescription(noGames: false, dailyCompleted: false),
       buttonLabel: 'Browse games',
-      mascotAsset: 'assets/characters/mascots/encouraging.png',
+      mascotAsset: 'assets/onboard/art/mate-encourage.png',
       accent: AppTheme.skyBlue,
       onTap: widget.onOpenSkulMate ?? () {},
     );
@@ -307,7 +307,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
           : 'Browse verified tutors and pick a time that works for you.',
       subtitle: 'Online or on-site sessions',
       buttonLabel: 'Find tutors',
-      mascotAsset: 'assets/characters/mascots/encouraging.png',
+      mascotAsset: 'assets/onboard/art/mate-cheer.png',
       accent: AppTheme.softYellow,
       onTap: widget.onFindTutors,
     );
@@ -484,16 +484,6 @@ class _PromoCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                slide.eyebrow,
-                style: GoogleFonts.poppins(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.55),
-                  letterSpacing: 1.1,
-                ),
-              ),
-              const SizedBox(height: 4),
               SizedBox(
                 width: textWidth,
                 child: Text(
@@ -557,7 +547,7 @@ class _PromoCard extends StatelessWidget {
             ],
           ),
           Positioned(
-            top: 28,
+            top: 8,
             right: 4,
             child: _trailingVisual(),
           ),

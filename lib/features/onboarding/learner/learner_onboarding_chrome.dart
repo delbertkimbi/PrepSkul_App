@@ -60,14 +60,38 @@ class OnboardPalette {
 }
 
 Widget prepMate({required Mood mood, double size = 96}) {
-  return Mate(
-    mood: mood,
-    size: size,
-    ink: AppTheme.primaryColor,
-    body: AppTheme.primaryLight,
-    belly: AppTheme.skyBlue,
-    accent: AppTheme.softYellow,
-  );
+  return PaperMate(mood: mood, size: size);
+}
+
+class PaperMate extends StatelessWidget {
+  const PaperMate({super.key, required this.mood, this.size = 96});
+
+  final Mood mood;
+  final double size;
+
+  static const _art = <Mood, String>{
+    Mood.idle: 'assets/onboard/art/mate-idle.png',
+    Mood.wave: 'assets/onboard/art/mate-wave.png',
+    Mood.talk: 'assets/onboard/art/mate-talk.png',
+    Mood.thinking: 'assets/onboard/art/mate-think.png',
+    Mood.happy: 'assets/onboard/art/mate-encourage.png',
+    Mood.encourage: 'assets/onboard/art/mate-encourage.png',
+    Mood.cheer: 'assets/onboard/art/mate-cheer.png',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Image.asset(
+        _art[mood] ?? _art[Mood.idle]!,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        gaplessPlayback: true,
+      ),
+    );
+  }
 }
 
 class PrepSkulWordmark extends StatelessWidget {
@@ -456,6 +480,49 @@ class OnboardGlyph extends StatelessWidget {
     'economics': 'assets/onboard/art/tile-maths.png',
     'histgeo': 'assets/onboard/art/tile-globe.png',
     'philo': 'assets/onboard/art/tile-book.png',
+    'bepc': 'assets/onboard/art/tile-medal.png',
+    'bac': 'assets/onboard/art/tile-medal.png',
+    'gce': 'assets/onboard/art/tile-pencil.png',
+    'probatoire': 'assets/onboard/art/tile-medal.png',
+    'ng-waec': 'assets/onboard/art/tile-medal.png',
+    'gh-wassce': 'assets/onboard/art/tile-medal.png',
+    'ke-cbc': 'assets/onboard/art/tile-medal.png',
+    'za-nsc': 'assets/onboard/art/tile-medal.png',
+    'fr-bac': 'assets/onboard/art/tile-medal.png',
+    'gb-gcse': 'assets/onboard/art/tile-medal.png',
+    'us-k12': 'assets/onboard/art/tile-medal.png',
+    'global-open': 'assets/onboard/art/tile-globe.png',
+  };
+
+  static const _paper = <String, Color>{
+    'student': Color(0xFFDBEAFE),
+    'parent': Color(0xFFFEF9C3),
+    'maths': Color(0xFFFEF3C7),
+    'french': Color(0xFFFCE7F3),
+    'english': Color(0xFFDBEAFE),
+    'cs': Color(0xFFE0E7FF),
+    'pct': Color(0xFFE0F2FE),
+    'svt': Color(0xFFD1FAE5),
+    'physics': Color(0xFFE0F2FE),
+    'chemistry': Color(0xFFFCE7F3),
+    'biology': Color(0xFFD1FAE5),
+    'geography': Color(0xFFFEF3C7),
+    'literature': Color(0xFFFCE7F3),
+    'economics': Color(0xFFD1FAE5),
+    'histgeo': Color(0xFFFFEDD5),
+    'philo': Color(0xFFF3E8FF),
+    'bepc': Color(0xFFFEF9C3),
+    'bac': Color(0xFFDBEAFE),
+    'gce': Color(0xFFD1FAE5),
+    'probatoire': Color(0xFFE0F2FE),
+    'ng-waec': Color(0xFFD1FAE5),
+    'gh-wassce': Color(0xFFFEF3C7),
+    'ke-cbc': Color(0xFFDBEAFE),
+    'za-nsc': Color(0xFFE0F2FE),
+    'fr-bac': Color(0xFFE0E7FF),
+    'gb-gcse': Color(0xFFDBEAFE),
+    'us-k12': Color(0xFFFEE2E2),
+    'global-open': Color(0xFFF3E8FF),
   };
 
   @override
@@ -467,7 +534,7 @@ class OnboardGlyph extends StatelessWidget {
       height: 48,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: flag != null ? Colors.white : (_paper[seed] ?? const Color(0xFFE0F2FE)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.primaryColor, width: 2),
         boxShadow: [
@@ -482,9 +549,13 @@ class OnboardGlyph extends StatelessWidget {
       child: flag != null
           ? Text(flag, style: const TextStyle(fontSize: 26, height: 1))
           : art != null
-              ? Transform.scale(
-                  scale: 1.35,
-                  child: Image.asset(art, fit: BoxFit.cover, filterQuality: FilterQuality.high),
+              ? Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: Image.asset(
+                    art,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
                 )
               : const Text('✨', style: TextStyle(fontSize: 22)),
     );

@@ -73,11 +73,18 @@ class _SkulMateMascotMediaWidgetState extends State<SkulMateMascotMediaWidget>
     }
   }
 
-  static const Map<SkulMateMascotState, String> _imagePaths = {
+  static const Map<SkulMateMascotState, String> _videoPosterPaths = {
     SkulMateMascotState.neutral: 'assets/characters/mascots/default.png',
     SkulMateMascotState.thinking: 'assets/characters/mascots/thinking.png',
     SkulMateMascotState.encouraging: 'assets/characters/mascots/encouraging.png',
     SkulMateMascotState.celebration: 'assets/characters/mascots/celebration.png',
+  };
+
+  static const Map<SkulMateMascotState, String> _paperPaths = {
+    SkulMateMascotState.neutral: 'assets/onboard/art/mate-idle.png',
+    SkulMateMascotState.thinking: 'assets/onboard/art/mate-think.png',
+    SkulMateMascotState.encouraging: 'assets/onboard/art/mate-wave.png',
+    SkulMateMascotState.celebration: 'assets/onboard/art/mate-cheer.png',
   };
 
   @override
@@ -275,7 +282,9 @@ class _SkulMateMascotMediaWidgetState extends State<SkulMateMascotMediaWidget>
 
   @override
   Widget build(BuildContext context) {
-    final imagePath = _imagePaths[widget.state]!;
+    final imagePath = widget.preferStaticImage
+        ? _paperPaths[widget.state]!
+        : _videoPosterPaths[widget.state]!;
 
     final fillStill = widget.showFrame && !widget.preferStaticImage;
 
