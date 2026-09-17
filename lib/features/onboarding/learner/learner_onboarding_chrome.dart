@@ -314,42 +314,54 @@ class OnboardGlyph extends StatelessWidget {
   final String seed;
   final bool selected;
 
-  static const _art = <String, (Color, String)>{
-    'en': (Color(0xFFFEF3C7), 'assets/onboard/art/tile-en.png'),
-    'fr': (Color(0xFFCCFBF1), 'assets/onboard/art/tile-fr.png'),
-    'student': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-backpack.png'),
-    'parent': (Color(0xFFFEF9C3), 'assets/onboard/art/tile-heart.png'),
-    'cm': (Color(0xFFD1FAE5), 'assets/onboard/art/tile-cm.png'),
-    'ng': (Color(0xFFD1FAE5), 'assets/onboard/art/tile-globe.png'),
-    'gh': (Color(0xFFFEF3C7), 'assets/onboard/art/tile-globe.png'),
-    'ke': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-globe.png'),
-    'ci': (Color(0xFFFCE7F3), 'assets/onboard/art/tile-globe.png'),
-    'za': (Color(0xFFE0F2FE), 'assets/onboard/art/tile-globe.png'),
-    'gb': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-en.png'),
-    'us': (Color(0xFFFEE2E2), 'assets/onboard/art/tile-globe.png'),
-    'global': (Color(0xFFF3E8FF), 'assets/onboard/art/tile-globe.png'),
-    'maths': (Color(0xFFFEF3C7), 'assets/onboard/art/tile-maths.png'),
-    'french': (Color(0xFFFCE7F3), 'assets/onboard/art/tile-pencil.png'),
-    'english': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-book.png'),
-    'cs': (Color(0xFFE0E7FF), 'assets/onboard/art/tile-laptop.png'),
-    'pct': (Color(0xFFE0F2FE), 'assets/onboard/art/tile-flask.png'),
-    'svt': (Color(0xFFD1FAE5), 'assets/onboard/art/tile-leaf.png'),
-    'physics': (Color(0xFFE0F2FE), 'assets/onboard/art/tile-flask.png'),
-    'chemistry': (Color(0xFFFCE7F3), 'assets/onboard/art/tile-flask.png'),
-    'biology': (Color(0xFFD1FAE5), 'assets/onboard/art/tile-leaf.png'),
-    'cm-francophone': (Color(0xFFCCFBF1), 'assets/onboard/art/tile-book.png'),
-    'cm-anglophone': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-book.png'),
+  static const _flags = <String, String>{
+    'en': '🇬🇧',
+    'gb': '🇬🇧',
+    'fr': '🇫🇷',
+    'fr_country': '🇫🇷',
+    'cm-francophone': '🇫🇷',
+    'cm-anglophone': '🇬🇧',
+    'cm': '🇨🇲',
+    'ng': '🇳🇬',
+    'gh': '🇬🇭',
+    'ke': '🇰🇪',
+    'ci': '🇨🇮',
+    'za': '🇿🇦',
+    'us': '🇺🇸',
+    'global': '🌍',
+  };
+
+  static const _art = <String, String>{
+    'student': 'assets/onboard/art/tile-backpack.png',
+    'parent': 'assets/onboard/art/tile-heart.png',
+    'maths': 'assets/onboard/art/tile-maths.png',
+    'french': 'assets/onboard/art/tile-pencil.png',
+    'english': 'assets/onboard/art/tile-book.png',
+    'cs': 'assets/onboard/art/tile-laptop.png',
+    'pct': 'assets/onboard/art/tile-flask.png',
+    'svt': 'assets/onboard/art/tile-leaf.png',
+    'physics': 'assets/onboard/art/tile-flask.png',
+    'chemistry': 'assets/onboard/art/tile-flask.png',
+    'biology': 'assets/onboard/art/tile-leaf.png',
+    'geography': 'assets/onboard/art/tile-globe.png',
+    'literature': 'assets/onboard/art/tile-book.png',
+    'economics': 'assets/onboard/art/tile-maths.png',
+    'histgeo': 'assets/onboard/art/tile-globe.png',
+    'philo': 'assets/onboard/art/tile-book.png',
   };
 
   @override
   Widget build(BuildContext context) {
-    final art = _art[seed] ?? (const Color(0xFFE0F2FE), 'assets/onboard/art/tile-globe.png');
+    final flag = _flags[seed];
+    final art = _art[seed];
     return Container(
       width: 48,
       height: 48,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: art.$1,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.primaryColor, width: 2),
         boxShadow: [
           BoxShadow(
             color: selected ? AppTheme.primaryColor : AppTheme.primaryColor.withValues(alpha: 0.18),
@@ -359,10 +371,14 @@ class OnboardGlyph extends StatelessWidget {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Transform.scale(
-        scale: 1.35,
-        child: Image.asset(art.$2, fit: BoxFit.cover, filterQuality: FilterQuality.high),
-      ),
+      child: flag != null
+          ? Text(flag, style: const TextStyle(fontSize: 26, height: 1))
+          : art != null
+              ? Transform.scale(
+                  scale: 1.35,
+                  child: Image.asset(art, fit: BoxFit.cover, filterQuality: FilterQuality.high),
+                )
+              : const Text('✨', style: TextStyle(fontSize: 22)),
     );
   }
 }

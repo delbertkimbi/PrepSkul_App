@@ -158,7 +158,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (_index == 0)
-                const PrepSkulWordmark()
+                const SizedBox(height: 12)
               else
                 OnboardTopBar(progress: progress, onBack: _back),
               const SizedBox(height: 8),
