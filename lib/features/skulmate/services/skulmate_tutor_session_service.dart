@@ -95,20 +95,26 @@ class SkulMateTutorSessionService {
     required String sessionId,
     required String message,
     String? childId,
+    String? notes,
+    bool demo = false,
   }) async {
     final token = await _token();
     final userId = await _userId();
     final learnerContext = await LearnerIntelligenceService.build(
       childId: childId,
     );
+    final useDemo = demo || sessionId == 'demo';
+    final trimmedNotes = notes?.trim();
     final response = await SkulMateService.postJson(
       url: '$_base/skulmate/session/turn',
       token: token ?? '',
       body: {
-        'sessionId': sessionId,
+        if (useDemo) 'demo': true,
+        if (!useDemo) 'sessionId': sessionId,
         'message': message,
         if (userId != null) 'userId': userId,
         if (childId != null) 'childId': childId,
+        if (trimmedNotes != null && trimmedNotes.isNotEmpty) 'notes': trimmedNotes,
         'language': LanguageService.languageCode,
         if (learnerContext != null) 'learnerContext': learnerContext,
       },
@@ -118,19 +124,21 @@ class SkulMateTutorSessionService {
       throw Exception(json['error'] ?? 'Tutor turn failed');
     }
     final result = TutorTurnResult.fromJson(json);
-    await SkulMateSessionCache.appendTurn(
-      sessionId: sessionId,
-      turn: TutorTurn(
-        id: result.turnId,
-        isUser: false,
-        text: result.message,
-        surface: result.surface,
-        speak: result.speak,
-        escalate: result.escalate,
-        move: result.move,
-        board: result.board,
-      ),
-    );
+    if (!useDemo) {
+      await SkulMateSessionCache.appendTurn(
+        sessionId: sessionId,
+        turn: TutorTurn(
+          id: result.turnId,
+          isUser: false,
+          text: result.message,
+          surface: result.surface,
+          speak: result.speak,
+          escalate: result.escalate,
+          move: result.move,
+          board: result.board,
+        ),
+      );
+    }
     return result;
   }
 

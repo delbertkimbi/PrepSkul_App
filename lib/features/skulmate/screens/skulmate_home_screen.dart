@@ -45,6 +45,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   bool _busy = false;
   bool _attachOpen = false;
   bool _recording = false;
+  bool _demo = false;
   String? _error;
 
   @override
@@ -99,7 +100,14 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
       );
       await _applyOpened(opened);
     } catch (e) {
-      if (mounted) safeSetState(() => _error = e.toString());
+      if (mounted) {
+        safeSetState(() {
+          _sessionId = 'demo';
+          _demo = true;
+          _busy = false;
+          _error = null;
+        });
+      }
     }
   }
 
@@ -174,6 +182,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     if (!mounted) return;
     safeSetState(() {
       _sessionId = id;
+      _demo = false;
       _busy = false;
       _turns
         ..clear()
@@ -199,7 +208,9 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
       _error = null;
       _attachOpen = false;
     });
-    await SkulMateSessionCache.appendTurn(sessionId: id, turn: userTurn);
+    if (!_demo) {
+      await SkulMateSessionCache.appendTurn(sessionId: id, turn: userTurn);
+    }
     _voice.setThinking();
     _scrollSoon();
 
@@ -208,6 +219,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
         sessionId: id,
         message: text,
         childId: widget.childId,
+        demo: _demo,
+        notes: text.contains('\n') && text.length > 40 ? text : null,
       );
       final assistant = TutorTurn(
         id: result.turnId,

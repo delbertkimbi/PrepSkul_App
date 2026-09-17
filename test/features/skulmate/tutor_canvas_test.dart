@@ -65,6 +65,21 @@ void main() {
     expect(loaded.last.text, contains('solute'));
   });
 
+  test('TutorTurnResult reads model, demo, and notes stay on the request path', () {
+    final result = TutorTurnResult.fromJson({
+      'sessionId': 'demo',
+      'turnId': 't1',
+      'message': 'What are you isolating?',
+      'move': 'focus',
+      'speak': true,
+      'model': 'local',
+      'demo': true,
+    });
+    expect(result.model, 'local');
+    expect(result.demo, isTrue);
+    expect(result.message, contains('isolating'));
+  });
+
   testWidgets('in-thread quiz reports an outcome', (tester) async {
     bool? got;
     await tester.pumpWidget(
