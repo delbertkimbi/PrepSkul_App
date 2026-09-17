@@ -63,12 +63,17 @@ Widget prepMate({required Mood mood, double size = 96}) {
   return PaperMate(mood: mood, size: size);
 }
 
-class PaperMate extends StatelessWidget {
+class PaperMate extends StatefulWidget {
   const PaperMate({super.key, required this.mood, this.size = 96});
 
   final Mood mood;
   final double size;
 
+  @override
+  State<PaperMate> createState() => _PaperMateState();
+}
+
+class _PaperMateState extends State<PaperMate> with SingleTickerProviderStateMixin {
   static const _art = <Mood, String>{
     Mood.idle: 'assets/onboard/art/mate-idle.png',
     Mood.wave: 'assets/onboard/art/mate-wave.png',
@@ -79,17 +84,49 @@ class PaperMate extends StatelessWidget {
     Mood.cheer: 'assets/onboard/art/mate-cheer.png',
   };
 
+  late final AnimationController _hop;
+  late final Animation<double> _lift;
+  late final Animation<double> _tilt;
+
+  @override
+  void initState() {
+    super.initState();
+    _hop = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    final curve = CurvedAnimation(parent: _hop, curve: Curves.easeInOut);
+    _lift = Tween<double>(begin: 0, end: -8).animate(curve);
+    _tilt = Tween<double>(begin: -0.05, end: 0.05).animate(curve);
+  }
+
+  @override
+  void dispose() {
+    _hop.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Image.asset(
-        _art[mood] ?? _art[Mood.idle]!,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-        gaplessPlayback: true,
-      ),
+    final art = Image.asset(
+      _art[widget.mood] ?? _art[Mood.idle]!,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      gaplessPlayback: true,
+    );
+    final mate = SizedBox(width: widget.size, height: widget.size, child: art);
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      return mate;
+    }
+    return AnimatedBuilder(
+      animation: _hop,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _lift.value),
+          child: Transform.rotate(angle: _tilt.value, child: child),
+        );
+      },
+      child: mate,
     );
   }
 }
