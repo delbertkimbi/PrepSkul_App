@@ -23,7 +23,7 @@ void main() {
 
     expect(find.text('PrepSkul'), findsNothing);
     expect(find.textContaining('Hi there'), findsOneWidget);
-    expect(find.textContaining('tutor-matching form'), findsOneWidget);
+    expect(find.textContaining('Mate listens'), findsOneWidget);
     expect(find.textContaining('best tutor'), findsNothing);
     expect(find.textContaining('your child'), findsNothing);
 

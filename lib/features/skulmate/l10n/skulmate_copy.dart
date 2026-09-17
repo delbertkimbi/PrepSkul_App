@@ -28,17 +28,17 @@ class SkulMateCopy {
       : 'What shall we revise today?';
 
   String get tutorComposerHint => isFrench
-      ? 'Parle ou écris ici.'
-      : 'Talk or type here.';
+      ? 'Parle. J’écoute déjà.'
+      : 'Just talk. I’m already listening.';
 
   String get tutorEmptyPrompt => isFrench
-      ? 'Le tableau est à toi. Parle, écris, ou colle tes notes. Mate lit ce qu\'il écrit.'
-      : 'This board is yours. Talk, type, or paste notes. Mate reads as he writes.';
+      ? 'Le tableau est à toi. Parle, j’écoute sans bouton. Écris si tu préfères.'
+      : 'This board is yours. Talk, I am listening without a button. Type if you prefer.';
 
-  String get tutorHoldToTalk => isFrench ? 'Parler' : 'Talk';
+  String get tutorHoldToTalk => isFrench ? 'Écoute' : 'Listening';
 
   String get tutorListening =>
-      isFrench ? 'C\'est toi.' : 'Your turn.';
+      isFrench ? 'Je t’écoute.' : 'I’m listening.';
 
   String get tutorModeListen => isFrench ? 'Écouter' : 'Listen';
 
@@ -50,16 +50,16 @@ class SkulMateCopy {
       isFrench ? 'Je prépare la suite…' : 'Working on the next move…';
 
   String get tutorListenHint => isFrench
-      ? 'Touche le micro. Tu peux aussi écrire.'
-      : 'Tap the mic. You can also type.';
+      ? 'Parle. Touche l’orbite seulement pour pauser le micro.'
+      : 'Just talk. Tap the orb only to pause the mic.';
 
   String get tutorMuteMate => isFrench ? 'Couper la voix' : 'Mute Mate';
 
   String get tutorMateReads => isFrench ? 'Mate lit' : 'Mate reads';
 
   String get tutorEscalateLive => isFrench
-      ? 'On peut appeler un tuteur PrepSkul pour ça.'
-      : 'We can bring in a live PrepSkul tutor for this.';
+      ? 'Trouver ou demander un tuteur PrepSkul.'
+      : 'Find or request a PrepSkul tutor.';
 
   String get intentPlaceholder =>
       isFrench ? 'Je veux réviser…' : 'I want to revise…';

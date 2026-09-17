@@ -121,7 +121,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         
                         _buildRoleCard(
                           title: 'Student',
-                          description: 'I want to learn and find tutors.',
+                          description: 'I want Mate to tutor me, and a person when I ask.',
                           icon: Icons.school_outlined,
                           value: 'student',
                         ),
@@ -129,7 +129,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         
                         _buildRoleCard(
                           title: 'Parent',
-                          description: 'I want to find tutors for my child.',
+                          description: 'I’m studying too. Mate tutors me, and I can request a person.',
                           icon: Icons.family_restroom_outlined,
                           value: 'parent',
                         ),

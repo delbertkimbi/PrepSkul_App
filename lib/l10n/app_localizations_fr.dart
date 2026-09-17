@@ -15,22 +15,22 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tagline => 'Guider chaque apprenant vers son plein potentiel';
 
   @override
-  String get onboardingLearnTitle => 'Apprends à ton rythme';
+  String get onboardingLearnTitle => 'Parle. Mate écoute déjà.';
 
   @override
-  String get onboardingLearnSubtitle => 'Des cours personnalisés adaptés à ton style d\'apprentissage et à ton emploi du temps.';
+  String get onboardingLearnSubtitle => 'Pas de bouton micro pour commencer. Coupe-le quand tu veux. Tape si le téléphone est partagé.';
 
   @override
-  String get onboardingAchieveTitle => 'Atteins tes objectifs';
+  String get onboardingAchieveTitle => 'Les humains et Mate, ensemble';
 
   @override
-  String get onboardingAchieveSubtitle => 'Des élèves en difficulté aux apprenants confiants – ton potentiel est illimité.';
+  String get onboardingAchieveSubtitle => 'Trouve un tuteur recommandé ou demandes-en un. Cours en ligne ou sur place.';
 
   @override
-  String get onboardingConnectTitle => 'Connecte-toi aux meilleurs tuteurs';
+  String get onboardingConnectTitle => 'Un tuteur qui enseigne vraiment';
 
   @override
-  String get onboardingConnectSubtitle => 'Réserve des tuteurs experts pour des sessions en ligne ou en présentiel à tout moment.';
+  String get onboardingConnectSubtitle => 'Mate coach à voix haute depuis ton école. Une personne, tu la trouves ou tu la demandes.';
 
   @override
   String get buttonNext => 'Suivant';
@@ -66,7 +66,7 @@ class AppLocalizationsFr extends AppLocalizations {
   String get navHome => 'Accueil';
 
   @override
-  String get navFindTutors => 'Trouver des tuteurs';
+  String get navFindTutors => 'Tuteurs';
 
   @override
   String get navSkulMate => 'Mate';

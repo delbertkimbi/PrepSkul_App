@@ -8,8 +8,8 @@ class LearnerOnboardingCopy {
   String get welcomeTitle =>
       isFrench ? 'Salut ! Moi c’est Mate.' : 'Hi there! I’m Mate.';
   String get welcomeNote => isFrench
-      ? 'On commence par ton école, pas un formulaire de matching.'
-      : 'We start with your school, not a tutor-matching form.';
+      ? 'On commence par ton école. Mate t’écoute à voix haute. Un tuteur humain, tu le trouves ou tu le demandes.'
+      : 'We start with your school. Mate listens out loud. A human tutor is someone you find or request.';
   String get welcomeCta => isFrench ? 'C’est parti !' : 'Let’s go';
 
   String get languageKicker => isFrench ? 'LANGUE' : 'LANGUAGE';
@@ -108,8 +108,8 @@ class LearnerOnboardingCopy {
 
   String get readyKicker => isFrench ? 'PRÊT' : 'READY';
   String get readyTitle => isFrench
-      ? 'Je te coach. Un tuteur PrepSkul prend le relais si on bloque.'
-      : 'I’ll tutor you. A PrepSkul live tutor steps in if we get stuck.';
+      ? 'Je te coach à voix haute. Pour une personne, tu fais défiler les tuteurs ou tu en demandes un.'
+      : 'I tutor you out loud. For a person, scroll recommended tutors or request one.';
   String get readyNote => isFrench
       ? 'Plus de 100 matières. BEPC, Bac, GCE, et ce que tu m’apportes.'
       : 'A hundred subjects. BEPC, Bac, GCE, and whatever you bring me.';
@@ -130,13 +130,13 @@ class LearnerOnboardingCopy {
   List<String> get payBenefits => isFrench
       ? const [
           'Leçons Mate illimitées',
-          'Drills BEPC, Bac et GCE',
-          'Un tuteur live si on bloque',
+          'Parle sans bouton micro',
+          'Trouve ou demande un tuteur live',
         ]
       : const [
           'Unlimited Mate lessons',
-          'Exam drills for BEPC, Bac, and GCE',
-          'A live tutor if we get stuck',
+          'Talk without tapping a mic',
+          'Find or request a live tutor',
         ];
 
   String ofCount(int at, int total) =>

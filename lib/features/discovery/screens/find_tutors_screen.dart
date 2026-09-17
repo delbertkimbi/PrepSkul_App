@@ -711,6 +711,21 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             ),
           IconButton(
             icon: Icon(
+              Icons.person_add_alt_1_outlined,
+              color: _isOffline ? Colors.grey[400] : Colors.black,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const RequestTutorFlowScreen(),
+                ),
+              );
+            },
+            tooltip: 'Request a tutor',
+          ),
+          IconButton(
+            icon: Icon(
               Icons.tune, 
               color: _isOffline ? Colors.grey[400] : Colors.black,
             ),

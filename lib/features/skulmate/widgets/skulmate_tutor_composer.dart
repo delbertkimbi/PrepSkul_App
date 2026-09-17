@@ -16,6 +16,7 @@ class SkulMateTutorComposer extends StatelessWidget {
   final String? childId;
   final bool attachOpen;
   final VoidCallback onToggleAttach;
+  final bool privacyMuted;
 
   const SkulMateTutorComposer({
     super.key,
@@ -29,6 +30,7 @@ class SkulMateTutorComposer extends StatelessWidget {
     required this.attachOpen,
     required this.onToggleAttach,
     this.childId,
+    this.privacyMuted = false,
   });
 
   @override
@@ -49,28 +51,30 @@ class SkulMateTutorComposer extends StatelessWidget {
             children: [
               GestureDetector(
                 onTap: onMicTap,
-                onLongPressStart: (_) => onHoldStart(),
-                onLongPressEnd: (_) => onHoldEnd(),
                 child: Container(
                   width: 56,
                   height: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: recording
-                        ? AppTheme.skyBlue
-                        : busy
-                            ? AppTheme.neutral300
+                    color: privacyMuted
+                        ? AppTheme.neutral300
+                        : recording
+                            ? AppTheme.skyBlue
                             : AppTheme.primaryColor,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.primaryColor.withValues(alpha: 0.35),
+                        color: (privacyMuted
+                                ? AppTheme.neutral300
+                                : AppTheme.skyBlue)
+                            .withValues(alpha: 0.45),
                         offset: const Offset(0, 4),
+                        blurRadius: privacyMuted ? 0 : 12,
                       ),
                     ],
                   ),
                   child: Icon(
-                    recording ? Icons.stop_rounded : Icons.mic_rounded,
+                    privacyMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
                     color: Colors.white,
                   ),
                 ),

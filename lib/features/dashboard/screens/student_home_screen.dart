@@ -707,8 +707,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           final nav = MainNavigationScope.maybeOf(context);
           // Only nudge new users who are still on Home — never override SkulMate
           // or another tab they already chose.
-          if (nav != null && nav.selectedIndex == StudentTabIndex.home) {
-            nav.switchTab(StudentTabIndex.findTutors);
+                          if (nav != null && nav.selectedIndex == StudentTabIndex.home) {
+            nav.switchTab(StudentTabIndex.skulMate);
           }
         });
       }

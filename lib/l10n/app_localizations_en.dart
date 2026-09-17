@@ -15,22 +15,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tagline => 'Guiding Every Learner to their full potential';
 
   @override
-  String get onboardingLearnTitle => 'Learn at Your Pace';
+  String get onboardingLearnTitle => 'Talk. Mate is already listening.';
 
   @override
-  String get onboardingLearnSubtitle => 'Personalized lessons that adapt to your learning style and schedule.';
+  String get onboardingLearnSubtitle => 'No mic button to start. Interrupt anytime. Type if the phone is shared.';
 
   @override
-  String get onboardingAchieveTitle => 'Achieve Your Goals';
+  String get onboardingAchieveTitle => 'Humans and Mate, together';
 
   @override
-  String get onboardingAchieveSubtitle => 'From struggling students to confident achievers - your potential is limitless.';
+  String get onboardingAchieveSubtitle => 'Find a recommended tutor or request one. Online live class or onsite at the table.';
 
   @override
-  String get onboardingConnectTitle => 'Connect with Top Tutors';
+  String get onboardingConnectTitle => 'A tutor that actually teaches';
 
   @override
-  String get onboardingConnectSubtitle => 'Book expert tutors for online or in-person sessions anytime.';
+  String get onboardingConnectSubtitle => 'Mate tutors out loud from your school system. A person is a find or a request, not another product.';
 
   @override
   String get buttonNext => 'Next';
@@ -66,7 +66,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navHome => 'Home';
 
   @override
-  String get navFindTutors => 'Find Tutors';
+  String get navFindTutors => 'Tutors';
 
   @override
   String get navSkulMate => 'Mate';

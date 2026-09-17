@@ -48,6 +48,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   bool _demo = false;
   bool _voiceOut = true;
   String? _error;
+  bool _alwaysStarted = false;
 
   @override
   void initState() {
@@ -59,6 +60,25 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     unawaited(_voice.prepare());
     unawaited(_bootstrap());
     SkulMateStreakReminderService.recordActivityAndReschedule();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_alwaysStarted) return;
+    _alwaysStarted = true;
+    final locale = Localizations.localeOf(context).languageCode;
+    unawaited(
+      _voice.startAlwaysOn(
+        locale: locale,
+        onUtterance: (text) {
+          if (!mounted || _busy) return;
+          unawaited(_sendText(text));
+        },
+      ).then((_) {
+        if (mounted) safeSetState(() => _recording = !_voice.privacyMute);
+      }),
+    );
   }
 
   @override
@@ -312,11 +332,9 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   }
 
   Future<void> _toggleMic() async {
-    if (_recording) {
-      await _holdEnd();
-    } else {
-      await _holdStart();
-    }
+    final next = !_voice.privacyMute;
+    await _voice.setPrivacyMute(next);
+    if (mounted) safeSetState(() => _recording = !next);
   }
 
   void _toggleVoiceOut() {
@@ -465,7 +483,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                 onHoldEnd: () => unawaited(_holdEnd()),
                 onMicTap: () => unawaited(_toggleMic()),
                 busy: _busy,
-                recording: _recording,
+                recording: _recording && !_voice.privacyMute,
+                privacyMuted: _voice.privacyMute,
                 childId: widget.childId,
                 attachOpen: _attachOpen,
                 onToggleAttach: () =>
