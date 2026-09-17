@@ -7,6 +7,8 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
+import 'package:prepskul/features/primar/presentation/mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
@@ -78,76 +80,46 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
     final screenHeight = MediaQuery.of(context).size.height;
     final isSmallScreen = screenHeight < 700;
     final isVerySmallScreen = screenHeight < 600;
+    final headerTopPadding = isVerySmallScreen ? 8.0 : (isSmallScreen ? 12.0 : 16.0);
+    final headerBottomPadding = isVerySmallScreen ? 8.0 : 12.0;
+    final titleFontSize = isVerySmallScreen ? 24.0 : 28.0;
+    final subtitleFontSize = isVerySmallScreen ? 13.0 : 15.0;
+    final contentTopSpacing = isVerySmallScreen ? 12.0 : 20.0;
     
-    // Responsive dimensions
-    final headerHeight = isVerySmallScreen ? 150.0 : (isSmallScreen ? 175.0 : 200.0);
-    final headerTopPadding = isVerySmallScreen ? 15.0 : (isSmallScreen ? 22.0 : 29.0);
-    final headerBottomPadding = isVerySmallScreen ? 20.0 : (isSmallScreen ? 25.0 : 30.0);
-    final titleFontSize = isVerySmallScreen ? 26.0 : (isSmallScreen ? 28.0 : 32.0);
-    final subtitleFontSize = isVerySmallScreen ? 12.0 : 14.0;
-    final contentTopSpacing = isVerySmallScreen ? 40.0 : (isSmallScreen ? 60.0 : 90.0);
-    
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
         body: Stack(
           children: [
-          // Curved wave background at top
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: headerHeight,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
-          // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content inside the wave
                 Padding(
                   padding: EdgeInsets.fromLTRB(24.0, headerTopPadding, 24.0, headerBottomPadding),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 15),
-                      Center(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          transitionBuilder: (Widget child, Animation<double> animation) {
-                            return FadeTransition(opacity: animation, child: child);
-                          },
-                          child: Text(
-                            _isLogin ? t.authWelcomeBack : t.authJoinPrepSkul,
-                            key: ValueKey<bool>(_isLogin),
-                            style: GoogleFonts.poppins(
-                              fontSize: titleFontSize,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
+                      prepMate(mood: Mood.wave, size: isVerySmallScreen ? 88 : 108),
+                      const SizedBox(height: 10),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Text(
+                          _isLogin ? t.authWelcomeBack : t.authJoinPrepSkul,
+                          key: ValueKey<bool>(_isLogin),
+                          textAlign: TextAlign.center,
+                          style: onboardDisplay(size: titleFontSize),
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Center(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: Text(
-                            _isLogin ? t.authSignInToContinue : t.authCreateAccount,
-                            key: ValueKey<String>(_isLogin ? 'signin-sub' : 'signup-sub'),
-                            style: GoogleFonts.poppins(
-                              fontSize: subtitleFontSize,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white.withOpacity(0.95),
-                            ),
+                      const SizedBox(height: 6),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Text(
+                          _isLogin ? t.authSignInToContinue : t.authCreateAccount,
+                          key: ValueKey<String>(_isLogin ? 'signin-sub' : 'signup-sub'),
+                          textAlign: TextAlign.center,
+                          style: onboardFont(
+                            size: subtitleFontSize + 1,
+                            weight: FontWeight.w700,
+                            color: AppTheme.textMedium,
                           ),
                         ),
                       ),
@@ -382,60 +354,22 @@ class _AuthMethodButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          side: BorderSide(
-            color: isPrimary ? AppTheme.primaryColor : AppTheme.softBorder,
-            width: isPrimary ? 2.0 : 1.5,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          backgroundColor: isPrimary ? AppTheme.softCard : Colors.white,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (label.contains('Google'))
-              // Use local Google logo asset with transparent background.
-              // The button itself stays white, matching Google's brand guidelines.
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: Image.asset(
-                  'assets/images/google.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    // Fallback to simple icon if asset missing
-                    return Icon(
-                      Icons.g_mobiledata,
-                      size: 22,
-                      color: AppTheme.textDark,
-                    );
-                  },
-                ),
-              )
-            else
-              Icon(icon, size: 24, color: AppTheme.textDark),
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(
-                label,
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-                overflow: TextOverflow.ellipsis,
+    return OnboardPaperButton(
+      label: label,
+      onTap: onTap,
+      leading: label.contains('Google')
+          ? SizedBox(
+              width: 22,
+              height: 22,
+              child: Image.asset(
+                'assets/images/google.png',
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(icon, size: 22, color: AppTheme.primaryColor);
+                },
               ),
-            ),
-          ],
-        ),
-      ),
+            )
+          : Icon(icon, size: 22, color: AppTheme.primaryColor),
     );
   }
 }

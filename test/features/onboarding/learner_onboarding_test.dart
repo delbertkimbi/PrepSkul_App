@@ -27,7 +27,7 @@ void main() {
     expect(find.textContaining('best tutor'), findsNothing);
     expect(find.textContaining('your child'), findsNothing);
 
-    await tester.tap(find.text('Let’s go'));
+    await tester.tap(find.text('LET’S GO'));
     await settle(tester);
     await tester.pump();
     await tester.pump();

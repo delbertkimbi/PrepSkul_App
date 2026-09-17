@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
 
 class LanguageSwitcher extends StatefulWidget {
   const LanguageSwitcher({Key? key}) : super(key: key);
@@ -18,17 +19,16 @@ class _LanguageSwitcherState extends State<LanguageSwitcher> {
         final isFrench = languageNotifier.currentLocale.languageCode == 'fr';
 
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade300),
-            boxShadow: [
+            border: Border.all(color: AppTheme.primaryColor, width: 2),
+            boxShadow: const [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 3,
-                offset: const Offset(0, 1),
+                color: Color(0x381E3A8A),
+                offset: Offset(0, 3),
+                blurRadius: 0,
               ),
             ],
           ),

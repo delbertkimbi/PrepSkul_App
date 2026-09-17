@@ -1,10 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../../core/navigation/main_navigation_scope.dart';
 import '../../../core/navigation/student_tab_index.dart';
@@ -849,19 +850,17 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: Colors.grey[20],
+        backgroundColor: OnboardPalette.cream,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
           elevation: 0,
-          surfaceTintColor: Colors.white,
+          surfaceTintColor: OnboardPalette.cream,
           centerTitle: false,
           title: Text(
             'Hi, $_userName',
-            style: GoogleFonts.poppins(
-              fontSize: ResponsiveHelper.responsiveHeadingSize(context),
-              fontWeight: FontWeight.w700,
-              color: AppTheme.primaryColor,
+            style: onboardDisplay(
+              size: ResponsiveHelper.responsiveHeadingSize(context),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

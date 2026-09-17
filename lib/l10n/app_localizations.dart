@@ -161,6 +161,12 @@ abstract class AppLocalizations {
   /// **'Get Started'**
   String get buttonGetStarted;
 
+  /// No description provided for @onboardingCta.
+  ///
+  /// In en, this message translates to:
+  /// **'Let’s go'**
+  String get onboardingCta;
+
   /// No description provided for @languageSettingsTitle.
   ///
   /// In en, this message translates to:

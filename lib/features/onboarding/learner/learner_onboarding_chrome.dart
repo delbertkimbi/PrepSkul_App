@@ -410,6 +410,120 @@ class OnboardPrimaryButton extends StatelessWidget {
   }
 }
 
+class OnboardPaperButton extends StatelessWidget {
+  const OnboardPaperButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.leading,
+  });
+  final String label;
+  final VoidCallback onTap;
+  final Widget? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppTheme.primaryColor, width: 2.5),
+          boxShadow: const [
+            BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 5), blurRadius: 0),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (leading != null) ...[
+              leading!,
+              const SizedBox(width: 10),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: onboardFont(size: 16, weight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Human photo on paper, Mate overlapping. Both, not one over the other.
+class OnboardPeopleMateStage extends StatelessWidget {
+  const OnboardPeopleMateStage({
+    super.key,
+    required this.photoAsset,
+    required this.mood,
+    this.flipMate = true,
+  });
+
+  final String photoAsset;
+  final Mood mood;
+  final bool flipMate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SizedBox(
+        width: 300,
+        height: 248,
+        child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Align(
+            alignment: const Alignment(-0.55, -0.1),
+            child: Container(
+              width: 176,
+              height: 176,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: AppTheme.primaryColor, width: 3),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x381E3A8A),
+                    offset: Offset(0, 8),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(25),
+                child: Image.asset(
+                  photoAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return ColoredBox(
+                      color: AppTheme.skyBlueLight,
+                      child: Center(child: prepMate(mood: mood, size: 96)),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          Align(
+            alignment: const Alignment(0.72, 0.55),
+            child: AliveMate(mood: mood, size: 132, flip: flipMate),
+          ),
+        ],
+        ),
+      ),
+    );
+  }
+}
+
 class OnboardGlyph extends StatelessWidget {
   const OnboardGlyph({super.key, required this.seed, this.selected = false});
   final String seed;
