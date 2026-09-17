@@ -10,11 +10,13 @@ class SkulMateTutorComposer extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onHoldStart;
   final VoidCallback onHoldEnd;
+  final VoidCallback onMicTap;
   final bool busy;
   final bool recording;
   final String? childId;
   final bool attachOpen;
   final VoidCallback onToggleAttach;
+  final bool showTypeField;
 
   const SkulMateTutorComposer({
     super.key,
@@ -22,11 +24,13 @@ class SkulMateTutorComposer extends StatelessWidget {
     required this.onSend,
     required this.onHoldStart,
     required this.onHoldEnd,
+    required this.onMicTap,
     required this.busy,
     required this.recording,
     required this.attachOpen,
     required this.onToggleAttach,
     this.childId,
+    this.showTypeField = true,
   });
 
   @override
@@ -41,86 +45,109 @@ class SkulMateTutorComposer extends StatelessWidget {
             child: SkulMateImportActionGrid(childId: childId),
           ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: GestureDetector(
-            onLongPressStart: (_) => onHoldStart(),
-            onLongPressEnd: (_) => onHoldEnd(),
-            child: Container(
-              height: 64,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: recording ? AppTheme.skyBlue : AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(22),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.35),
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Text(
-                recording ? copy.tutorListening : copy.tutorHoldToTalk,
-                style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ),
-        ),
-        Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: Container(
-            decoration: SkulMateSurfaceStyles.homeCard(radius: 22),
-            padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: copy.orImportMaterial,
-                  onPressed: busy ? null : onToggleAttach,
-                  icon: Icon(
-                    attachOpen
-                        ? Icons.close_rounded
-                        : Icons.add_circle_outline_rounded,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    minLines: 1,
-                    maxLines: 4,
-                    enabled: !busy,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => onSend(),
-                    decoration: InputDecoration(
-                      hintText: copy.tutorComposerHint,
-                      border: InputBorder.none,
-                      hintStyle: GoogleFonts.plusJakartaSans(
-                        color: AppTheme.neutral400,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              GestureDetector(
+                onTap: onMicTap,
+                onLongPressStart: (_) => onHoldStart(),
+                onLongPressEnd: (_) => onHoldEnd(),
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: recording
+                        ? AppTheme.skyBlue
+                        : busy
+                            ? AppTheme.neutral300
+                            : AppTheme.primaryColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.35),
+                        offset: const Offset(0, 4),
                       ),
-                    ),
+                    ],
+                  ),
+                  child: Icon(
+                    recording ? Icons.stop_rounded : Icons.mic_rounded,
+                    color: Colors.white,
                   ),
                 ),
-                IconButton.filled(
-                  onPressed: busy ? null : onSend,
-                  style: IconButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                  ),
-                  icon: busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  decoration: SkulMateSurfaceStyles.homeCard(radius: 22),
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        tooltip: copy.orImportMaterial,
+                        onPressed: busy ? null : onToggleAttach,
+                        icon: Icon(
+                          attachOpen
+                              ? Icons.close_rounded
+                              : Icons.note_add_outlined,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                      if (showTypeField)
+                        Expanded(
+                          child: TextField(
+                            controller: controller,
+                            minLines: 1,
+                            maxLines: 4,
+                            enabled: !busy,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => onSend(),
+                            decoration: InputDecoration(
+                              hintText: copy.tutorComposerHint,
+                              border: InputBorder.none,
+                              hintStyle: GoogleFonts.plusJakartaSans(
+                                color: AppTheme.neutral400,
+                              ),
+                            ),
                           ),
                         )
-                      : const Icon(Icons.arrow_upward_rounded),
+                      else
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              recording
+                                  ? copy.tutorListening
+                                  : copy.tutorListenHint,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      IconButton.filled(
+                        onPressed: busy ? null : onSend,
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                        ),
+                        icon: busy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.arrow_upward_rounded),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],

@@ -46,6 +46,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   bool _attachOpen = false;
   bool _recording = false;
   bool _demo = false;
+  String _mode = 'listen';
   String? _error;
 
   @override
@@ -304,10 +305,35 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   }
 
   Future<void> _speakThenListen(String text) async {
-    await _voice.speakTutor(text);
+    _voice.voiceOut = _mode != 'silent';
+    if (_mode != 'silent') {
+      await _voice.speakTutor(text);
+    }
     if (!mounted) return;
+    if (_mode != 'listen') return;
     final ok = await _voice.startListening();
     if (mounted) safeSetState(() => _recording = ok);
+  }
+
+  Future<void> _toggleMic() async {
+    if (_recording) {
+      await _holdEnd();
+    } else {
+      await _holdStart();
+    }
+  }
+
+  void _setMode(String mode) {
+    _voice.voiceOut = mode != 'silent';
+    if (mode == 'silent') {
+      unawaited(_voice.interrupt());
+      safeSetState(() {
+        _mode = mode;
+        _recording = false;
+      });
+      return;
+    }
+    safeSetState(() => _mode = mode);
   }
 
   Future<void> _holdStart() async {
@@ -369,6 +395,30 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                       valueListenable: _voice.state,
                       builder: (_, state, __) =>
                           SkulMateVoicePill(state: state),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    _ModeChip(
+                      label: copy.tutorModeListen,
+                      selected: _mode == 'listen',
+                      onTap: () => _setMode('listen'),
+                    ),
+                    const SizedBox(width: 8),
+                    _ModeChip(
+                      label: copy.tutorModeSilent,
+                      selected: _mode == 'silent',
+                      onTap: () => _setMode('silent'),
+                    ),
+                    const SizedBox(width: 8),
+                    _ModeChip(
+                      label: copy.tutorModeType,
+                      selected: _mode == 'type',
+                      onTap: () => _setMode('type'),
                     ),
                   ],
                 ),
@@ -435,14 +485,63 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                 onSend: () => _sendText(_composer.text),
                 onHoldStart: () => unawaited(_holdStart()),
                 onHoldEnd: () => unawaited(_holdEnd()),
+                onMicTap: () => unawaited(_toggleMic()),
                 busy: _busy,
                 recording: _recording,
                 childId: widget.childId,
                 attachOpen: _attachOpen,
+                showTypeField: _mode != 'listen',
                 onToggleAttach: () =>
                     safeSetState(() => _attachOpen = !_attachOpen),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.skyBlue : Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? AppTheme.skyBlue : AppTheme.primaryColor,
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: selected
+                    ? const Color(0xFF0369A1)
+                    : AppTheme.primaryColor.withValues(alpha: 0.18),
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            style: SkulMateTypography.body(
+              color: selected ? Colors.white : AppTheme.primaryColor,
+            ).copyWith(fontWeight: FontWeight.w800, fontSize: 13),
           ),
         ),
       ),

@@ -50,21 +50,28 @@ class _StepLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (step.kind == 'equation') {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          step.text,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 14,
-            height: 1.35,
-            color: AppTheme.textDark,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 88,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0F2FE),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.primaryColor, width: 2),
+            ),
+            child: Text(
+              step.text,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.primaryColor,
+              ),
+            ),
           ),
-        ),
+        ],
       );
     }
     if (step.kind == 'diagram') {

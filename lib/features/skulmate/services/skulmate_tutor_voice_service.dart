@@ -18,6 +18,7 @@ class SkulMateTutorVoiceService {
 
   bool _sttReady = false;
   String _heard = '';
+  bool voiceOut = true;
 
   Future<void> prepare() async {
     await _tts.ensureInitialized();
@@ -57,6 +58,7 @@ class SkulMateTutorVoiceService {
   void setThinking() => state.value = TutorVoiceState.thinking;
 
   Future<void> speakTutor(String text) async {
+    if (!voiceOut) return;
     if (text.trim().isEmpty) return;
     state.value = TutorVoiceState.speaking;
     try {

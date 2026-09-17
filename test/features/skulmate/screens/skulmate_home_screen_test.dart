@@ -33,10 +33,10 @@ void main() {
     expect(find.byType(SkulMateHomeTopBar), findsOneWidget);
     expect(find.text('History'), findsOneWidget);
     expect(find.byType(SkulMateTutorComposer), findsOneWidget);
-    expect(
-      find.textContaining('Talk. I am listening'),
-      findsOneWidget,
-    );
+            expect(
+              find.textContaining('This board is yours'),
+              findsOneWidget,
+            );
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(tester.takeException(), isNull);
   });
