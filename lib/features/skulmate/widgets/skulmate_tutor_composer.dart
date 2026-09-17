@@ -16,7 +16,6 @@ class SkulMateTutorComposer extends StatelessWidget {
   final String? childId;
   final bool attachOpen;
   final VoidCallback onToggleAttach;
-  final bool showTypeField;
 
   const SkulMateTutorComposer({
     super.key,
@@ -30,7 +29,6 @@ class SkulMateTutorComposer extends StatelessWidget {
     required this.attachOpen,
     required this.onToggleAttach,
     this.childId,
-    this.showTypeField = true,
   });
 
   @override
@@ -94,39 +92,25 @@ class SkulMateTutorComposer extends StatelessWidget {
                           color: AppTheme.primaryColor,
                         ),
                       ),
-                      if (showTypeField)
-                        Expanded(
-                          child: TextField(
-                            controller: controller,
-                            minLines: 1,
-                            maxLines: 4,
-                            enabled: !busy,
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => onSend(),
-                            decoration: InputDecoration(
-                              hintText: copy.tutorComposerHint,
-                              border: InputBorder.none,
-                              hintStyle: GoogleFonts.plusJakartaSans(
-                                color: AppTheme.neutral400,
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Text(
-                              recording
-                                  ? copy.tutorListening
-                                  : copy.tutorListenHint,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.primaryColor,
-                              ),
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          minLines: 1,
+                          maxLines: 4,
+                          enabled: !busy,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => onSend(),
+                          decoration: InputDecoration(
+                            hintText: recording
+                                ? copy.tutorListening
+                                : copy.tutorComposerHint,
+                            border: InputBorder.none,
+                            hintStyle: GoogleFonts.plusJakartaSans(
+                              color: AppTheme.neutral400,
                             ),
                           ),
                         ),
+                      ),
                       IconButton.filled(
                         onPressed: busy ? null : onSend,
                         style: IconButton.styleFrom(

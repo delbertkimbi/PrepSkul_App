@@ -28,8 +28,8 @@ class SkulMateCopy {
       : 'What shall we revise today?';
 
   String get tutorComposerHint => isFrench
-      ? 'Écris ici. Mate lit encore.'
-      : 'Type here. Mate still reads.';
+      ? 'Parle ou écris ici.'
+      : 'Talk or type here.';
 
   String get tutorEmptyPrompt => isFrench
       ? 'Le tableau est à toi. Parle, écris, ou colle tes notes. Mate lit ce qu\'il écrit.'
@@ -52,6 +52,10 @@ class SkulMateCopy {
   String get tutorListenHint => isFrench
       ? 'Touche le micro. Tu peux aussi écrire.'
       : 'Tap the mic. You can also type.';
+
+  String get tutorMuteMate => isFrench ? 'Couper la voix' : 'Mute Mate';
+
+  String get tutorMateReads => isFrench ? 'Mate lit' : 'Mate reads';
 
   String get tutorEscalateLive => isFrench
       ? 'On peut appeler un tuteur PrepSkul pour ça.'

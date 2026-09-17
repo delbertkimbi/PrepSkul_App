@@ -46,7 +46,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   bool _attachOpen = false;
   bool _recording = false;
   bool _demo = false;
-  String _mode = 'listen';
+  bool _voiceOut = true;
   String? _error;
 
   @override
@@ -305,14 +305,10 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   }
 
   Future<void> _speakThenListen(String text) async {
-    _voice.voiceOut = _mode != 'silent';
-    if (_mode != 'silent') {
+    _voice.voiceOut = _voiceOut;
+    if (_voiceOut) {
       await _voice.speakTutor(text);
     }
-    if (!mounted) return;
-    if (_mode != 'listen') return;
-    final ok = await _voice.startListening();
-    if (mounted) safeSetState(() => _recording = ok);
   }
 
   Future<void> _toggleMic() async {
@@ -323,17 +319,11 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     }
   }
 
-  void _setMode(String mode) {
-    _voice.voiceOut = mode != 'silent';
-    if (mode == 'silent') {
-      unawaited(_voice.interrupt());
-      safeSetState(() {
-        _mode = mode;
-        _recording = false;
-      });
-      return;
-    }
-    safeSetState(() => _mode = mode);
+  void _toggleVoiceOut() {
+    final next = !_voiceOut;
+    _voice.voiceOut = next;
+    if (!next) unawaited(_voice.interrupt());
+    safeSetState(() => _voiceOut = next);
   }
 
   Future<void> _holdStart() async {
@@ -396,29 +386,17 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                       builder: (_, state, __) =>
                           SkulMateVoicePill(state: state),
                     ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Row(
-                  children: [
-                    _ModeChip(
-                      label: copy.tutorModeListen,
-                      selected: _mode == 'listen',
-                      onTap: () => _setMode('listen'),
-                    ),
-                    const SizedBox(width: 8),
-                    _ModeChip(
-                      label: copy.tutorModeSilent,
-                      selected: _mode == 'silent',
-                      onTap: () => _setMode('silent'),
-                    ),
-                    const SizedBox(width: 8),
-                    _ModeChip(
-                      label: copy.tutorModeType,
-                      selected: _mode == 'type',
-                      onTap: () => _setMode('type'),
+                    IconButton(
+                      tooltip: _voiceOut
+                          ? copy.tutorMuteMate
+                          : copy.tutorMateReads,
+                      onPressed: _toggleVoiceOut,
+                      icon: Icon(
+                        _voiceOut
+                            ? Icons.volume_up_rounded
+                            : Icons.volume_off_rounded,
+                        color: AppTheme.primaryColor,
+                      ),
                     ),
                   ],
                 ),
@@ -490,58 +468,10 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                 recording: _recording,
                 childId: widget.childId,
                 attachOpen: _attachOpen,
-                showTypeField: _mode != 'listen',
                 onToggleAttach: () =>
                     safeSetState(() => _attachOpen = !_attachOpen),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ModeChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ModeChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 36,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? AppTheme.skyBlue : Colors.white,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected ? AppTheme.skyBlue : AppTheme.primaryColor,
-              width: 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: selected
-                    ? const Color(0xFF0369A1)
-                    : AppTheme.primaryColor.withValues(alpha: 0.18),
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Text(
-            label,
-            style: SkulMateTypography.body(
-              color: selected ? Colors.white : AppTheme.primaryColor,
-            ).copyWith(fontWeight: FontWeight.w800, fontSize: 13),
           ),
         ),
       ),
