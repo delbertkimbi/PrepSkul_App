@@ -60,7 +60,7 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen> {
                 const Spacer(),
                 prepMate(mood: Mood.cheer, size: 168),
                 const SizedBox(height: 20),
-                OnboardBubble(
+                OnboardSpeech(
                   title: isParent
                       ? 'You’re a student here too. Tell me about your school.'
                       : 'Tell me about your school. I’ll tutor you from there.',

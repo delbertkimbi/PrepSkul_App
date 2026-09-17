@@ -92,28 +92,30 @@ const africaInterests = [
   RegionOption(id: 'dance', label: Bilingual(en: 'Dance', fr: 'Danse')),
 ];
 
+const _cmFrLevels = [
+  RegionLevel(id: 'sil', label: Bilingual(en: 'SIL', fr: 'SIL'), educationLevel: 'Primary School'),
+  RegionLevel(id: 'cp', label: Bilingual(en: 'CP', fr: 'CP'), educationLevel: 'Primary School'),
+  RegionLevel(id: 'ce1', label: Bilingual(en: 'CE1', fr: 'CE1'), educationLevel: 'Primary School'),
+  RegionLevel(id: 'ce2', label: Bilingual(en: 'CE2', fr: 'CE2'), educationLevel: 'Primary School'),
+  RegionLevel(id: 'cm1', label: Bilingual(en: 'CM1', fr: 'CM1'), educationLevel: 'Primary School'),
+  RegionLevel(id: 'cm2', label: Bilingual(en: 'CM2', fr: 'CM2'), educationLevel: 'Primary School'),
+  RegionLevel(id: '6eme', label: Bilingual(en: '6ème', fr: '6ème'), educationLevel: 'Secondary School'),
+  RegionLevel(id: '5eme', label: Bilingual(en: '5ème', fr: '5ème'), educationLevel: 'Secondary School'),
+  RegionLevel(id: '4eme', label: Bilingual(en: '4ème', fr: '4ème'), educationLevel: 'Secondary School'),
+  RegionLevel(id: '3eme', label: Bilingual(en: '3ème', fr: '3ème'), educationLevel: 'Secondary School'),
+  RegionLevel(id: '2nde', label: Bilingual(en: '2nde', fr: '2nde'), educationLevel: 'High School'),
+  RegionLevel(id: '1ere', label: Bilingual(en: '1ère', fr: '1ère'), educationLevel: 'High School'),
+  RegionLevel(id: 'terminale', label: Bilingual(en: 'Terminale', fr: 'Terminale'), educationLevel: 'High School'),
+  RegionLevel(id: 'uni', label: Bilingual(en: 'University', fr: 'Université'), educationLevel: 'University'),
+];
+
 const cameroonFrancophone = RegionSystem(
   id: 'cm-francophone',
   label: Bilingual(
     en: 'Francophone (BEPC / Probatoire / Bac)',
     fr: 'Francophone (BEPC / Probatoire / Bac)',
   ),
-  levels: [
-    RegionLevel(id: 'sil', label: Bilingual(en: 'SIL', fr: 'SIL'), educationLevel: 'Primary School'),
-    RegionLevel(id: 'cp', label: Bilingual(en: 'CP', fr: 'CP'), educationLevel: 'Primary School'),
-    RegionLevel(id: 'ce1', label: Bilingual(en: 'CE1', fr: 'CE1'), educationLevel: 'Primary School'),
-    RegionLevel(id: 'ce2', label: Bilingual(en: 'CE2', fr: 'CE2'), educationLevel: 'Primary School'),
-    RegionLevel(id: 'cm1', label: Bilingual(en: 'CM1', fr: 'CM1'), educationLevel: 'Primary School'),
-    RegionLevel(id: 'cm2', label: Bilingual(en: 'CM2', fr: 'CM2'), educationLevel: 'Primary School'),
-    RegionLevel(id: '6eme', label: Bilingual(en: '6ème', fr: '6ème'), educationLevel: 'Secondary School'),
-    RegionLevel(id: '5eme', label: Bilingual(en: '5ème', fr: '5ème'), educationLevel: 'Secondary School'),
-    RegionLevel(id: '4eme', label: Bilingual(en: '4ème', fr: '4ème'), educationLevel: 'Secondary School'),
-    RegionLevel(id: '3eme', label: Bilingual(en: '3ème', fr: '3ème'), educationLevel: 'Secondary School'),
-    RegionLevel(id: '2nde', label: Bilingual(en: '2nde', fr: '2nde'), educationLevel: 'High School'),
-    RegionLevel(id: '1ere', label: Bilingual(en: '1ère', fr: '1ère'), educationLevel: 'High School'),
-    RegionLevel(id: 'terminale', label: Bilingual(en: 'Terminale', fr: 'Terminale'), educationLevel: 'High School'),
-    RegionLevel(id: 'uni', label: Bilingual(en: 'University', fr: 'Université'), educationLevel: 'University'),
-  ],
+  levels: _cmFrLevels,
   exams: [
     RegionOption(id: 'none', label: Bilingual(en: 'No exam this year', fr: 'Pas d’examen cette année')),
     RegionOption(id: 'bepc', label: Bilingual(en: 'BEPC', fr: 'BEPC')),
@@ -310,7 +312,7 @@ const regionPacks = [
       RegionSystem(
         id: 'fr-bac',
         label: Bilingual(en: 'Collège / Lycée / Bac', fr: 'Collège / Lycée / Bac'),
-        levels: cameroonFrancophone.levels,
+        levels: _cmFrLevels,
         exams: [
           RegionOption(id: 'none', label: Bilingual(en: 'No exam this year', fr: 'Pas d’examen cette année')),
           RegionOption(id: 'brevet', label: Bilingual(en: 'Brevet', fr: 'Brevet')),

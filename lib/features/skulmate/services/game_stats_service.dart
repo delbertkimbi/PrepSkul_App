@@ -3,7 +3,6 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../models/game_stats_model.dart';
 import 'streak_reminder_hook.dart';
-import '../models/achievement_mapping.dart';
 import 'social_service.dart';
 import 'games_services_controller.dart';
 

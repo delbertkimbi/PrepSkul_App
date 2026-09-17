@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show File;
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:prepskul/core/config/app_config.dart';
@@ -250,7 +251,7 @@ class SkulMateTutorSessionService {
           '$userId/skulmate_${DateTime.now().millisecondsSinceEpoch}_$name';
       await bucket.uploadBinary(
         path,
-        bytes,
+        bytes is Uint8List ? bytes : Uint8List.fromList(bytes),
         fileOptions: FileOptions(contentType: contentType, upsert: true),
       );
       fileUrls.add(await bucket.createSignedUrl(path, 3600));
