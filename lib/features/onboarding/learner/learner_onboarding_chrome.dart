@@ -189,7 +189,7 @@ class _OnboardSpeechState extends State<OnboardSpeech> {
         widget.onTyped?.call();
         return;
       }
-      _timer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      _timer = Timer.periodic(const Duration(milliseconds: 36), (timer) {
         if (!mounted) {
           timer.cancel();
           return;
