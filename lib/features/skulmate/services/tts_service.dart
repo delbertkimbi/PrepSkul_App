@@ -40,6 +40,7 @@ class TTSService {
       await _flutterTts!.setSpeechRate(_speechRate);
       await _flutterTts!.setVolume(_ttsVolume);
       await _flutterTts!.setPitch(1.0);
+      await _preferNeuralVoice();
       
       // Set completion handler (used by speakAndWait)
       _flutterTts!.setCompletionHandler(() {
@@ -79,6 +80,31 @@ class TTSService {
       LogService.error('[TTS] Error initializing: $e');
       _isInitialized = false;
     }
+  }
+
+  Future<void> _preferNeuralVoice() async {
+    try {
+      final raw = await _flutterTts!.getVoices;
+      if (raw is! List) return;
+      final want = _currentLanguage.split('-').first.toLowerCase();
+      Map<dynamic, dynamic>? picked;
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final name = '${item['name'] ?? ''}'.toLowerCase();
+        final loc = '${item['locale'] ?? ''}'.toLowerCase();
+        if (!loc.startsWith(want) && !name.contains(want)) continue;
+        picked ??= item;
+        if (RegExp(r'neural|natural|premium|google|enhanced').hasMatch(name)) {
+          picked = item;
+          break;
+        }
+      }
+      if (picked == null || picked['name'] == null) return;
+      await _flutterTts!.setVoice({
+        'name': '${picked['name']}',
+        'locale': '${picked['locale'] ?? _currentLanguage}',
+      });
+    } catch (_) {}
   }
 
   /// Ensure TTS is ready (call init if needed)

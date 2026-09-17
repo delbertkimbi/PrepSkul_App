@@ -28,12 +28,18 @@ class SkulMateCopy {
       : 'What shall we revise today?';
 
   String get tutorComposerHint => isFrench
-      ? 'Parle ou envoie tes notes…'
-      : 'Talk or drop your notes…';
+      ? 'Écrire seulement si tu préfères'
+      : 'Type only if you would rather';
 
   String get tutorEmptyPrompt => isFrench
-      ? 'Parle. Je t\'écoute. Dis-moi ce que tu révises — je ne te donnerai pas la réponse, on la construit ensemble.'
-      : 'Talk. I am listening. Tell me what you are revising — I will not hand you the answer. We work it out together.';
+      ? 'Parle. Je t\'écoute. Dis-moi ce que tu révises. Je ne te donnerai pas la réponse, on la construit ensemble.'
+      : 'Talk. I am listening. Tell me what you are revising. I will not hand you the answer. We work it out together.';
+
+  String get tutorHoldToTalk =>
+      isFrench ? 'Maintiens pour parler' : 'Hold to talk';
+
+  String get tutorListening =>
+      isFrench ? 'Je t\'écoute…' : 'Listening…';
 
   String get tutorThinking =>
       isFrench ? 'Je prépare la suite…' : 'Working on the next move…';

@@ -41,6 +41,35 @@ class SkulMateTutorComposer extends StatelessWidget {
             child: SkulMateImportActionGrid(childId: childId),
           ),
         Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: GestureDetector(
+            onLongPressStart: (_) => onHoldStart(),
+            onLongPressEnd: (_) => onHoldEnd(),
+            child: Container(
+              height: 64,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: recording ? AppTheme.skyBlue : AppTheme.primaryColor,
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.35),
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Text(
+                recording ? copy.tutorListening : copy.tutorHoldToTalk,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           child: Container(
             decoration: SkulMateSurfaceStyles.homeCard(radius: 22),
@@ -74,20 +103,6 @@ class SkulMateTutorComposer extends StatelessWidget {
                     ),
                   ),
                 ),
-                GestureDetector(
-                  onLongPressStart: (_) => onHoldStart(),
-                  onLongPressEnd: (_) => onHoldEnd(),
-                  child: CircleAvatar(
-                    backgroundColor: recording
-                        ? AppTheme.accentPink
-                        : AppTheme.skyBlueLight,
-                    child: Icon(
-                      Icons.mic_rounded,
-                      color: recording ? Colors.white : AppTheme.primaryColor,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
                 IconButton.filled(
                   onPressed: busy ? null : onSend,
                   style: IconButton.styleFrom(
