@@ -218,7 +218,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(child: prepMate(mood: _mood, size: 120)),
+        Center(child: prepMate(mood: _mood, size: 200)),
         const SizedBox(height: 12),
         OnboardBubble(title: title, note: note),
         const SizedBox(height: 22),
@@ -233,7 +233,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       LearnerOnboardStep.welcome => Column(
           children: [
             const SizedBox(height: 12),
-            prepMate(mood: Mood.happy, size: 140),
+            prepMate(mood: Mood.happy, size: 228),
             const SizedBox(height: 18),
             OnboardBubble(title: _c.welcomeTitle, note: _c.welcomeNote),
             const SizedBox(height: 28),
@@ -498,7 +498,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         ),
       LearnerOnboardStep.ready => Column(
           children: [
-            prepMate(mood: Mood.cheer, size: 148),
+            prepMate(mood: Mood.cheer, size: 228),
             const SizedBox(height: 16),
             OnboardBubble(title: _c.readyTitle, note: _c.readyNote),
             const SizedBox(height: 24),

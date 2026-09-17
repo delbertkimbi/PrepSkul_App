@@ -88,7 +88,9 @@ class _SkulMateHeroMascotState extends State<SkulMateHeroMascot>
           child: SkulMateMascotMediaWidget(
             state: widget.state,
             showFrame: false,
-            preferStaticImage: true,
+            loop: true,
+            autoplay: true,
+            preferStaticImage: false,
           ),
         ),
       ),

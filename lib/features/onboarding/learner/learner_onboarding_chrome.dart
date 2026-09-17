@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/primar/presentation/mascot.dart';
+import 'package:prepskul/features/skulmate/widgets/skulmate_mascot_media_widget.dart';
 import 'package:prepskul/features/skulmate/widgets/skulmate_surface_styles.dart';
 
 /// PrepSkul marketplace chrome — white, deep-blue header, sky/yellow accents.
@@ -25,13 +26,23 @@ class OnboardPalette {
 }
 
 Widget prepMate({required Mood mood, double size = 96}) {
-  return Mate(
-    mood: mood,
-    size: size,
-    ink: AppTheme.primaryColor,
-    body: AppTheme.skyBlue,
-    belly: AppTheme.skyBlueLight,
-    accent: AppTheme.softYellow,
+  final state = switch (mood) {
+    Mood.thinking => SkulMateMascotState.thinking,
+    Mood.cheer => SkulMateMascotState.celebration,
+    Mood.encourage => SkulMateMascotState.encouraging,
+    Mood.idle || Mood.happy => SkulMateMascotState.encouraging,
+  };
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(28),
+    child: SkulMateMascotMediaWidget(
+      state: state,
+      width: size,
+      height: size * 0.92,
+      showFrame: false,
+      loop: true,
+      autoplay: true,
+      preferStaticImage: false,
+    ),
   );
 }
 
