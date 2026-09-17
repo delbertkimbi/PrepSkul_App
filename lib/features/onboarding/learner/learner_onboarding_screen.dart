@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
-import 'package:prepskul/features/primar/presentation/primar_theme.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_answers.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_copy.dart';
@@ -272,19 +272,19 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                   hintText: _c.nameHint,
                   filled: true,
                   fillColor: Colors.white,
-                  hintStyle: onboardFont(size: 16, weight: FontWeight.w700, color: PrimarTheme.muted),
+                  hintStyle: onboardFont(size: 16, weight: FontWeight.w700, color: AppTheme.textMedium),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: Color(0x291E3A8A)),
+                    borderSide: const BorderSide(color: Color(0x291B2C4F)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: PrimarTheme.teal, width: 2),
+                    borderSide: const BorderSide(color: AppTheme.skyBlue, width: 2),
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: Color(0x291E3A8A)),
+                    borderSide: const BorderSide(color: Color(0x291B2C4F)),
                   ),
                 ),
               ),

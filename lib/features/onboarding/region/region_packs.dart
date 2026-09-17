@@ -414,13 +414,13 @@ RegionSystem systemById(RegionPack pack, String? id) {
 
 const examWhenOptions = [
   RegionOption(id: 'year-plus', label: Bilingual(en: 'More than a year away', fr: 'Dans plus d’un an')),
-  RegionOption(id: '6-12', label: Bilingual(en: '6–12 months', fr: 'Dans 6 à 12 mois')),
-  RegionOption(id: '3-6', label: Bilingual(en: '3–6 months', fr: 'Dans 3 à 6 mois')),
+  RegionOption(id: '6-12', label: Bilingual(en: '6 to 12 months', fr: 'Dans 6 à 12 mois')),
+  RegionOption(id: '3-6', label: Bilingual(en: '3 to 6 months', fr: 'Dans 3 à 6 mois')),
   RegionOption(id: 'soon', label: Bilingual(en: 'Less than 3 months', fr: 'Dans moins de 3 mois')),
 ];
 
 const paceOptions = [
-  RegionOption(id: 'steady', label: Bilingual(en: 'Slow and steady — show me why', fr: 'Lent et clair — montre-moi pourquoi')),
+  RegionOption(id: 'steady', label: Bilingual(en: 'Slow and steady. Show me why', fr: 'Lent et clair. Montre-moi pourquoi')),
   RegionOption(id: 'balanced', label: Bilingual(en: 'A balanced pace', fr: 'Un rythme équilibré')),
   RegionOption(id: 'fast', label: Bilingual(en: 'Move fast and challenge me', fr: 'Va vite et challenge-moi')),
 ];

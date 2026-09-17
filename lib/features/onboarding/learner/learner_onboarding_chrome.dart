@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/primar/presentation/mascot.dart';
-import 'package:prepskul/features/primar/presentation/primar_theme.dart';
 
 TextStyle onboardFont({
   double size = 16,
   FontWeight weight = FontWeight.w800,
-  Color color = PrimarTheme.navy,
+  Color color = AppTheme.primaryColor,
   double height = 1.25,
 }) {
   return GoogleFonts.nunito(
@@ -19,10 +19,10 @@ TextStyle onboardFont({
 
 TextStyle onboardDisplay({
   double size = 22,
-  FontWeight weight = FontWeight.w700,
-  Color color = PrimarTheme.navy,
+  FontWeight weight = FontWeight.w600,
+  Color color = AppTheme.primaryColor,
 }) {
-  return GoogleFonts.baloo2(
+  return GoogleFonts.fredoka(
     fontSize: size,
     fontWeight: weight,
     color: color,
@@ -32,7 +32,7 @@ TextStyle onboardDisplay({
 }
 
 class OnboardPalette {
-  static const cream = Color(0xFFF6F1E4);
+  static const cream = Color(0xFFFAF8F3);
 
   static BoxDecoration get page => const BoxDecoration(
         color: cream,
@@ -40,15 +40,15 @@ class OnboardPalette {
 
   static BoxDecoration card({required bool selected}) {
     return BoxDecoration(
-      color: selected ? PrimarTheme.tintTeal : Colors.white,
+      color: selected ? AppTheme.skyBlueLight : Colors.white,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
-        color: selected ? PrimarTheme.teal : PrimarTheme.navy.withValues(alpha: 0.16),
+        color: selected ? AppTheme.skyBlue : AppTheme.primaryColor.withValues(alpha: 0.16),
         width: 2,
       ),
       boxShadow: [
         BoxShadow(
-          color: selected ? PrimarTheme.teal : PrimarTheme.navy.withValues(alpha: 0.18),
+          color: selected ? AppTheme.primaryColor : AppTheme.primaryColor.withValues(alpha: 0.18),
           blurRadius: 0,
           offset: const Offset(0, 6),
         ),
@@ -61,10 +61,10 @@ Widget prepMate({required Mood mood, double size = 96}) {
   return Mate(
     mood: mood,
     size: size,
-    ink: PrimarTheme.navy,
-    body: PrimarTheme.blue,
-    belly: PrimarTheme.teal,
-    accent: PrimarTheme.yellow,
+    ink: AppTheme.primaryColor,
+    body: AppTheme.primaryLight,
+    belly: AppTheme.skyBlue,
+    accent: AppTheme.softYellow,
   );
 }
 
@@ -79,7 +79,7 @@ class PrepSkulWordmark extends StatelessWidget {
       textAlign: TextAlign.center,
       style: onboardDisplay(
         size: 30,
-        color: onDark ? Colors.white : PrimarTheme.navy,
+        color: onDark ? Colors.white : AppTheme.primaryColor,
       ),
     );
   }
@@ -101,7 +101,7 @@ class OnboardTopBar extends StatelessWidget {
         IconButton(
           onPressed: onBack,
           icon: const Icon(Icons.chevron_left_rounded, size: 32),
-          color: PrimarTheme.navy,
+          color: AppTheme.primaryColor,
         ),
         Expanded(
           child: ClipRRect(
@@ -121,9 +121,7 @@ class OnboardTopBar extends StatelessWidget {
                         curve: Curves.easeOutCubic,
                         width: constraints.maxWidth * progress.clamp(0.0, 1.0),
                         decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [PrimarTheme.yellow, PrimarTheme.teal],
-                          ),
+                          color: AppTheme.skyBlue,
                         ),
                       ),
                     ],
@@ -152,7 +150,7 @@ class OnboardSpeech extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: PrimarTheme.navy, width: 3),
+        border: Border.all(color: AppTheme.primaryColor, width: 3),
         boxShadow: const [
           BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 6), blurRadius: 0),
         ],
@@ -168,7 +166,7 @@ class OnboardSpeech extends StatelessWidget {
               style: onboardFont(
                 size: 13,
                 weight: FontWeight.w700,
-                color: PrimarTheme.muted,
+                color: AppTheme.textMedium,
               ),
             ),
           ],
@@ -256,7 +254,7 @@ class OnboardChoice extends StatelessWidget {
                           style: onboardFont(
                             size: 12,
                             weight: FontWeight.w800,
-                            color: PrimarTheme.teal,
+                            color: AppTheme.skyBlue,
                           ),
                         ),
                     ],
@@ -292,11 +290,11 @@ class OnboardPrimaryButton extends StatelessWidget {
         height: 56,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: enabled ? PrimarTheme.teal : const Color(0xFFCBD5E1),
+          color: enabled ? AppTheme.primaryColor : const Color(0xFFCBD5E1),
           borderRadius: BorderRadius.circular(18),
           boxShadow: enabled
               ? const [
-                  BoxShadow(color: Color(0xFF0E9384), offset: Offset(0, 7), blurRadius: 0),
+                  BoxShadow(color: AppTheme.primaryDark, offset: Offset(0, 7), blurRadius: 0),
                 ]
               : const [
                   BoxShadow(color: Color(0xFFA8B3C4), offset: Offset(0, 2), blurRadius: 0),
@@ -354,7 +352,7 @@ class OnboardGlyph extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: selected ? PrimarTheme.navy : PrimarTheme.navy.withValues(alpha: 0.18),
+            color: selected ? AppTheme.primaryColor : AppTheme.primaryColor.withValues(alpha: 0.18),
             offset: const Offset(0, 3),
             blurRadius: 0,
           ),

@@ -8,8 +8,8 @@ class LearnerOnboardingCopy {
   String get welcomeTitle =>
       isFrench ? 'Salut ! Moi c’est Mate.' : 'Hi there! I’m Mate.';
   String get welcomeNote => isFrench
-      ? 'On commence par ton école — pas un formulaire de matching.'
-      : 'We start with your school — not a tutor-matching form.';
+      ? 'On commence par ton école, pas un formulaire de matching.'
+      : 'We start with your school, not a tutor-matching form.';
   String get welcomeCta => isFrench ? 'C’est parti !' : 'Let’s go';
 
   String get languageKicker => isFrench ? 'LANGUE' : 'LANGUAGE';
@@ -25,8 +25,8 @@ class LearnerOnboardingCopy {
       isFrench ? 'Qui apprend ici ?' : 'Who is learning here?';
   String get whoStudent => isFrench ? 'C’est moi l’élève' : 'I’m the student';
   String get whoParent => isFrench
-      ? 'Je suis parent — et j’apprends aussi'
-      : 'I’m a parent — and I’m studying too';
+      ? 'Je suis parent, et j’apprends aussi'
+      : 'I’m a parent, and I’m studying too';
   String get whoNote => isFrench
       ? 'Les deux comptes sont des élèves pour moi. Personne ne “surveille”.'
       : 'Both accounts are students for me. Nobody is “watching”.';
@@ -44,7 +44,7 @@ class LearnerOnboardingCopy {
       : 'Where is your school?';
   String get countryNote => isFrench
       ? 'Cameroun d’abord. On adapte le système scolaire, pas un modèle US.'
-      : 'Cameroon first. We adapt the school system — not a US grade list.';
+      : 'Cameroon first. We adapt the school system, not a US grade list.';
 
   String get cityKicker => isFrench ? 'VILLE' : 'CITY';
   String get cityTitle => isFrench ? 'Tu es où ?' : 'Which city?';
@@ -111,8 +111,8 @@ class LearnerOnboardingCopy {
       ? 'Je te coach. Un tuteur PrepSkul prend le relais si on bloque.'
       : 'I’ll tutor you. A PrepSkul live tutor steps in if we get stuck.';
   String get readyNote => isFrench
-      ? 'Plus de 100 matières. BEPC, Bac, GCE — et ce que tu m’apportes.'
-      : 'A hundred subjects. BEPC, Bac, GCE — and whatever you bring me.';
+      ? 'Plus de 100 matières. BEPC, Bac, GCE, et ce que tu m’apportes.'
+      : 'A hundred subjects. BEPC, Bac, GCE, and whatever you bring me.';
   String get readyCta => isFrench ? 'Commencer' : 'Start tutoring';
 
   String ofCount(int at, int total) =>
