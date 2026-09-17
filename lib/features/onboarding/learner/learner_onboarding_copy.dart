@@ -5,13 +5,12 @@ class LearnerOnboardingCopy {
   String get brand => 'PrepSkul';
 
   String get welcomeKicker => isFrench ? 'TON TUTEUR' : 'YOUR TUTOR';
-  String get welcomeTitle => isFrench
-      ? 'Salut. Je suis Mate. On commence par ton école — pas un formulaire de matching.'
-      : 'Hey. I’m Mate. We start with your school — not a tutor-matching form.';
+  String get welcomeTitle =>
+      isFrench ? 'Salut ! Moi c’est Mate.' : 'Hi there! I’m Mate.';
   String get welcomeNote => isFrench
-      ? 'Je te coach. Un parent ici est aussi un élève.'
-      : 'I tutor you. A parent here is a student too.';
-  String get welcomeCta => isFrench ? 'On y va' : 'Let’s go';
+      ? 'On commence par ton école — pas un formulaire de matching.'
+      : 'We start with your school — not a tutor-matching form.';
+  String get welcomeCta => isFrench ? 'C’est parti !' : 'Let’s go';
 
   String get languageKicker => isFrench ? 'LANGUE' : 'LANGUAGE';
   String get languageTitle => isFrench
@@ -35,7 +34,7 @@ class LearnerOnboardingCopy {
   String get nameKicker => isFrench ? 'PRÉNOM' : 'NAME';
   String get nameTitle => isFrench ? 'Comment je t’appelle ?' : 'What should I call you?';
   String get nameHint => isFrench ? 'Ton prénom' : 'Your first name';
-  String get next => isFrench ? 'Suivant' : 'Next';
+  String get next => isFrench ? 'Continuer' : 'Continue';
   String get skip => isFrench ? 'Passer' : 'Skip';
   String get back => isFrench ? 'Retour' : 'Back';
 

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -81,17 +80,10 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       LearnerOnboardStep.name,
       LearnerOnboardStep.country,
     ];
-    if (_pack.cities.isNotEmpty) steps.add(LearnerOnboardStep.city);
     if (_pack.systems.length > 1) steps.add(LearnerOnboardStep.system);
     steps.addAll(const [
       LearnerOnboardStep.level,
       LearnerOnboardStep.subject,
-      LearnerOnboardStep.exam,
-      LearnerOnboardStep.examWhen,
-      LearnerOnboardStep.channel,
-      LearnerOnboardStep.pace,
-      LearnerOnboardStep.examFeel,
-      LearnerOnboardStep.interests,
       LearnerOnboardStep.ready,
     ]);
     return steps;
@@ -156,38 +148,22 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final steps = _steps;
+    final progress = _index == 0 ? 0.0 : _index / (steps.length - 1);
     return Scaffold(
-      body: Container(
-        decoration: OnboardPalette.page,
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const PrepSkulWordmark(),
-                const SizedBox(height: 12),
-                OnboardRail(
-                  count: steps.length,
-                  at: _index,
-                  label: _c.ofCount(_index, steps.length),
-                ),
-                if (_index > 0)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: _back,
-                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                      label: Text(_c.back),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.primaryColor,
-                        padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
-                      ),
-                    ),
-                  )
-                else
-                  const SizedBox(height: 12),
-                AnimatedSwitcher(
+      backgroundColor: OnboardPalette.cream,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_index == 0)
+                const PrepSkulWordmark()
+              else
+                OnboardTopBar(progress: progress, onBack: _back),
+              const SizedBox(height: 8),
+              Expanded(
+                child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 280),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
@@ -203,11 +179,18 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                   },
                   child: KeyedSubtree(
                     key: ValueKey(_step.name),
-                    child: _page(),
+                    child: SingleChildScrollView(child: _page()),
                   ),
                 ),
+              ),
+              if (_index > 0) ...[
+                const SizedBox(height: 12),
+                OnboardPrimaryButton(
+                  label: _step == LearnerOnboardStep.ready ? _c.readyCta : _c.next,
+                  onTap: _step == LearnerOnboardStep.ready ? _finish : _next,
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -215,15 +198,11 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   }
 
   Widget _ask({required String title, String? note, required Widget child}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Center(child: prepMate(mood: _mood, size: 200)),
-        const SizedBox(height: 12),
-        OnboardBubble(title: title, note: note),
-        const SizedBox(height: 22),
-        child,
-      ],
+    return OnboardAsk(
+      title: title,
+      note: note,
+      mood: _mood,
+      child: child,
     );
   }
 
@@ -232,26 +211,27 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     return switch (_step) {
       LearnerOnboardStep.welcome => Column(
           children: [
-            const SizedBox(height: 12),
-            prepMate(mood: Mood.happy, size: 228),
+            const SizedBox(height: 16),
+            prepMate(mood: Mood.happy, size: 228, round: true),
             const SizedBox(height: 18),
-            OnboardBubble(title: _c.welcomeTitle, note: _c.welcomeNote),
+            OnboardSpeech(title: _c.welcomeTitle, note: _c.welcomeNote, tail: false),
             const SizedBox(height: 28),
             OnboardPrimaryButton(label: _c.welcomeCta, onTap: _next),
           ],
         ),
       LearnerOnboardStep.language => _ask(
           title: _c.languageTitle,
-          note: _c.languageNote,
           child: Column(
             children: [
               OnboardChoice(
                 title: 'English',
+                glyph: 'en',
                 selected: locale == 'en',
                 onTap: () => _choose(_answers.copyWith(locale: 'en')),
               ),
               OnboardChoice(
                 title: 'Français',
+                glyph: 'fr',
                 selected: locale == 'fr',
                 onTap: () => _choose(_answers.copyWith(locale: 'fr')),
               ),
@@ -260,16 +240,17 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         ),
       LearnerOnboardStep.who => _ask(
           title: _c.whoTitle,
-          note: _c.whoNote,
           child: Column(
             children: [
               OnboardChoice(
                 title: _c.whoStudent,
+                glyph: 'student',
                 selected: _answers.accountRole == 'learner',
                 onTap: () => _choose(_answers.copyWith(accountRole: 'learner')),
               ),
               OnboardChoice(
                 title: _c.whoParent,
+                glyph: 'parent',
                 selected: _answers.accountRole == 'parent',
                 onTap: () => _choose(_answers.copyWith(accountRole: 'parent')),
               ),
@@ -285,17 +266,13 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                 textCapitalization: TextCapitalization.words,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _next(),
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
+                style: onboardFont(size: 20, weight: FontWeight.w800),
                 textAlign: TextAlign.center,
                 decoration: InputDecoration(
                   hintText: _c.nameHint,
                   filled: true,
                   fillColor: Colors.white,
-                  hintStyle: GoogleFonts.poppins(color: AppTheme.textLight),
+                  hintStyle: onboardFont(size: 16, weight: FontWeight.w700, color: AppTheme.textLight),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
@@ -311,8 +288,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              OnboardPrimaryButton(label: _c.next, onTap: _next),
             ],
           ),
         ),
@@ -324,6 +299,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               for (final pack in regionPacks)
                 OnboardChoice(
                   title: pack.label.t(locale),
+                  glyph: pack.id,
                   subtitle: pack.id == 'cm'
                       ? (locale == 'fr' ? 'Chez nous' : 'Home')
                       : null,
@@ -362,6 +338,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               for (final system in _pack.systems)
                 OnboardChoice(
                   title: system.label.t(locale),
+                  glyph: system.id,
                   selected: _answers.systemId == system.id,
                   onTap: () => _choose(
                     _answers.copyWith(systemId: system.id, clearLevel: true, clearExam: true),
@@ -392,6 +369,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               for (final subject in _system.subjects)
                 OnboardChoice(
                   title: subject.label.t(locale),
+                  glyph: subject.id,
                   selected: _answers.subjectId == subject.id,
                   onTap: () => _choose(_answers.copyWith(subjectId: subject.id)),
                 ),
@@ -498,14 +476,9 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         ),
       LearnerOnboardStep.ready => Column(
           children: [
-            prepMate(mood: Mood.cheer, size: 228),
+            prepMate(mood: Mood.cheer, size: 228, round: true),
             const SizedBox(height: 16),
-            OnboardBubble(title: _c.readyTitle, note: _c.readyNote),
-            const SizedBox(height: 24),
-            OnboardPrimaryButton(
-              label: _saving ? '…' : _c.readyCta,
-              onTap: _finish,
-            ),
+            OnboardSpeech(title: _c.readyTitle, note: _c.readyNote, tail: false),
           ],
         ),
     };
@@ -526,14 +499,7 @@ class _Chip extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: OnboardPalette.card(selected: selected),
-        child: Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.primaryColor,
-          ),
-        ),
+        child: Text(label, style: onboardFont(size: 14)),
       ),
     );
   }

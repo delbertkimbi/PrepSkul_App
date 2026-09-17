@@ -3,29 +3,47 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/primar/presentation/mascot.dart';
 import 'package:prepskul/features/skulmate/widgets/skulmate_mascot_media_widget.dart';
-import 'package:prepskul/features/skulmate/widgets/skulmate_surface_styles.dart';
 
-/// PrepSkul marketplace chrome — white, deep-blue header, sky/yellow accents.
+TextStyle onboardFont({
+  double size = 16,
+  FontWeight weight = FontWeight.w800,
+  Color color = AppTheme.primaryColor,
+  double height = 1.25,
+}) {
+  return GoogleFonts.nunito(
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    height: height,
+  );
+}
+
 class OnboardPalette {
-  static const sheet = Color(0xFFFFFFFF);
+  static const cream = Color(0xFFFFF8EC);
 
-  static BoxDecoration get page => SkulMateSurfaceStyles.softScreenGradient();
+  static BoxDecoration get page => const BoxDecoration(color: cream);
 
   static BoxDecoration card({required bool selected}) {
     return BoxDecoration(
       color: selected ? AppTheme.skyBlueLight : Colors.white,
-      borderRadius: BorderRadius.circular(SkulMateSurfaceStyles.homeCardRadius),
+      borderRadius: BorderRadius.circular(18),
       border: Border.all(
-        color: selected
-            ? AppTheme.skyBlue.withValues(alpha: 0.7)
-            : AppTheme.softBorder.withValues(alpha: 0.9),
+        color: selected ? AppTheme.skyBlue : const Color(0x241B2C4F),
+        width: 3,
       ),
-      boxShadow: SkulMateSurfaceStyles.homeCardShadow(compact: true),
+      boxShadow: [
+        BoxShadow(
+          color: selected
+              ? AppTheme.softYellow.withValues(alpha: 0.55)
+              : AppTheme.primaryColor.withValues(alpha: 0.08),
+          offset: const Offset(3, 4),
+        ),
+      ],
     );
   }
 }
 
-Widget prepMate({required Mood mood, double size = 96}) {
+Widget prepMate({required Mood mood, double size = 96, bool round = false}) {
   final state = switch (mood) {
     Mood.thinking => SkulMateMascotState.thinking,
     Mood.cheer => SkulMateMascotState.celebration,
@@ -33,11 +51,11 @@ Widget prepMate({required Mood mood, double size = 96}) {
     Mood.idle || Mood.happy => SkulMateMascotState.encouraging,
   };
   return ClipRRect(
-    borderRadius: BorderRadius.circular(28),
+    borderRadius: BorderRadius.circular(round ? 999 : 32),
     child: SkulMateMascotMediaWidget(
       state: state,
       width: size,
-      height: size * 0.92,
+      height: round ? size : size * 0.92,
       showFrame: false,
       loop: true,
       autoplay: true,
@@ -52,111 +70,140 @@ class PrepSkulWordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = onDark ? Colors.white : AppTheme.primaryColor;
     return Text(
       'PrepSkul',
       textAlign: TextAlign.center,
-      style: GoogleFonts.poppins(
-        fontSize: 22,
-        fontWeight: FontWeight.w800,
-        color: color,
-        letterSpacing: -0.3,
+      style: onboardFont(
+        size: 26,
+        weight: FontWeight.w900,
+        color: onDark ? Colors.white : AppTheme.primaryColor,
       ),
     );
   }
 }
 
-class OnboardRail extends StatelessWidget {
-  const OnboardRail({
+class OnboardTopBar extends StatelessWidget {
+  const OnboardTopBar({
     super.key,
-    required this.count,
-    required this.at,
-    required this.label,
+    required this.progress,
+    required this.onBack,
   });
-  final int count;
-  final int at;
-  final String label;
+  final double progress;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    final progress = count == 0 ? 0.0 : (at + 1) / count;
-    return Column(
+    return Row(
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: SizedBox(
-                height: 4,
-                width: double.infinity,
-                child: Stack(
-                  children: [
-                    const ColoredBox(
-                      color: Color(0x1A1B2C4F),
-                      child: SizedBox.expand(),
-                    ),
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves.easeOutCubic,
-                      width: constraints.maxWidth * progress.clamp(0.0, 1.0),
-                      height: 4,
-                      color: AppTheme.skyBlue,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+        IconButton(
+          onPressed: onBack,
+          icon: const Icon(Icons.chevron_left_rounded, size: 32),
+          color: AppTheme.primaryColor,
         ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: AppTheme.textMedium,
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: SizedBox(
+              height: 16,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Stack(
+                    children: [
+                      const ColoredBox(
+                        color: Color(0x1F1B2C4F),
+                        child: SizedBox.expand(),
+                      ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeOutCubic,
+                        width: constraints.maxWidth * progress.clamp(0.0, 1.0),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [AppTheme.softYellow, AppTheme.skyBlue],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
         ),
+        const SizedBox(width: 12),
       ],
     );
   }
 }
 
-class OnboardBubble extends StatelessWidget {
-  const OnboardBubble({super.key, required this.title, this.note});
+class OnboardSpeech extends StatelessWidget {
+  const OnboardSpeech({super.key, required this.title, this.note, this.tail = true});
   final String title;
   final String? note;
+  final bool tail;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: OnboardPalette.card(selected: false),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppTheme.primaryColor, width: 3),
+        boxShadow: const [
+          BoxShadow(color: Color(0x1F1B2C4F), offset: Offset(4, 5)),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              height: 1.25,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.primaryColor,
-            ),
-          ),
+          Text(title, style: onboardFont(size: 18, weight: FontWeight.w800)),
           if (note != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               note!,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                height: 1.4,
+              style: onboardFont(
+                size: 13,
+                weight: FontWeight.w700,
                 color: AppTheme.textMedium,
               ),
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class OnboardAsk extends StatelessWidget {
+  const OnboardAsk({
+    super.key,
+    required this.title,
+    required this.mood,
+    required this.child,
+    this.note,
+  });
+  final String title;
+  final String? note;
+  final Mood mood;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            prepMate(mood: mood, size: 92, round: true),
+            const SizedBox(width: 10),
+            Expanded(child: OnboardSpeech(title: title, note: note)),
+          ],
+        ),
+        const SizedBox(height: 18),
+        child,
+      ],
     );
   }
 }
@@ -168,14 +215,14 @@ class OnboardChoice extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.subtitle,
-    this.leading,
+    this.glyph,
   });
 
   final String title;
   final String? subtitle;
   final bool selected;
   final VoidCallback onTap;
-  final Widget? leading;
+  final String? glyph;
 
   @override
   Widget build(BuildContext context) {
@@ -184,51 +231,32 @@ class OnboardChoice extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedScale(
-          scale: selected ? 1.01 : 1,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
+          scale: selected ? 0.99 : 1,
+          duration: const Duration(milliseconds: 120),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
-            constraints: const BoxConstraints(minHeight: 56),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            constraints: const BoxConstraints(minHeight: 64),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: OnboardPalette.card(selected: selected),
             child: Row(
               children: [
-                if (leading != null) ...[
-                  leading!,
-                  const SizedBox(width: 12),
-                ],
+                OnboardGlyph(seed: glyph ?? title, selected: selected),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.poppins(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryColor,
-                        ),
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 2),
+                      Text(title, style: onboardFont(size: 16)),
+                      if (subtitle != null)
                         Text(
                           subtitle!,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12.5,
-                            color: AppTheme.textMedium,
+                          style: onboardFont(
+                            size: 12,
+                            weight: FontWeight.w800,
+                            color: AppTheme.skyBlue,
                           ),
                         ),
-                      ],
                     ],
-                  ),
-                ),
-                AnimatedOpacity(
-                  duration: const Duration(milliseconds: 160),
-                  opacity: selected ? 1 : 0,
-                  child: const Icon(
-                    Icons.check_circle_rounded,
-                    color: AppTheme.skyBlue,
                   ),
                 ),
               ],
@@ -245,42 +273,33 @@ class OnboardPrimaryButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onTap,
+    this.enabled = true,
   });
   final String label;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        splashColor: Colors.white24,
-        child: Ink(
-          width: double.infinity,
-          height: 56,
-          decoration: BoxDecoration(
-            color: AppTheme.primaryColor,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primaryColor.withValues(alpha: 0.22),
-                offset: const Offset(0, 8),
-                blurRadius: 16,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: double.infinity,
+        height: 56,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: enabled ? AppTheme.skyBlue : AppTheme.neutral400,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: enabled
+              ? const [
+                  BoxShadow(color: Color(0xFF0369A1), offset: Offset(0, 6)),
+                ]
+              : null,
+        ),
+        child: Text(
+          label.toUpperCase(),
+          style: onboardFont(size: 16, weight: FontWeight.w900, color: Colors.white),
         ),
       ),
     );
@@ -292,24 +311,38 @@ class OnboardGlyph extends StatelessWidget {
   final String seed;
   final bool selected;
 
+  static const _art = <String, (Color, String)>{
+    'en': (Color(0xFFDBEAFE), '🇬🇧'),
+    'fr': (Color(0xFFFCE7F3), '🇫🇷'),
+    'student': (Color(0xFFE0F2FE), '🎒'),
+    'parent': (Color(0xFFFEF9C3), '💛'),
+    'cm': (Color(0xFFD1FAE5), '🇨🇲'),
+    'ng': (Color(0xFFD1FAE5), '🇳🇬'),
+    'gh': (Color(0xFFFEF3C7), '🇬🇭'),
+    'ke': (Color(0xFFDBEAFE), '🇰🇪'),
+    'ci': (Color(0xFFFCE7F3), '🇨🇮'),
+    'za': (Color(0xFFE0F2FE), '🇿🇦'),
+    'gb': (Color(0xFFDBEAFE), '🇬🇧'),
+    'us': (Color(0xFFFEE2E2), '🇺🇸'),
+    'global': (Color(0xFFF3E8FF), '🌍'),
+    'maths': (Color(0xFFFEF3C7), '➗'),
+    'french': (Color(0xFFFCE7F3), '📝'),
+    'english': (Color(0xFFDBEAFE), '📖'),
+    'cs': (Color(0xFFE0E7FF), '💻'),
+  };
+
   @override
   Widget build(BuildContext context) {
+    final art = _art[seed] ?? (AppTheme.skyBlueLight, '✨');
     return Container(
       width: 44,
       height: 44,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: AppTheme.skyBlue.withValues(alpha: selected ? 0.28 : 0.12),
-        borderRadius: BorderRadius.circular(12),
+        color: art.$1,
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Text(
-        seed.substring(0, 1).toUpperCase(),
-        style: GoogleFonts.poppins(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: AppTheme.primaryColor,
-        ),
-      ),
+      child: Text(art.$2, style: const TextStyle(fontSize: 22)),
     );
   }
 }
