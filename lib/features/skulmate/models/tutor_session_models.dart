@@ -164,6 +164,8 @@ class TutorTurnResult {
   final PracticeSurface? surface;
   final TutorBoard? board;
   final bool escalate;
+  final String? model;
+  final bool demo;
 
   const TutorTurnResult({
     required this.sessionId,
@@ -174,6 +176,8 @@ class TutorTurnResult {
     this.surface,
     this.board,
     this.escalate = false,
+    this.model,
+    this.demo = false,
   });
 
   factory TutorTurnResult.fromJson(Map<String, dynamic> json) {
@@ -197,6 +201,8 @@ class TutorTurnResult {
           ? TutorBoard.fromJson(Map<String, dynamic>.from(boardRaw))
           : null,
       escalate: json['escalate'] as bool? ?? false,
+      model: json['model'] as String?,
+      demo: json['demo'] as bool? ?? false,
     );
   }
 }
