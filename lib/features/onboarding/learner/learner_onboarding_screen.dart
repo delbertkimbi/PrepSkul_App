@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
-import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/primar/presentation/primar_theme.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_answers.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_copy.dart';
@@ -212,7 +212,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       LearnerOnboardStep.welcome => Column(
           children: [
             const SizedBox(height: 16),
-            prepMate(mood: Mood.happy, size: 228, round: true),
+            prepMate(mood: Mood.happy, size: 228),
             const SizedBox(height: 18),
             OnboardSpeech(title: _c.welcomeTitle, note: _c.welcomeNote, tail: false),
             const SizedBox(height: 28),
@@ -272,19 +272,19 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                   hintText: _c.nameHint,
                   filled: true,
                   fillColor: Colors.white,
-                  hintStyle: onboardFont(size: 16, weight: FontWeight.w700, color: AppTheme.textLight),
+                  hintStyle: onboardFont(size: 16, weight: FontWeight.w700, color: PrimarTheme.muted),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                    borderSide: const BorderSide(color: Color(0x291E3A8A)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                    borderSide: const BorderSide(color: PrimarTheme.teal, width: 2),
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                    borderSide: const BorderSide(color: Color(0x291E3A8A)),
                   ),
                 ),
               ),
@@ -476,7 +476,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         ),
       LearnerOnboardStep.ready => Column(
           children: [
-            prepMate(mood: Mood.cheer, size: 228, round: true),
+            prepMate(mood: Mood.cheer, size: 228),
             const SizedBox(height: 16),
             OnboardSpeech(title: _c.readyTitle, note: _c.readyNote, tail: false),
           ],

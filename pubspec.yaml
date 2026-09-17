@@ -171,6 +171,7 @@ flutter:
     - assets/characters/animations/Think.mp4
     - assets/characters/animations/Encouraging.mp4
     - assets/characters/animations/Celebrate.mp4
+    - assets/onboard/art/
     - assets/fonts/
     - .env  # Root .env file (bundled for web, used for all platforms)
 

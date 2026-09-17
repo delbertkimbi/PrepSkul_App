@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/primar/presentation/mascot.dart';
-import 'package:prepskul/features/skulmate/widgets/skulmate_mascot_media_widget.dart';
+import 'package:prepskul/features/primar/presentation/primar_theme.dart';
 
 TextStyle onboardFont({
   double size = 16,
   FontWeight weight = FontWeight.w800,
-  Color color = AppTheme.primaryColor,
+  Color color = PrimarTheme.navy,
   double height = 1.25,
 }) {
   return GoogleFonts.nunito(
@@ -18,49 +17,54 @@ TextStyle onboardFont({
   );
 }
 
-class OnboardPalette {
-  static const cream = Color(0xFFFFF8EC);
+TextStyle onboardDisplay({
+  double size = 22,
+  FontWeight weight = FontWeight.w700,
+  Color color = PrimarTheme.navy,
+}) {
+  return GoogleFonts.baloo2(
+    fontSize: size,
+    fontWeight: weight,
+    color: color,
+    height: 1.14,
+    letterSpacing: -0.2,
+  );
+}
 
-  static BoxDecoration get page => const BoxDecoration(color: cream);
+class OnboardPalette {
+  static const cream = Color(0xFFF6F1E4);
+
+  static BoxDecoration get page => const BoxDecoration(
+        color: cream,
+      );
 
   static BoxDecoration card({required bool selected}) {
     return BoxDecoration(
-      color: selected ? AppTheme.skyBlueLight : Colors.white,
-      borderRadius: BorderRadius.circular(18),
+      color: selected ? PrimarTheme.tintTeal : Colors.white,
+      borderRadius: BorderRadius.circular(22),
       border: Border.all(
-        color: selected ? AppTheme.skyBlue : const Color(0x241B2C4F),
-        width: 3,
+        color: selected ? PrimarTheme.teal : PrimarTheme.navy.withValues(alpha: 0.16),
+        width: 2,
       ),
       boxShadow: [
         BoxShadow(
-          color: selected
-              ? AppTheme.softYellow.withValues(alpha: 0.55)
-              : AppTheme.primaryColor.withValues(alpha: 0.08),
-          offset: const Offset(3, 4),
+          color: selected ? PrimarTheme.teal : PrimarTheme.navy.withValues(alpha: 0.18),
+          blurRadius: 0,
+          offset: const Offset(0, 6),
         ),
       ],
     );
   }
 }
 
-Widget prepMate({required Mood mood, double size = 96, bool round = false}) {
-  final state = switch (mood) {
-    Mood.thinking => SkulMateMascotState.thinking,
-    Mood.cheer => SkulMateMascotState.celebration,
-    Mood.encourage => SkulMateMascotState.encouraging,
-    Mood.idle || Mood.happy => SkulMateMascotState.encouraging,
-  };
-  return ClipRRect(
-    borderRadius: BorderRadius.circular(round ? 999 : 32),
-    child: SkulMateMascotMediaWidget(
-      state: state,
-      width: size,
-      height: round ? size : size * 0.92,
-      showFrame: false,
-      loop: true,
-      autoplay: true,
-      preferStaticImage: false,
-    ),
+Widget prepMate({required Mood mood, double size = 96}) {
+  return Mate(
+    mood: mood,
+    size: size,
+    ink: PrimarTheme.navy,
+    body: PrimarTheme.blue,
+    belly: PrimarTheme.teal,
+    accent: PrimarTheme.yellow,
   );
 }
 
@@ -73,10 +77,9 @@ class PrepSkulWordmark extends StatelessWidget {
     return Text(
       'PrepSkul',
       textAlign: TextAlign.center,
-      style: onboardFont(
-        size: 26,
-        weight: FontWeight.w900,
-        color: onDark ? Colors.white : AppTheme.primaryColor,
+      style: onboardDisplay(
+        size: 30,
+        color: onDark ? Colors.white : PrimarTheme.navy,
       ),
     );
   }
@@ -98,7 +101,7 @@ class OnboardTopBar extends StatelessWidget {
         IconButton(
           onPressed: onBack,
           icon: const Icon(Icons.chevron_left_rounded, size: 32),
-          color: AppTheme.primaryColor,
+          color: PrimarTheme.navy,
         ),
         Expanded(
           child: ClipRRect(
@@ -119,7 +122,7 @@ class OnboardTopBar extends StatelessWidget {
                         width: constraints.maxWidth * progress.clamp(0.0, 1.0),
                         decoration: const BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [AppTheme.softYellow, AppTheme.skyBlue],
+                            colors: [PrimarTheme.yellow, PrimarTheme.teal],
                           ),
                         ),
                       ),
@@ -149,15 +152,15 @@ class OnboardSpeech extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppTheme.primaryColor, width: 3),
+        border: Border.all(color: PrimarTheme.navy, width: 3),
         boxShadow: const [
-          BoxShadow(color: Color(0x1F1B2C4F), offset: Offset(4, 5)),
+          BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 6), blurRadius: 0),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: onboardFont(size: 18, weight: FontWeight.w800)),
+          Text(title, style: onboardDisplay(size: 22)),
           if (note != null) ...[
             const SizedBox(height: 4),
             Text(
@@ -165,7 +168,7 @@ class OnboardSpeech extends StatelessWidget {
               style: onboardFont(
                 size: 13,
                 weight: FontWeight.w700,
-                color: AppTheme.textMedium,
+                color: PrimarTheme.muted,
               ),
             ),
           ],
@@ -196,7 +199,7 @@ class OnboardAsk extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            prepMate(mood: mood, size: 92, round: true),
+            prepMate(mood: mood, size: 108),
             const SizedBox(width: 10),
             Expanded(child: OnboardSpeech(title: title, note: note)),
           ],
@@ -246,14 +249,14 @@ class OnboardChoice extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: onboardFont(size: 16)),
+                      Text(title, style: onboardDisplay(size: 18)),
                       if (subtitle != null)
                         Text(
                           subtitle!,
                           style: onboardFont(
                             size: 12,
                             weight: FontWeight.w800,
-                            color: AppTheme.skyBlue,
+                            color: PrimarTheme.teal,
                           ),
                         ),
                     ],
@@ -289,17 +292,19 @@ class OnboardPrimaryButton extends StatelessWidget {
         height: 56,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: enabled ? AppTheme.skyBlue : AppTheme.neutral400,
-          borderRadius: BorderRadius.circular(16),
+          color: enabled ? PrimarTheme.teal : const Color(0xFFCBD5E1),
+          borderRadius: BorderRadius.circular(18),
           boxShadow: enabled
               ? const [
-                  BoxShadow(color: Color(0xFF0369A1), offset: Offset(0, 6)),
+                  BoxShadow(color: Color(0xFF0E9384), offset: Offset(0, 7), blurRadius: 0),
                 ]
-              : null,
+              : const [
+                  BoxShadow(color: Color(0xFFA8B3C4), offset: Offset(0, 2), blurRadius: 0),
+                ],
         ),
         child: Text(
           label.toUpperCase(),
-          style: onboardFont(size: 16, weight: FontWeight.w900, color: Colors.white),
+          style: onboardDisplay(size: 20, color: Colors.white),
         ),
       ),
     );
@@ -312,37 +317,54 @@ class OnboardGlyph extends StatelessWidget {
   final bool selected;
 
   static const _art = <String, (Color, String)>{
-    'en': (Color(0xFFDBEAFE), '🇬🇧'),
-    'fr': (Color(0xFFFCE7F3), '🇫🇷'),
-    'student': (Color(0xFFE0F2FE), '🎒'),
-    'parent': (Color(0xFFFEF9C3), '💛'),
-    'cm': (Color(0xFFD1FAE5), '🇨🇲'),
-    'ng': (Color(0xFFD1FAE5), '🇳🇬'),
-    'gh': (Color(0xFFFEF3C7), '🇬🇭'),
-    'ke': (Color(0xFFDBEAFE), '🇰🇪'),
-    'ci': (Color(0xFFFCE7F3), '🇨🇮'),
-    'za': (Color(0xFFE0F2FE), '🇿🇦'),
-    'gb': (Color(0xFFDBEAFE), '🇬🇧'),
-    'us': (Color(0xFFFEE2E2), '🇺🇸'),
-    'global': (Color(0xFFF3E8FF), '🌍'),
-    'maths': (Color(0xFFFEF3C7), '➗'),
-    'french': (Color(0xFFFCE7F3), '📝'),
-    'english': (Color(0xFFDBEAFE), '📖'),
-    'cs': (Color(0xFFE0E7FF), '💻'),
+    'en': (Color(0xFFFEF3C7), 'assets/onboard/art/tile-en.png'),
+    'fr': (Color(0xFFCCFBF1), 'assets/onboard/art/tile-fr.png'),
+    'student': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-backpack.png'),
+    'parent': (Color(0xFFFEF9C3), 'assets/onboard/art/tile-heart.png'),
+    'cm': (Color(0xFFD1FAE5), 'assets/onboard/art/tile-cm.png'),
+    'ng': (Color(0xFFD1FAE5), 'assets/onboard/art/tile-globe.png'),
+    'gh': (Color(0xFFFEF3C7), 'assets/onboard/art/tile-globe.png'),
+    'ke': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-globe.png'),
+    'ci': (Color(0xFFFCE7F3), 'assets/onboard/art/tile-globe.png'),
+    'za': (Color(0xFFE0F2FE), 'assets/onboard/art/tile-globe.png'),
+    'gb': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-en.png'),
+    'us': (Color(0xFFFEE2E2), 'assets/onboard/art/tile-globe.png'),
+    'global': (Color(0xFFF3E8FF), 'assets/onboard/art/tile-globe.png'),
+    'maths': (Color(0xFFFEF3C7), 'assets/onboard/art/tile-maths.png'),
+    'french': (Color(0xFFFCE7F3), 'assets/onboard/art/tile-pencil.png'),
+    'english': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-book.png'),
+    'cs': (Color(0xFFE0E7FF), 'assets/onboard/art/tile-laptop.png'),
+    'pct': (Color(0xFFE0F2FE), 'assets/onboard/art/tile-flask.png'),
+    'svt': (Color(0xFFD1FAE5), 'assets/onboard/art/tile-leaf.png'),
+    'physics': (Color(0xFFE0F2FE), 'assets/onboard/art/tile-flask.png'),
+    'chemistry': (Color(0xFFFCE7F3), 'assets/onboard/art/tile-flask.png'),
+    'biology': (Color(0xFFD1FAE5), 'assets/onboard/art/tile-leaf.png'),
+    'cm-francophone': (Color(0xFFCCFBF1), 'assets/onboard/art/tile-book.png'),
+    'cm-anglophone': (Color(0xFFDBEAFE), 'assets/onboard/art/tile-book.png'),
   };
 
   @override
   Widget build(BuildContext context) {
-    final art = _art[seed] ?? (AppTheme.skyBlueLight, '✨');
+    final art = _art[seed] ?? (const Color(0xFFE0F2FE), 'assets/onboard/art/tile-globe.png');
     return Container(
-      width: 44,
-      height: 44,
-      alignment: Alignment.center,
+      width: 48,
+      height: 48,
       decoration: BoxDecoration(
         color: art.$1,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: selected ? PrimarTheme.navy : PrimarTheme.navy.withValues(alpha: 0.18),
+            offset: const Offset(0, 3),
+            blurRadius: 0,
+          ),
+        ],
       ),
-      child: Text(art.$2, style: const TextStyle(fontSize: 22)),
+      clipBehavior: Clip.antiAlias,
+      child: Transform.scale(
+        scale: 1.35,
+        child: Image.asset(art.$2, fit: BoxFit.cover, filterQuality: FilterQuality.high),
+      ),
     );
   }
 }
