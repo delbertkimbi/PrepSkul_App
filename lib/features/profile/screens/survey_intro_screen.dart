@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
