@@ -15,6 +15,7 @@ import 'package:prepskul/core/models/phone_country.dart';
 import 'package:prepskul/core/widgets/phone_country_code_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class BeautifulSignupScreen extends StatefulWidget {
   const BeautifulSignupScreen({Key? key}) : super(key: key);
@@ -37,63 +38,21 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved gradient hero header
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 190,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 22.0, 24.0, 18.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 10),
-                      Center(
-                        child: Text(
-                          t.authSignUpTitle,
-                          style: GoogleFonts.poppins(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      // Subtitle
-                      Center(
-                        child: Text(
-                          'Join us to start your learning journey',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                AuthPaperHeader(
+                  title: t.authSignUpTitle,
+                  subtitle: 'Parents count as students too.',
                 ),
 
                 // Form content - below the wave
@@ -103,7 +62,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 48),
+                        const SizedBox(height: 12),
                         // Form
                         Form(
                           key: _formKey,

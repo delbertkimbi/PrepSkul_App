@@ -15,6 +15,7 @@ import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/models/phone_country.dart';
 import 'package:prepskul/core/widgets/phone_country_code_picker.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class BeautifulLoginScreen extends StatefulWidget {
   final String? initialPhone;
@@ -88,62 +89,20 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       body: Stack(
         children: [
           // Curved gradient hero header
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 190,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 22.0, 24.0, 18.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 10),
-                      Center(
-                        child: Text(
-                          t.authLogin,
-                          style: GoogleFonts.poppins(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      // Subtitle
-                      Center(
-                        child: Text(
-                          t.authLoginSubtitle,
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                AuthPaperHeader(
+                  title: t.authLogin,
+                  subtitle: t.authLoginSubtitle,
                 ),
 
                 // Form content - below the wave
@@ -153,7 +112,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 48),
+                        const SizedBox(height: 12),
                         // Form
                         Form(
                           key: _formKey,
@@ -331,7 +290,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 12),
 
                               // Login Button
                               SizedBox(
@@ -428,7 +387,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 12),
                             ],
                           ),
                         ),

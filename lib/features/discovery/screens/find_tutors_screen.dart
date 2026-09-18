@@ -10,7 +10,8 @@ import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
-import 'package:prepskul/core/widgets/app_logo_header.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/features/group_classes/screens/group_classes_discovery_screen.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
@@ -678,13 +679,18 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: OnboardPalette.cream,
       appBar: AppBar(
         automaticallyImplyLeading: false, // Remove back button
         elevation: 0,
-        backgroundColor: AppTheme.softBackground,
-        surfaceTintColor: AppTheme.softBackground,
-        title: const AppLogoHeader(),
+        backgroundColor: OnboardPalette.cream,
+        surfaceTintColor: OnboardPalette.cream,
+        title: Text(
+          Localizations.localeOf(context).languageCode == 'fr'
+              ? 'Trouve quelqu’un'
+              : 'Find a person',
+          style: onboardDisplay(size: 22),
+        ),
         actions: [
           if (AppConfig.enableGroupClasses)
             IconButton(
@@ -754,10 +760,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 // Search Bar - Responsive
                 Container(
                   height: ResponsiveHelper.responsiveSpacing(context, mobile: 46, tablet: 50, desktop: 54),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(24),
-                  ),
+                  decoration: OnboardPalette.paperField,
                   child: TextField(
                     controller: _searchController,
                     enabled: !_isOffline, // Disable search when offline
@@ -778,7 +781,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                       fontSize: ResponsiveHelper.responsiveBodySize(context) + 1,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Search by name or subject',
+                      hintText: Localizations.localeOf(context).languageCode == 'fr'
+                          ? 'Nom ou matière'
+                          : 'Name or subject',
                       hintStyle: GoogleFonts.poppins(
                         color: Colors.grey[500],
                         fontSize: ResponsiveHelper.responsiveBodySize(context) + 1,
@@ -1091,22 +1096,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
     return Container(
       margin: EdgeInsets.only(bottom: cardMargin),
-      decoration: BoxDecoration(
-        color: AppTheme.softCard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppTheme.softBorder,
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.textDark.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-            spreadRadius: 0,
-          ),
-        ],
-      ),
+      decoration: OnboardPalette.paperCard,
       child: Stack(
         children: [
           Material(
@@ -1471,53 +1461,31 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           // Request Tutor CTA
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppTheme.primaryColor.withOpacity(0.1),
-                  AppTheme.primaryColor.withOpacity(0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppTheme.primaryColor.withOpacity(0.3),
-                width: 1.5,
-              ),
-            ),
+            decoration: OnboardPalette.paperCard,
             child: Column(
               children: [
-                Icon(
-                  Icons.person_search_rounded,
-                  size: 48,
-                  color: AppTheme.primaryColor,
-                ),
+                prepMate(mood: Mood.point, size: 72),
                 const SizedBox(height: 16),
                 Text(
-                  'Can\'t find the right tutor?',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textDark,
-                  ),
+                  'Need a person at the table?',
+                  style: onboardDisplay(size: 20),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Let us know what you\'re looking for and we\'ll find the perfect match for you',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
+                  'Find a tutor, or request one. Live online, or onsite.',
+                  style: onboardFont(
+                    size: 14,
+                    weight: FontWeight.w700,
                     color: AppTheme.textMedium,
-                    height: 1.5,
+                    height: 1.4,
                   ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
+                OnboardPrimaryButton(
+                  label: 'Request a person',
+                  onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -1533,30 +1501,6 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         ),
                       );
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.add_circle_outline, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Request a Tutor',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ],
             ),

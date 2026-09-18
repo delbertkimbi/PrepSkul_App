@@ -29,10 +29,10 @@ class SkulMateSurfaceStyles {
     return BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(r),
-      border: Border.all(
-        color: AppTheme.softBorder.withValues(alpha: 0.9),
-      ),
-      boxShadow: _softShadow(compact: compact),
+      border: Border.all(color: AppTheme.primaryColor, width: 2),
+      boxShadow: const [
+        BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 3), blurRadius: 0),
+      ],
     );
   }
 

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import '../../features/tutor/screens/tutor_home_screen.dart';
@@ -22,6 +21,7 @@ import '../../core/services/supabase_service.dart';
 import '../../features/skulmate/services/skulmate_streak_reminder_service.dart';
 import '../theme/app_theme.dart';
 import '../localization/app_localizations.dart';
+import '../../features/onboarding/learner/learner_onboarding_chrome.dart';
 import '../../features/skulmate/services/game_sound_service.dart';
 import '../utils/responsive_helper.dart';
 import '../../features/tutor/widgets/tutor_page_body.dart';
@@ -328,31 +328,42 @@ class _MainNavigationState extends State<MainNavigation>
 
     final studentScaffold = AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
-        statusBarColor: AppTheme.softBackground,
+        statusBarColor: OnboardPalette.cream,
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: AppTheme.softBackground,
+        systemNavigationBarColor: OnboardPalette.cream,
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
       child: Scaffold(
-        backgroundColor: AppTheme.softBackground,
+        backgroundColor: OnboardPalette.cream,
         body: tabBody,
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _handleStudentTabTap,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: AppTheme.primaryColor,
-          unselectedItemColor: AppTheme.textMedium,
-          selectedLabelStyle: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
+        bottomNavigationBar: DecoratedBox(
+          decoration: const BoxDecoration(
+            color: OnboardPalette.cream,
+            border: Border(
+              top: BorderSide(color: AppTheme.primaryColor, width: 2),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x381E3A8A),
+                offset: Offset(0, -4),
+                blurRadius: 0,
+              ),
+            ],
           ),
-          unselectedLabelStyle: GoogleFonts.poppins(
-            fontSize: 11,
-            fontWeight: FontWeight.w400,
+          child: BottomNavigationBar(
+            currentIndex: _selectedIndex,
+            onTap: _handleStudentTabTap,
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            selectedItemColor: AppTheme.primaryColor,
+            unselectedItemColor: AppTheme.textMedium,
+            selectedLabelStyle: onboardFont(size: 11, weight: FontWeight.w800),
+            unselectedLabelStyle: onboardFont(size: 11, weight: FontWeight.w700, color: AppTheme.textMedium),
+            iconSize: 22,
+            items: items,
           ),
-          iconSize: 22,
-          items: items,
         ),
       ),
     );

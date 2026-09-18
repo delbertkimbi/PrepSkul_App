@@ -1,9 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
-/// Wallet-style premium card background (mesh + shine + soft neumorphic lift).
+/// Paper home promo card: cream fill, navy border, offset shadow. No gradients.
 class PremiumPromoCardShell extends StatelessWidget {
   final double height;
   final double radius;
@@ -13,18 +12,13 @@ class PremiumPromoCardShell extends StatelessWidget {
   final Widget child;
 
   static const List<Color> defaultGradient = [
-    Color(0xFF0C1528),
-    Color(0xFF1B2C4F),
-    Color(0xFF243B6B),
-    Color(0xFF2E4A82),
+    Color(0xFFFAF8F3),
+    Color(0xFFFFFFFF),
   ];
 
-  /// Warm gold gradient for wallet / credits cards.
   static const List<Color> walletGradient = [
-    Color(0xFF1A1408),
-    Color(0xFF2D2210),
-    Color(0xFF3D3018),
-    Color(0xFF4A3A1E),
+    Color(0xFFFAF8F3),
+    Color(0xFFFFFFFF),
   ];
 
   const PremiumPromoCardShell({
@@ -42,57 +36,22 @@ class PremiumPromoCardShell extends StatelessWidget {
     return Container(
       height: height,
       decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: [
+        border: Border.all(color: AppTheme.primaryColor, width: 2.5),
+        boxShadow: const [
           BoxShadow(
-            color: AppTheme.primaryDark.withValues(alpha: 0.1),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.85),
-            blurRadius: 6,
-            offset: const Offset(-2, -2),
+            color: Color(0x381E3A8A),
+            offset: Offset(0, 5),
+            blurRadius: 0,
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: const Alignment(-1.1, -1.0),
-                    end: const Alignment(1.2, 1.1),
-                    colors: gradientColors ?? defaultGradient,
-                    stops: const [0.0, 0.35, 0.7, 1.0],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: -36,
-              right: -24,
-              child: Container(
-                width: 140,
-                height: 140,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      accent.withValues(alpha: 0.26),
-                      accent.withValues(alpha: 0.0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(child: CustomPaint(painter: _PremiumMeshPainter())),
-            Positioned.fill(child: CustomPaint(painter: _PremiumShinePainter())),
-            Padding(padding: padding, child: child),
-          ],
+        borderRadius: BorderRadius.circular(radius - 2),
+        child: ColoredBox(
+          color: OnboardPalette.cream,
+          child: Padding(padding: padding, child: child),
         ),
       ),
     );
@@ -117,17 +76,18 @@ class PremiumGlassButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            gradient: LinearGradient(
-              colors: [
-                Colors.white.withValues(alpha: 0.2),
-                Colors.white.withValues(alpha: 0.07),
-              ],
-            ),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
+            color: AppTheme.primaryColor,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: const [
+              BoxShadow(
+                color: AppTheme.primaryDark,
+                offset: Offset(0, 3),
+                blurRadius: 0,
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -135,22 +95,22 @@ class PremiumGlassButton extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: 14, color: Colors.white.withValues(alpha: 0.92)),
+                  Icon(icon, size: 14, color: Colors.white),
                   const SizedBox(width: 5),
                 ],
                 Text(
                   label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                  style: onboardFont(
+                    size: 13,
+                    weight: FontWeight.w800,
                     color: Colors.white,
                   ),
                 ),
                 const SizedBox(width: 3),
-                Icon(
+                const Icon(
                   Icons.arrow_forward_rounded,
                   size: 13,
-                  color: Colors.white.withValues(alpha: 0.9),
+                  color: Colors.white,
                 ),
               ],
             ),
@@ -159,45 +119,4 @@ class PremiumGlassButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _PremiumMeshPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.04)
-      ..strokeWidth = 0.8;
-    const spacing = 14.0;
-    for (var x = -size.height; x < size.width + size.height; x += spacing) {
-      canvas.drawLine(
-        Offset(x, size.height),
-        Offset(x + size.height * 0.55, 0),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _PremiumShinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final gradient = LinearGradient(
-      begin: const Alignment(-0.8, -1.0),
-      end: const Alignment(0.6, 1.2),
-      colors: [
-        Colors.white.withValues(alpha: 0.12),
-        Colors.white.withValues(alpha: 0.02),
-        Colors.transparent,
-      ],
-      transform: GradientRotation(math.pi / 5),
-    );
-    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:confetti/confetti.dart';
@@ -418,21 +419,20 @@ safeSetState(() {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
+        surfaceTintColor: OnboardPalette.cream,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Request a Tutor',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
+          Localizations.localeOf(context).languageCode == 'fr'
+              ? 'Demande une personne'
+              : 'Request a person',
+          style: onboardDisplay(size: 20),
         ),
       ),
       body: Column(
@@ -478,15 +478,8 @@ safeSetState(() {
           // Navigation buttons
           Container(
             padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
+            decoration: const BoxDecoration(
+              color: OnboardPalette.cream,
             ),
             child: Row(
               children: [

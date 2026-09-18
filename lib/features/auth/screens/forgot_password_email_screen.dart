@@ -6,6 +6,7 @@ import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class ForgotPasswordEmailScreen extends StatefulWidget {
   const ForgotPasswordEmailScreen({
@@ -73,28 +74,14 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved wave background at top
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 200,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: SingleChildScrollView(
@@ -102,7 +89,10 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 40),
+                  const AuthPaperHeader(
+                    title: 'Reset password',
+                    subtitle: 'We’ll send a link to your email.',
+                  ),
 
                   // Link expired error banner
                   if (widget.linkExpiredError) ...[
@@ -253,7 +243,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                   ],
 
                   if (!_emailSent) ...[
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 12),
                     Form(
                       key: _formKey,
                       child: Column(

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/premium_promo_card_shell.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/features/dashboard/models/wallet_snapshot.dart';
 
-/// Payment-card style wallet slide on the premium gold background.
+/// Paper wallet slide on cream with navy border.
 class WalletHomePromoCard extends StatelessWidget {
   static const double cardHeight = 184;
 
@@ -44,11 +44,10 @@ class WalletHomePromoCard extends StatelessWidget {
                   const Spacer(),
                   Text(
                     'PREPSKUL WALLET',
-                    style: GoogleFonts.poppins(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.5),
-                      letterSpacing: 1.4,
+                    style: onboardFont(
+                      size: 9,
+                      weight: FontWeight.w800,
+                      color: AppTheme.textMedium,
                     ),
                   ),
                 ],
@@ -71,10 +70,10 @@ class WalletHomePromoCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       wallet.footerCta(isParent: isParent),
-                      style: GoogleFonts.poppins(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.78),
+                      style: onboardFont(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        color: AppTheme.textMedium,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -84,7 +83,7 @@ class WalletHomePromoCard extends StatelessWidget {
                   Icon(
                     Icons.arrow_forward_ios_rounded,
                     size: 12,
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: AppTheme.primaryColor,
                   ),
                 ],
               ),
@@ -103,14 +102,8 @@ class WalletHomePromoCard extends StatelessWidget {
       height: 26,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(5),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.softYellow.withValues(alpha: 0.75),
-            AppTheme.softYellow.withValues(alpha: 0.45),
-          ],
-        ),
+        color: AppTheme.softYellow,
+        border: Border.all(color: AppTheme.primaryColor, width: 1.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(5),
@@ -130,27 +123,23 @@ class WalletHomePromoCard extends StatelessWidget {
         Icon(
           icon,
           size: 13,
-          color: Colors.white.withValues(alpha: 0.45),
+          color: AppTheme.primaryColor.withValues(alpha: 0.45),
         ),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             label,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: Colors.white.withValues(alpha: 0.72),
+            style: onboardFont(
+              size: 11,
+              weight: FontWeight.w700,
+              color: AppTheme.textMedium,
             ),
           ),
         ),
         Text(
           _formatValue(value),
-          style: GoogleFonts.poppins(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-            height: 1,
-            letterSpacing: -0.5,
+          style: onboardDisplay(
+            size: 22,
           ),
         ),
       ],

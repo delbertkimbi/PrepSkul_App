@@ -57,6 +57,107 @@ class OnboardPalette {
       ],
     );
   }
+
+  static BoxDecoration get paperCard => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.primaryColor, width: 2),
+        boxShadow: const [
+          BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 5), blurRadius: 0),
+        ],
+      );
+
+  static BoxDecoration get paperField => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppTheme.primaryColor.withValues(alpha: 0.22),
+          width: 2,
+        ),
+      );
+}
+
+InputDecoration paperFieldDecoration({
+  String? hintText,
+  Widget? suffixIcon,
+  String? labelText,
+}) {
+  final border = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(18),
+    borderSide: BorderSide(
+      color: AppTheme.primaryColor.withValues(alpha: 0.22),
+      width: 2,
+    ),
+  );
+  return InputDecoration(
+    hintText: hintText,
+    labelText: labelText,
+    hintStyle: onboardFont(
+      size: 14,
+      weight: FontWeight.w600,
+      color: AppTheme.textLight,
+    ),
+    filled: true,
+    fillColor: Colors.white,
+    suffixIcon: suffixIcon,
+    border: border,
+    enabledBorder: border,
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(18),
+      borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2.5),
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+  );
+}
+
+class AuthPaperHeader extends StatelessWidget {
+  const AuthPaperHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.mood = Mood.wave,
+    this.extra,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Mood mood;
+  final Widget? extra;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 4),
+      child: Column(
+        children: [
+          prepMate(mood: mood, size: 88),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: onboardDisplay(size: 28),
+          ),
+          if (subtitle != null && subtitle!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              textAlign: TextAlign.center,
+              style: onboardFont(
+                size: 15,
+                weight: FontWeight.w700,
+                color: AppTheme.textMedium,
+                height: 1.35,
+              ),
+            ),
+          ],
+          if (extra != null) ...[
+            const SizedBox(height: 6),
+            extra!,
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 Widget prepMate({required Mood mood, double size = 96}) {

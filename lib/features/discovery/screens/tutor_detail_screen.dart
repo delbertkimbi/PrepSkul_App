@@ -26,6 +26,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:prepskul/core/services/share_service.dart';
 import 'package:prepskul/features/discovery/widgets/tutor_schedule_preview.dart';
 import 'tutor_trial_schedule_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -440,31 +441,31 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         : 'No sessions completed yet';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       body: SafeArea(
         top: true,
         bottom: false,
         child: CustomScrollView(
           slivers: [
-            // Modern App Bar with white background
+            // Paper App Bar
             SliverAppBar(
               pinned: true,
               elevation: 0,
-              backgroundColor: Colors.white, // White background to prevent accidental video clicks
-              surfaceTintColor: Colors.white, // Ensure it stays white when scrolling
+              backgroundColor: OnboardPalette.cream,
+              surfaceTintColor: OnboardPalette.cream,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.black),
+                icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
                 onPressed: () => Navigator.pop(context),
               ),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.share, color: Colors.black),
+                  icon: const Icon(Icons.share, color: AppTheme.primaryColor),
                   onPressed: () => _shareTutor(),
                 ),
                 IconButton(
                   icon: Icon(
                     _isFavorited ? Icons.favorite : Icons.favorite_border,
-                    color: _isFavorited ? AppTheme.primaryColor : Colors.black,
+                    color: _isFavorited ? AppTheme.primaryColor : AppTheme.primaryColor,
                   ),
                   onPressed: () {
                     safeSetState(() {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/features/discovery/screens/find_tutors_screen.dart';
 
@@ -380,7 +381,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SkulMateSurfaceStyles.lightStatusBarOverlay,
       child: Scaffold(
-        backgroundColor: AppTheme.softBackground,
+        backgroundColor: OnboardPalette.cream,
         body: SafeArea(
           bottom: false,
           child: Column(

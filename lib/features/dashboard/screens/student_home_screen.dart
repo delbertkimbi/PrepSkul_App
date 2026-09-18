@@ -983,7 +983,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   _buildActionCard(
                     icon: PhosphorIcons.calendarCheck,
                     title: AppLocalizations.of(context)!.mySessions,
-                    subtitle: 'View upcoming sessions',
+                    subtitle: 'Join live or see who’s next',
                     color: AppTheme.primaryColor,
                     trailingCount: _upcomingSessionsCount,
                     onTap: () {
@@ -994,7 +994,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   _buildActionCard(
                     icon: PhosphorIcons.creditCard,
                     title: AppLocalizations.of(context)!.paymentHistory,
-                    subtitle: 'View and manage your payments',
+                    subtitle: 'Credits and receipts',
                     color: AppTheme.primaryColor,
                     onTap: () {
                       Navigator.pushNamed(context, '/payment-history');
@@ -1005,7 +1005,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     _buildActionCard(
                       icon: PhosphorIcons.chatCircle,
                       title: 'Mate',
-                      subtitle: 'You are the student — open your voice and chat thread',
+                      subtitle: 'Talk. I’m already listening.',
                       color: AppTheme.primaryColor,
                       onTap: () {
                         final tab = StudentTabIndex.skulMate;
@@ -1042,10 +1042,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: GoogleFonts.poppins(
-        fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
-        fontWeight: FontWeight.w700,
-        color: AppTheme.textDark,
+      style: onboardDisplay(
+        size: ResponsiveHelper.responsiveSubheadingSize(context),
       ),
     );
   }
@@ -1096,28 +1094,21 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
     return Container(
       padding: EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.softBorder),
-      ),
+      decoration: OnboardPalette.paperCard,
       child: Column(
         children: [
           Icon(icon, color: color, size: iconSize),
           SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 4 : 6),
           Text(
             value,
-            style: GoogleFonts.poppins(
-              fontSize: valueSize,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.primaryColor,
-            ),
+            style: onboardDisplay(size: valueSize),
           ),
           SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
           Text(
             label,
-            style: GoogleFonts.poppins(
-              fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
+            style: onboardFont(
+              size: ResponsiveHelper.responsiveBodySize(context) - 1,
+              weight: FontWeight.w700,
               color: AppTheme.textMedium,
             ),
             textAlign: TextAlign.center,
@@ -1148,25 +1139,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: EdgeInsets.all(cardPadding),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceColor,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppTheme.softBorder, width: 1),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primaryColor.withOpacity(0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+          decoration: OnboardPalette.paperCard,
           child: Row(
             children: [
               Container(
                 padding: EdgeInsets.all(iconPadding),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: AppTheme.skyBlueLight,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.primaryColor, width: 2),
                 ),
                 child: Icon(icon, color: AppTheme.primaryColor, size: iconSize),
               ),
@@ -1177,17 +1158,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.poppins(
-                        fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textDark,
+                      style: onboardFont(
+                        size: ResponsiveHelper.responsiveSubheadingSize(context),
                       ),
                     ),
                     SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 2 : 4),
                     Text(
                       subtitle,
-                      style: GoogleFonts.poppins(
-                        fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
+                      style: onboardFont(
+                        size: ResponsiveHelper.responsiveBodySize(context) - 1,
+                        weight: FontWeight.w700,
                         color: AppTheme.textMedium,
                         height: 1.35,
                       ),

@@ -172,40 +172,41 @@ class _IntroPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-      child: Column(
-        children: [
-          const Spacer(),
-          OnboardPeopleMateStage(
-            photoAsset: slide.image,
-            mood: slide.mood,
-          ),
-          const SizedBox(height: 28),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 340),
-            child: Text(
-              slide.title,
-              textAlign: TextAlign.center,
-              style: onboardDisplay(size: 26),
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            OnboardPeopleMateStage(
+              photoAsset: slide.image,
+              mood: slide.mood,
             ),
-          ),
-          const SizedBox(height: 10),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: Text(
-              slide.description,
-              textAlign: TextAlign.center,
-              style: onboardFont(
-                size: 15,
-                weight: FontWeight.w700,
-                color: AppTheme.textMedium,
-                height: 1.4,
+            const SizedBox(height: 24),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 340),
+              child: Text(
+                slide.title,
+                textAlign: TextAlign.center,
+                style: onboardDisplay(size: 26),
               ),
             ),
-          ),
-          const Spacer(),
-        ],
+            const SizedBox(height: 10),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: Text(
+                slide.description,
+                textAlign: TextAlign.center,
+                style: onboardFont(
+                  size: 15,
+                  weight: FontWeight.w700,
+                  color: AppTheme.textMedium,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -9,6 +9,7 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/profile_bootstrap_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -55,60 +56,20 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       body: Stack(
         children: [
           // Curved wave background at top
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 200,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content inside the wave
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Text(
-                          'Who are you?',
-                          style: GoogleFonts.poppins(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: Text(
-                          'Select your role to continue',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const AuthPaperHeader(
+                  title: 'Who are you?',
+                  subtitle: 'Parents count as students too.',
                 ),
 
                 // Content below wave
@@ -117,7 +78,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: Column(
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 12),
                         
                         _buildRoleCard(
                           title: 'Student',
@@ -142,7 +103,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                           value: 'tutor',
                         ),
 
-                        const SizedBox(height: 40),
+                        const SizedBox(height: 12),
 
                         // Continue Button
                         SizedBox(
@@ -206,22 +167,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       onTap: () => safeSetState(() => _selectedRole = value),
       child: Container(
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor.withOpacity(0.05) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: [
-            if (!isSelected)
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-          ],
-        ),
+        decoration: OnboardPalette.card(selected: isSelected),
         child: Row(
           children: [
             Container(
@@ -243,18 +189,18 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 children: [
                   Text(
                     title,
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
+                    style: onboardFont(
+                      size: 16,
+                      weight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     description,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: AppTheme.textLight,
+                    style: onboardFont(
+                      size: 13,
+                      weight: FontWeight.w700,
+                      color: AppTheme.textMedium,
                     ),
                   ),
                 ],

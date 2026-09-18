@@ -8,6 +8,7 @@ import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/core/widgets/premium_promo_card_shell.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/features/booking/models/upcoming_session_item.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
 import 'package:prepskul/features/dashboard/models/wallet_snapshot.dart';
@@ -228,7 +229,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
 
     if (hasDaily) {
       return _PromoSlide(
-        eyebrow: 'DAILY SKULMATE',
+        eyebrow: 'MATE',
         title: _todayGame!.title,
         subtitle: _streak > 0
             ? '$_streak-day streak. Keep it going.'
@@ -243,31 +244,29 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
 
     if (noGames || _dailyCompleted) {
       return _PromoSlide(
-        eyebrow: 'SKULMATE',
-        title: noGames ? 'Create your first game' : 'Explore more games',
+        eyebrow: 'MATE',
+        title: 'Talk. I’m already listening.',
         subtitle: noGames
-            ? 'Turn notes into fun practice'
-            : 'New games unlock daily',
+            ? 'No notes required. Interrupt anytime.'
+            : 'Type if the phone is shared.',
         description: _noGameDescription(
           noGames: noGames,
           dailyCompleted: _dailyCompleted && !noGames,
         ),
-        buttonLabel: noGames ? 'Create game' : 'Open SkulMate',
-        mascotMood: Mood.thinking,
+        buttonLabel: 'Talk to Mate',
+        mascotMood: Mood.talk,
         accent: AppTheme.primaryLight,
-        onTap: noGames
-            ? (widget.onCreateGame ?? widget.onOpenSkulMate ?? () {})
-            : (widget.onOpenSkulMate ?? () {}),
+        onTap: widget.onOpenSkulMate ?? () {},
       );
     }
 
     return _PromoSlide(
-      eyebrow: 'SKULMATE',
-      title: 'Play & learn',
-      subtitle: 'Games from your own notes',
+      eyebrow: 'MATE',
+      title: 'Talk. I’m already listening.',
+      subtitle: 'Games from what you bring me',
       description: _noGameDescription(noGames: false, dailyCompleted: false),
-      buttonLabel: 'Browse games',
-      mascotMood: Mood.point,
+      buttonLabel: 'Talk to Mate',
+      mascotMood: Mood.talk,
       accent: AppTheme.skyBlue,
       onTap: widget.onOpenSkulMate ?? () {},
     );
@@ -299,15 +298,13 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
 
   _PromoSlide _bookTutorSlide() {
     return _PromoSlide(
-      eyebrow: 'FIND A TUTOR',
-      title: _isParent
-          ? 'Book your child\'s next lesson'
-          : 'Book your next lesson',
+      eyebrow: 'FIND A PERSON',
+      title: 'Need a person at the table?',
       description: _isParent
-          ? 'Browse verified tutors and pick a time that works for your child.'
-          : 'Browse verified tutors and pick a time that works for you.',
-      subtitle: 'Online or on-site sessions',
-      buttonLabel: 'Find tutors',
+          ? 'Find a tutor, or request one. Live online, or onsite.'
+          : 'Find a tutor, or request one. Live online, or onsite.',
+      subtitle: 'Mate first. A person when you ask.',
+      buttonLabel: 'Find a person',
       mascotMood: Mood.point,
       accent: AppTheme.softYellow,
       onTap: widget.onFindTutors,
@@ -489,12 +486,8 @@ class _PromoCard extends StatelessWidget {
                 width: textWidth,
                 child: Text(
                   slide.title,
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    height: 1.2,
-                    letterSpacing: -0.2,
+                  style: onboardDisplay(
+                    size: 18,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -506,9 +499,10 @@ class _PromoCard extends StatelessWidget {
                   width: textWidth,
                   child: Text(
                     slide.subtitle,
-                    style: GoogleFonts.poppins(
-                      fontSize: 10.5,
-                      color: Colors.white.withValues(alpha: 0.72),
+                    style: onboardFont(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      color: AppTheme.textMedium,
                       height: 1.25,
                     ),
                     maxLines: 1,
@@ -522,9 +516,10 @@ class _PromoCard extends StatelessWidget {
                   width: textWidth,
                   child: Text(
                     slide.description,
-                    style: GoogleFonts.poppins(
-                      fontSize: 11.5,
-                      color: Colors.white.withValues(alpha: 0.88),
+                    style: onboardFont(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      color: AppTheme.textMedium,
                       height: 1.35,
                     ),
                     maxLines: 2,
@@ -565,7 +560,7 @@ class _PromoCard extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.35),
+            color: AppTheme.primaryColor,
             width: 2.5,
           ),
           boxShadow: [
@@ -612,16 +607,14 @@ class _PromoCard extends StatelessWidget {
       height: 78,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.white.withValues(alpha: 0.15),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 2.5),
+        color: AppTheme.skyBlueLight,
+        border: Border.all(color: AppTheme.primaryColor, width: 2.5),
       ),
       alignment: Alignment.center,
       child: Text(
         initial,
-        style: GoogleFonts.poppins(
-          fontSize: 28,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
+        style: onboardDisplay(
+          size: 28,
         ),
       ),
     );
@@ -634,18 +627,18 @@ class _PromoCard extends StatelessWidget {
 
     Color bg;
     Color border;
-    Color textColor = Colors.white;
+    Color textColor = AppTheme.primaryColor;
 
     if (isLive) {
-      bg = AppTheme.accentGreen.withValues(alpha: 0.28);
-      border = AppTheme.accentGreen.withValues(alpha: 0.5);
+      bg = AppTheme.accentGreen.withValues(alpha: 0.16);
+      border = AppTheme.accentGreen;
     } else if (isUpcoming) {
-      bg = AppTheme.softYellow.withValues(alpha: 0.32);
-      border = AppTheme.softYellow.withValues(alpha: 0.55);
-      textColor = Colors.white.withValues(alpha: 0.95);
+      bg = AppTheme.softYellowLight;
+      border = AppTheme.softYellow;
+      textColor = AppTheme.primaryColor;
     } else {
-      bg = Colors.white.withValues(alpha: 0.12);
-      border = Colors.white.withValues(alpha: 0.22);
+      bg = Colors.white;
+      border = AppTheme.primaryColor.withValues(alpha: 0.28);
     }
 
     return Container(
