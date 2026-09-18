@@ -5,6 +5,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/unblock_request_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Tutor Admin Feedback Details Screen
 ///
@@ -83,22 +84,13 @@ class _TutorAdminFeedbackScreenState extends State<TutorAdminFeedbackScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Admin Feedback',
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: () =>
               Navigator.of(context).pop(true), // Return true to refresh
-        ),
-        title: Text(
-          'Admin Feedback',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
         ),
       ),
       body: _isLoading

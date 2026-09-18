@@ -17,6 +17,7 @@ import 'package:prepskul/features/payment/services/payment_request_service.dart'
 import 'tutor_request_detail_full_screen.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../widgets/tutor_dashboard_layout.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 
 class TutorRequestsScreen extends StatefulWidget {
@@ -243,26 +244,17 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: false, // No back button in bottom nav
-        title: Text(
-          t.navRequests,
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: t.navRequests,
+        automaticallyImplyLeading: false,
       ),
       body: Column(
         children: [
           // Filter Chips (like notification screen)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: Colors.white,
+            color: OnboardPalette.cream,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(

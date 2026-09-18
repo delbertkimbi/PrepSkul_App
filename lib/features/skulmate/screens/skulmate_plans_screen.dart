@@ -14,6 +14,7 @@ import '../services/skulmate_credits_service.dart';
 import '../services/skulmate_pricing_service.dart';
 import '../widgets/skulmate_plan_card.dart';
 import '../widgets/skulmate_usage_meter.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class SkulmatePlansScreen extends StatefulWidget {
   const SkulmatePlansScreen({Key? key}) : super(key: key);
@@ -115,23 +116,9 @@ class _SkulmatePlansScreenState extends State<SkulmatePlansScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SkulMateSurfaceStyles.lightStatusBarOverlay,
       child: Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        shadowColor: Colors.transparent,
-          backgroundColor: AppTheme.softBackground,
-          systemOverlayStyle: SkulMateSurfaceStyles.lightStatusBarOverlay,
-          iconTheme: const IconThemeData(color: AppTheme.textDark),
-        title: Text(
-            copy.revisionPlansTitle,
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: copy.revisionPlansTitle,
       ),
       body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),

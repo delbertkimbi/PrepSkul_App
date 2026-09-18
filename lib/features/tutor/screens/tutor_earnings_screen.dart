@@ -10,6 +10,7 @@ import '../../../features/booking/services/session_payment_service.dart';
 import '../../../features/payment/services/tutor_payout_service.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class TutorEarningsScreen extends StatefulWidget {
   const TutorEarningsScreen({Key? key}) : super(key: key);
@@ -170,29 +171,18 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Earnings & Payouts',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Earnings & Payouts',
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppTheme.primaryColor,
-          unselectedLabelColor: Colors.grey[600],
-          labelStyle: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-          unselectedLabelStyle: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+          unselectedLabelColor: AppTheme.textMedium,
+          labelStyle: onboardFont(size: 14),
+          unselectedLabelStyle: onboardFont(
+            size: 14,
+            weight: FontWeight.w600,
+            color: AppTheme.textMedium,
           ),
           indicatorColor: AppTheme.primaryColor,
           tabs: const [
@@ -313,18 +303,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
   Widget _buildWalletBalanceSection() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: AppTheme.headerGradient,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.2),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-            spreadRadius: 0,
-          ),
-        ],
-      ),
+      decoration: OnboardPalette.paperCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -333,12 +312,13 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.25),
+                  color: AppTheme.skyBlueLight,
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.primaryColor, width: 2),
                 ),
                 child: const Icon(
                   Icons.account_balance_wallet_rounded,
-                  color: Colors.white,
+                  color: AppTheme.primaryColor,
                   size: 20,
                 ),
               ),
@@ -348,18 +328,15 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'PrepSkul Wallet',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
+                      'Wallet',
+                      style: onboardDisplay(size: 18),
                     ),
                     Text(
                       'Your earnings and balance',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: Colors.white.withOpacity(0.9),
+                      style: onboardFont(
+                        size: 12,
+                        weight: FontWeight.w700,
+                        color: AppTheme.textMedium,
                       ),
                     ),
                   ],
@@ -375,7 +352,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
                   label: 'Active Balance',
                   amount: _activeBalance,
                   icon: Icons.check_circle_rounded,
-                  color: Colors.green[300]!,
+                  color: const Color(0xFF15803D),
                 ),
               ),
               const SizedBox(width: 10),
@@ -384,7 +361,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
                   label: 'Pending Balance',
                   amount: _pendingBalance,
                   icon: Icons.pending_rounded,
-                  color: Colors.orange[300]!,
+                  color: const Color(0xFFC2410C),
                 ),
               ),
             ],
@@ -403,8 +380,12 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(10),
+        color: OnboardPalette.cream,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppTheme.primaryColor.withValues(alpha: 0.18),
+          width: 2,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,10 +397,10 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
               Expanded(
                 child: Text(
                   label,
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: Colors.white.withOpacity(0.9),
-                    fontWeight: FontWeight.w500,
+                  style: onboardFont(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    color: AppTheme.textMedium,
                   ),
                 ),
               ),
@@ -428,11 +409,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
           const SizedBox(height: 6),
           Text(
             '${amount.toStringAsFixed(0)} XAF',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
+            style: onboardDisplay(size: 18),
           ),
         ],
       ),

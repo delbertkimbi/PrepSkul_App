@@ -111,7 +111,8 @@ InputDecoration paperFieldDecoration({
 }
 
 AppBar paperAppBar({
-  required String title,
+  String? title,
+  Widget? titleWidget,
   List<Widget>? actions,
   Widget? leading,
   PreferredSizeWidget? bottom,
@@ -125,7 +126,8 @@ AppBar paperAppBar({
     elevation: 0,
     leading: leading,
     centerTitle: centerTitle,
-    title: Text(title, style: onboardDisplay(size: 22)),
+    title: titleWidget ??
+        Text(title ?? '', style: onboardDisplay(size: 22)),
     actions: actions,
     bottom: bottom,
     iconTheme: const IconThemeData(color: AppTheme.primaryColor),

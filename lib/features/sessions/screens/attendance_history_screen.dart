@@ -4,6 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/sessions/services/location_checkin_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Attendance History Screen
 ///
@@ -50,15 +51,9 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Attendance History',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Attendance History',
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

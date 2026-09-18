@@ -18,6 +18,7 @@ import 'package:prepskul/features/booking/widgets/location_selector.dart';
 import 'package:prepskul/features/booking/widgets/flexible_session_location_selector.dart';
 import 'package:prepskul/features/booking/widgets/booking_review.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
 
 /// Multi-step wizard for booking a tutor for recurring sessions
@@ -1345,12 +1346,11 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Book Regular Sessions',
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: () {
             if (_currentStep > 0) {
               _previousStep();
@@ -1358,14 +1358,6 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               Navigator.pop(context);
             }
           },
-        ),
-        title: Text(
-          'Book Regular Sessions',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
         ),
         bottom: _parentContextLoaded
             ? PreferredSize(

@@ -27,6 +27,7 @@ import '../../../features/sessions/services/live_session_overlay_controller.dart
 import '../../../features/tutor/utils/tutor_online_join.dart';
 import '../../../core/utils/responsive_helper.dart';
 import '../../../features/booking/widgets/report_issue_bottom_sheet.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 
@@ -207,21 +208,12 @@ class _TutorSessionDetailFullScreenState
   Widget build(BuildContext context) {
     if (_sessionData == null) {
       return Scaffold(
-        backgroundColor: AppTheme.backgroundColor,
-        appBar: AppBar(
-          backgroundColor: AppTheme.backgroundColor,
-          elevation: 0,
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(
+          title: 'Session Details',
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+            icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
             onPressed: _popSessionDetail,
-          ),
-          title: Text(
-            'Session Details',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
           ),
           centerTitle: true,
         ),
@@ -264,21 +256,12 @@ class _TutorSessionDetailFullScreenState
     final scheduled = _getScheduledDateTime();
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: AppTheme.backgroundColor,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: _onsiteAppBarTitle(),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: _popSessionDetail,
-        ),
-        title: Text(
-          _onsiteAppBarTitle(),
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
         ),
         centerTitle: true,
       ),
@@ -489,21 +472,12 @@ class _TutorSessionDetailFullScreenState
 
   Widget _buildStandardDetailScaffold(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: AppTheme.backgroundColor,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Session Details',
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: _popSessionDetail,
-        ),
-        title: Text(
-          'Session Details',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
         ),
         centerTitle: true,
       ),

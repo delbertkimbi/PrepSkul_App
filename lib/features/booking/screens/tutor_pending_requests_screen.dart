@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/screens/tutor_booking_detail_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// TutorPendingRequestsScreen
 ///
@@ -74,29 +75,23 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
         .length;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        automaticallyImplyLeading: false, // No back button in bottom nav
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Column(
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        automaticallyImplyLeading: false,
+        titleWidget: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Booking Requests',
-              style: GoogleFonts.poppins(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Colors.black,
-              ),
+              style: onboardDisplay(size: 20),
             ),
             if (pendingCount > 0)
               Text(
                 '$pendingCount pending',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: Colors.orange[700],
-                  fontWeight: FontWeight.w600,
+                style: onboardFont(
+                  size: 12,
+                  weight: FontWeight.w800,
+                  color: const Color(0xFFC2410C),
                 ),
               ),
           ],
@@ -104,14 +99,12 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppTheme.primaryColor,
-          unselectedLabelColor: Colors.grey[600],
-          labelStyle: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-          unselectedLabelStyle: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
+          unselectedLabelColor: AppTheme.textMedium,
+          labelStyle: onboardFont(size: 13),
+          unselectedLabelStyle: onboardFont(
+            size: 13,
+            weight: FontWeight.w600,
+            color: AppTheme.textMedium,
           ),
           indicatorColor: AppTheme.primaryColor,
           isScrollable: true,

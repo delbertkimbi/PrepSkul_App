@@ -13,6 +13,7 @@ import '../models/skulmate_intake_models.dart';
 import '../services/skulmate_intake_analysis_service.dart';
 import '../services/skulmate_intake_coordinator.dart';
 import '../widgets/skulmate_generation_error_panel.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import '../widgets/skulmate_mascot_media_widget.dart';
 import '../widgets/skulmate_mode_card.dart';
 import '../widgets/skulmate_surface_styles.dart';
@@ -117,26 +118,12 @@ class _SkulMateIntakeChatScreenState extends State<SkulMateIntakeChatScreen> {
     final copy = SkulMateCopy.of(context);
 
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: AppTheme.softBackground,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: _analysis != null && !_analyzing
+            ? _truncateTitle(_analysis!.topicLabel)
+            : copy.intakeChatTitle,
         centerTitle: true,
-        title: Text(
-          _analysis != null && !_analyzing
-              ? _truncateTitle(_analysis!.topicLabel)
-              : copy.intakeChatTitle,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 17,
-            color: AppTheme.textDark,
-          ),
-        ),
       ),
       body: Column(
         children: [

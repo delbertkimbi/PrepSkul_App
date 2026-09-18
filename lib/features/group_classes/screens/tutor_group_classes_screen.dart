@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/group_classes/screens/create_group_class_screen.dart';
 import 'package:prepskul/features/group_classes/models/group_class_listing.dart';
 import 'package:prepskul/features/group_classes/services/group_class_api_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class TutorGroupClassesScreen extends StatefulWidget {
   const TutorGroupClassesScreen({super.key});
@@ -115,16 +115,9 @@ class _TutorGroupClassesScreenState extends State<TutorGroupClassesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        iconTheme: const IconThemeData(color: Colors.black87),
-        title: Text(
-          'My Group Classes',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.black87),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'My Group Classes',
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {

@@ -18,6 +18,7 @@ import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:confetti/confetti.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 
 /// Trial Payment Screen
@@ -734,19 +735,9 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       },
 
       child: Scaffold(
-        backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: Text(
-          'Complete Payment',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+        backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Complete Payment',
       ),
       body: _paymentStatus == 'pending' ||
               _isPolling ||

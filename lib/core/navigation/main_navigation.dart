@@ -311,18 +311,27 @@ class _MainNavigationState extends State<MainNavigation>
     final tabBody = IndexedStack(index: _selectedIndex, children: screens);
 
     Widget tutorScaffold() {
-      return TutorNavigationShell(
-        useRail: tutorUseRail,
-        selectedIndex: _selectedIndex,
-        onIndexChanged: (index) {
-          safeSetState(() {
-            _selectedIndex = index;
-          });
-          _stopGameMusicOnShellTab();
-        },
-        tabBody: tabBody,
-        bottomBarItems: items,
-        railDestinations: _tutorRailDestinations(context),
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: OnboardPalette.cream,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+          systemNavigationBarColor: OnboardPalette.cream,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
+        child: TutorNavigationShell(
+          useRail: tutorUseRail,
+          selectedIndex: _selectedIndex,
+          onIndexChanged: (index) {
+            safeSetState(() {
+              _selectedIndex = index;
+            });
+            _stopGameMusicOnShellTab();
+          },
+          tabBody: tabBody,
+          bottomBarItems: items,
+          railDestinations: _tutorRailDestinations(context),
+        ),
       );
     }
 

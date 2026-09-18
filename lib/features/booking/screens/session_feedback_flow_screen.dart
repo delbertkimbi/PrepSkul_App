@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/supabase_service.dart';
 import '../services/session_feedback_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Session Feedback Flow Screen
 ///
@@ -434,9 +435,8 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   Widget build(BuildContext context) {
     if (!_canSubmit) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text('Session Feedback', style: GoogleFonts.poppins()),
-        ),
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(title: 'Session Feedback'),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -479,26 +479,15 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         return false;
       },
       child: Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _isTrial && !_isTutor ? 'How was your trial?' : 'Session feedback',
-          style: GoogleFonts.poppins(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.primaryDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: _isTrial && !_isTutor ? 'How was your trial?' : 'Session feedback',
         centerTitle: true,
-        backgroundColor: AppTheme.surfaceColor,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
+          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.primaryColor),
           onPressed: _exitFeedbackFlow,
         ),
       ),
-      backgroundColor: AppTheme.surfaceColor,
       body: Column(
         children: [
           // Session Context Header

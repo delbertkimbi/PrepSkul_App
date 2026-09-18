@@ -14,6 +14,7 @@ import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'tutor_requests_screen.dart';
 import '../../../features/booking/utils/trial_requester_display.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Full-screen detail view for tutor booking requests
 /// Profile-like UI with all request details and action buttons at the bottom
@@ -41,22 +42,9 @@ class _TutorRequestDetailFullScreenState
     final childName = TrialRequesterDisplay.primaryLearnerName(request);
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Request Details',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Request Details',
       ),
       body: Column(
         children: [

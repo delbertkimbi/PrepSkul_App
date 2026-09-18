@@ -11,6 +11,7 @@ import '../services/skulmate_service.dart';
 import '../screens/skulmate_games_screen.dart';
 import '../widgets/skulmate_loading_skeletons.dart';
 import '../widgets/skulmate_surface_styles.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Full-screen learner progress: streak hero, activity calendar, topic mastery.
 class SkulMateProgressScreen extends StatefulWidget {
@@ -72,23 +73,9 @@ class _SkulMateProgressScreenState extends State<SkulMateProgressScreen> {
     final lastDay = DateTime(now.year, now.month, now.day);
 
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: AppTheme.softBackground,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          copy.myProgressTitle,
-          style: GoogleFonts.poppins(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: copy.myProgressTitle,
         centerTitle: true,
       ),
       body: _loading

@@ -9,6 +9,7 @@ import 'package:prepskul/features/booking/services/trial_session_service.dart' h
 import 'package:prepskul/features/booking/widgets/location_selector.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Post-Trial Conversion Screen
 ///
@@ -191,18 +192,9 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Convert to Regular Booking',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Convert to Regular Booking',
       ),
       body: Column(
         children: [

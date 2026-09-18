@@ -9,6 +9,7 @@ import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 
 /// Tutor Booking Detail Screen
@@ -793,18 +794,9 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Booking Request Details',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Booking Request Details',
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

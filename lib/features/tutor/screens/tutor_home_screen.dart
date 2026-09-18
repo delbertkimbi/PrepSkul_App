@@ -31,6 +31,7 @@ import '../../../core/config/app_config.dart';
 import '../../skulmate/widgets/skulmate_surface_styles.dart';
 import '../widgets/tutor_dashboard_layout.dart';
 import '../../payment/widgets/prepskul_wallet_card.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -457,21 +458,19 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   Widget build(BuildContext context) {
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: Colors.grey[50],
+        backgroundColor: OnboardPalette.cream,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          backgroundColor: Colors.white,
+          backgroundColor: OnboardPalette.cream,
           elevation: 0,
-          surfaceTintColor: Colors.white,
+          surfaceTintColor: OnboardPalette.cream,
           centerTitle: false,
           title: Text(
             _userInfo?['fullName'] != null
                 ? 'Hi, ${_getFirstName(_userInfo!['fullName'] as String)}'
-                : 'PrepSkul',
-            style: GoogleFonts.poppins(
-              fontSize: ResponsiveHelper.responsiveHeadingSize(context),
-              fontWeight: FontWeight.w700,
-              color: AppTheme.primaryColor,
+                : 'Home',
+            style: onboardDisplay(
+              size: ResponsiveHelper.responsiveHeadingSize(context),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

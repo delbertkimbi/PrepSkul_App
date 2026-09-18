@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../discovery/widgets/tutor_card.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class ProfilePreviewScreen extends StatelessWidget {
   final Map<String, dynamic> tutor;
@@ -11,18 +12,9 @@ class ProfilePreviewScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Text(
-          'Profile Preview',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: AppTheme.primaryColor,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Profile Preview',
       ),
       body: Center(
         child: SingleChildScrollView(

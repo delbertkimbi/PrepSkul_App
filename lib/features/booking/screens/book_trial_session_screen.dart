@@ -16,6 +16,7 @@ import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import 'package:confetti/confetti.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Book Trial Session Screen - Multi-step Flow
 ///
@@ -950,31 +951,25 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Column(
+        titleWidget: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               widget.isReschedule ? 'Reschedule Trial Session' : 'Book Trial Session',
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
-              ),
+              style: onboardDisplay(size: 18),
             ),
             Text(
               'Step ${_currentStep + 1} of $_totalSteps',
-              style: GoogleFonts.poppins(
-                fontSize: 10,
-                fontWeight: FontWeight.w400,
-                color: Colors.grey[600],
+              style: onboardFont(
+                size: 11,
+                weight: FontWeight.w700,
+                color: AppTheme.textMedium,
               ),
             ),
           ],

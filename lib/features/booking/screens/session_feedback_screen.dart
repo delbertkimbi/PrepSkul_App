@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../services/session_feedback_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Session Feedback Screen
 ///
@@ -157,9 +158,8 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
   Widget build(BuildContext context) {
     if (!_canSubmit) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text('Session Feedback', style: GoogleFonts.poppins()),
-        ),
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(title: 'Session Feedback'),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -231,12 +231,8 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Session Feedback', style: GoogleFonts.poppins()),
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(title: 'Session Feedback'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
