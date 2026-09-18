@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/alive_mate.dart';
 
+export 'package:prepskul/core/widgets/alive_mate.dart' show AliveMate, Mood;
+
 TextStyle onboardFont({
   double size = 16,
   FontWeight weight = FontWeight.w800,
