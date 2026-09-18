@@ -9,6 +9,8 @@ import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
 import 'package:prepskul/features/onboarding/screens/simple_onboarding_screen.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/features/profile/screens/survey_intro_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_login_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_signup_screen.dart';
@@ -535,6 +537,27 @@ Future<void> handleEmailConfirmation() async {
       clearStack: true,
     );
   }
+}
+
+Widget _mateUnavailableScaffold() {
+  return Scaffold(
+    backgroundColor: OnboardPalette.cream,
+    appBar: paperAppBar(title: 'Mate'),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Mate is currently unavailable. Please check back later.',
+          textAlign: TextAlign.center,
+          style: onboardFont(
+            size: 16,
+            weight: FontWeight.w700,
+            color: AppTheme.textMedium,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class PrepSkulApp extends StatefulWidget {
@@ -1450,14 +1473,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
               );
             } else {
               return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('PrepSkul')),
-                  body: const Center(
-                    child: Text(
-                      'Mate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
+                () => _mateUnavailableScaffold(),
               );
             }
           case '/skulmate/upload':
@@ -1467,14 +1483,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
               );
             } else {
               return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('PrepSkul')),
-                  body: const Center(
-                    child: Text(
-                      'Mate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
+                () => _mateUnavailableScaffold(),
               );
             }
           case '/skulmate/library':
@@ -1488,14 +1497,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
               );
             } else {
               return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('PrepSkul')),
-                  body: const Center(
-                    child: Text(
-                      'Mate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
+                () => _mateUnavailableScaffold(),
               );
             }
           case '/skulmate/leaderboard':
@@ -1503,14 +1505,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
               return _createFadeRoute(() => const LeaderboardScreen());
             } else {
               return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('PrepSkul')),
-                  body: const Center(
-                    child: Text(
-                      'Mate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
+                () => _mateUnavailableScaffold(),
               );
             }
         }
@@ -1519,14 +1514,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             settings.name!.startsWith('/skulmate/game/')) {
           if (!AppConfig.enableSkulMate) {
             return _createFadeRoute(
-              () => Scaffold(
-                appBar: AppBar(title: const Text('PrepSkul')),
-                body: const Center(
-                  child: Text(
-                    'Mate is currently unavailable. Please check back later.',
-                  ),
-                ),
-              ),
+              () => _mateUnavailableScaffold(),
             );
           }
           final gameId = settings.name!.replaceFirst('/skulmate/game/', '').trim();
@@ -1705,13 +1693,15 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Scaffold(
-                      appBar: AppBar(title: const Text('Loading Tutor...')),
+                      backgroundColor: OnboardPalette.cream,
+                      appBar: paperAppBar(title: 'Loading tutor'),
                       body: const Center(child: CircularProgressIndicator()),
                     );
                   }
                   if (snapshot.hasError || snapshot.data == null) {
                     return Scaffold(
-                      appBar: AppBar(title: const Text('Tutor Not Found')),
+                      backgroundColor: OnboardPalette.cream,
+                      appBar: paperAppBar(title: 'Tutor not found'),
                       body: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -2759,7 +2749,7 @@ class _SplashScreenState extends State<SplashScreen> {
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       body: SafeArea(
         child: Stack(
           children: [
@@ -2843,25 +2833,7 @@ class _SplashContentState extends State<_SplashContent>
                 child: Hero(
                   tag: 'prepskul-logo',
                   transitionOnUserGestures: false,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    // Use local asset for both web and mobile to avoid network delays
-                    // This ensures instant loading and no black screen during transition
-                    child: Image.asset(
-                      'assets/images/app_logo(blue).png',
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        // Fallback if image fails to load
-                        return const Icon(
-                          Icons.school,
-                          size: 120,
-                          color: AppTheme.primaryColor,
-                        );
-                      },
-                    ),
-                  ),
+                  child: prepMate(mood: Mood.wave, size: 120),
                 ),
               ),
             );
@@ -2875,12 +2847,7 @@ class _SplashContentState extends State<_SplashContent>
           opacity: _fadeAnimation,
           child: Text(
             'PrepSkul',
-            style: GoogleFonts.poppins(
-              color: AppTheme.textDark,
-              fontSize: 36,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
+            style: onboardDisplay(size: 32),
           ),
         ),
 

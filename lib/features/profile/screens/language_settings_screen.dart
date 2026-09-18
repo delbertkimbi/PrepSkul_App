@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/language_switcher.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
 import 'package:provider/provider.dart';
 
@@ -16,18 +17,11 @@ class LanguageSettingsScreen extends StatelessWidget {
     final currentCode = notifier.currentLocale.languageCode;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          t.languageSettingsTitle,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: t.languageSettingsTitle,
         centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
       ),
-      backgroundColor: AppTheme.backgroundColor,
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(

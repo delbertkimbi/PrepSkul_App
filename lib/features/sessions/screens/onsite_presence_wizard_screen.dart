@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/image_picker_bottom_sheet.dart';
 import 'package:prepskul/features/sessions/services/location_checkin_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 enum OnsitePresenceWizardMode { checkIn, checkOut }
 
@@ -56,12 +57,9 @@ class _OnsitePresenceWizardScreenState extends State<OnsitePresenceWizardScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        title: Text(_title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.textDark,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: _title,
       ),
       body: Column(
         children: [

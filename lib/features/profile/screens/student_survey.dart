@@ -15,6 +15,7 @@ import 'dart:convert';
 import '../../tutor/screens/instruction_screen.dart';
 import '../../../core/widgets/confetti_celebration.dart';
 import '../../../core/widgets/onboarding_location_fields.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class StudentSurvey extends StatefulWidget {
   const StudentSurvey({Key? key}) : super(key: key);
@@ -765,19 +766,10 @@ class _StudentSurveyState extends State<StudentSurvey> {
         return await _showExitDialog(context);
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          backgroundColor: AppTheme.primaryColor,
-          elevation: 0,
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(
           automaticallyImplyLeading: false,
-          title: Text(
-            'Learner Survey',
-            style: GoogleFonts.poppins(
-              fontSize: 21,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.neutral50,
-            ),
-          ),
+          title: 'Learner Survey',
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(45),
             child: Column(
@@ -789,25 +781,25 @@ class _StudentSurveyState extends State<StudentSurvey> {
                     children: [
                       Text(
                         '${((_currentStep + 1) / _steps.length * 100).toInt()}% Complete',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.neutral50,
+                        style: onboardFont(
+                          size: 12,
+                          color: AppTheme.primaryColor,
                         ),
                       ),
                       Row(
                         children: [
                           const Icon(
                             Icons.cloud_done,
-                            color: AppTheme.neutral50,
+                            color: AppTheme.primaryColor,
                             size: 16,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             'Auto-saved',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppTheme.neutral50,
+                            style: onboardFont(
+                              size: 12,
+                              weight: FontWeight.w700,
+                              color: AppTheme.textMedium,
                             ),
                           ),
                         ],

@@ -24,6 +24,7 @@ import '../../../core/widgets/confetti_celebration.dart';
 import '../../../core/widgets/onboarding_location_fields.dart';
 import '../../../core/utils/status_bar_utils.dart';
 import 'instruction_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class TutorOnboardingScreen extends StatefulWidget {
   final Map<String, dynamic> basicInfo;
@@ -1661,15 +1662,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   Widget build(BuildContext context) {
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: AppTheme.backgroundColor,
+        backgroundColor: OnboardPalette.cream,
         resizeToAvoidBottomInset: true,
-        appBar: AppBar(
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: true, // Enable back button
+        appBar: paperAppBar(
+        automaticallyImplyLeading: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: () async {
             // Save current edits and move to previous onboarding step.
             // At step 0, route safely without using Navigator.pop() as this
@@ -1690,14 +1688,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             }
           },
         ),
-        title: Text(
-          'Tutor Onboarding',
-          style: GoogleFonts.poppins(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+        title: 'Tutor Onboarding',
         centerTitle: true,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(40),
@@ -1710,9 +1701,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                   children: [
                     Text(
                       '${((_currentStep + 1) / _totalSteps * 100).round()}% Complete',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                      style: onboardFont(
+                        size: 12,
+                        weight: FontWeight.w700,
                         color: AppTheme.primaryColor,
                       ),
                     ),
@@ -1729,13 +1720,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                             color: AppTheme.primaryColor,
                           ),
                           label: Text(
-                            isEditMode ? 'Save & Exit' : 'Save & Exit',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                            'Save & Exit',
+                            style: onboardFont(
+                              size: 12,
                               color: AppTheme.primaryColor,
-                              decoration: TextDecoration.underline,
-                              decorationColor: AppTheme.primaryColor,
                             ),
                           ),
                           style: TextButton.styleFrom(

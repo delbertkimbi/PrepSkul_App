@@ -56,7 +56,6 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen> {
             padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
             child: Column(
               children: [
-                const PrepSkulWordmark(),
                 const Spacer(),
                 prepMate(mood: Mood.cheer, size: 168),
                 const SizedBox(height: 20),

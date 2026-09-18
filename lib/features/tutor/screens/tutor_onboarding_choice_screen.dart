@@ -6,6 +6,8 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/services/notification_helper_service.dart';
 import 'tutor_onboarding_screen.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class TutorOnboardingChoiceScreen extends StatefulWidget {
   const TutorOnboardingChoiceScreen({super.key});
@@ -138,151 +140,70 @@ class _TutorOnboardingChoiceScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: OnboardPalette.cream,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 24),
-              // PrepSkul Logo
-              Image.asset(
-                'assets/images/app_logo(blue).png',
-                width: 90,
-                height: 90,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  // Fallback if image fails to load
-                  return const Icon(
-                  Icons.school,
-                  size: 45,
-                    color: AppTheme.primaryColor,
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-              // Title
+              const SizedBox(height: 12),
+              prepMate(mood: Mood.wave, size: 96),
+              const SizedBox(height: 16),
               Text(
-                'Welcome to PrepSkul!',
-                style: GoogleFonts.poppins(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textDark,
-                ),
+                'Welcome, tutor',
+                style: onboardDisplay(size: 26),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
-              // Subtitle
               Text(
-                'Tell us more about yourself so we can match you with the right students and get you approved on the platform.',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
+                'Tell us more about yourself so we can match you with the right students and get you approved.',
+                style: onboardFont(
+                  size: 15,
+                  weight: FontWeight.w700,
                   color: AppTheme.textMedium,
                   height: 1.4,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 28),
-              // Proceed Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _proceedWithOnboarding,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    elevation: 2,
-                    shadowColor: AppTheme.primaryColor.withOpacity(0.3),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
-                        )
-                      : Text(
-                          'Proceed with Onboarding',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
+              OnboardPrimaryButton(
+                label: 'Proceed with Onboarding',
+                onTap: _proceedWithOnboarding,
+                busy: _isLoading,
               ),
               const SizedBox(height: 16),
-              // Skip Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: OutlinedButton(
-                  onPressed: _isLoading ? null : _skipForLater,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.textDark,
-                    side: BorderSide(
-                      color: AppTheme.softBorder,
-                      width: 2,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: Text(
-                    'Skip for Later',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
+              OnboardPaperButton(
+                label: 'Skip for Later',
+                onTap: _isLoading ? () {} : _skipForLater,
               ),
               const SizedBox(height: 32),
-              // Info Box
               Container(
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.grey[300]!,
-                    width: 1,
-                  ),
-                ),
+                decoration: OnboardPalette.paperCard,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.info_outline,
-                          color: Colors.grey[700],
+                          color: AppTheme.primaryColor,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Important Note',
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
+                          'Important',
+                          style: onboardFont(size: 14),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'If you skip onboarding:\n\n• Your profile will not be visible to students\n• You will need to complete onboarding to access all features\n• You can complete it anytime from your profile',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
+                      style: onboardFont(
+                        size: 13,
+                        weight: FontWeight.w700,
                         color: AppTheme.textMedium,
                         height: 1.4,
                       ),
