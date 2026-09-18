@@ -216,12 +216,13 @@ class _OnboardingProgressTrackerState
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
+                  color: AppTheme.skyBlueLight,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.primaryColor, width: 2),
                 ),
                 child: const Icon(
                   Icons.checklist_outlined,
-                  color: Colors.white,
+                  color: AppTheme.primaryColor,
                   size: 24,
                 ),
               ),

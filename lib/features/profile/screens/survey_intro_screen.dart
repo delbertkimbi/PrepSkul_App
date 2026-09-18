@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
-import 'package:prepskul/features/primar/presentation/mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// First beat after signup. Cartoon Mate greets; next screen asks school-world
@@ -76,9 +74,10 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen> {
                   onPressed: _handleSkip,
                   child: Text(
                     'Skip for now',
-                    style: GoogleFonts.poppins(
+                    style: onboardFont(
+                      size: 14,
+                      weight: FontWeight.w800,
                       color: AppTheme.primaryColor,
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),

@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import '../models/achievement_mapping.dart';
 import '../models/game_stats_model.dart';
 import 'streak_reminder_hook.dart';
 import 'social_service.dart';
@@ -199,10 +200,8 @@ class GameStatsService {
         newAchievements.add(achievement.id);
         LogService.success('🏆 [Achievement] Unlocked: ${achievement.name}');
         
-        // Unlock platform achievement if available
-        // TODO: Implement AchievementMapping
-        // final platformId = AchievementMapping.getPlatformAchievementId(achievement.id);
-        final platformId = null; // Placeholder until AchievementMapping is implemented
+        // Unlock platform achievement if a Game Center / Play Games id is mapped.
+        final platformId = AchievementMapping.getPlatformAchievementId(achievement.id);
         if (platformId != null) {
           try {
             await GamesServicesController().awardAchievement(platformId);

@@ -4916,45 +4916,31 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: AppTheme.primaryGradient,
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: OnboardPalette.paperCard,
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: AppTheme.skyBlueLight,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.primaryColor, width: 2),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: Icon(icon, color: AppTheme.primaryColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                Text(title, style: onboardDisplay(size: 16)),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.9),
+                  style: onboardFont(
+                    size: 12,
+                    weight: FontWeight.w700,
+                    color: AppTheme.textMedium,
                   ),
                 ),
               ],

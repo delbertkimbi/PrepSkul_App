@@ -134,62 +134,18 @@ class _OnsitePresenceWizardScreenState extends State<OnsitePresenceWizardScreen>
   Widget _buildFooter() {
     return Container(
       padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + MediaQuery.paddingOf(context).bottom),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_step == 0)
-            ElevatedButton(
-              onPressed: _loading ? null : (_gpsDone ? _goToSelfieStep : _runGpsStep),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: _loading
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(
-                      _gpsDone ? 'Continue to selfie' : 'Verify location',
-                      style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
+      color: OnboardPalette.cream,
+      child: _step == 0
+          ? OnboardPrimaryButton(
+              label: _gpsDone ? 'Continue to selfie' : 'Verify location',
+              onTap: _gpsDone ? _goToSelfieStep : _runGpsStep,
+              busy: _loading,
             )
-          else
-            ElevatedButton.icon(
-              onPressed: _loading ? null : _runSelfieStep,
-              icon: _loading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.camera_alt_outlined),
-              label: Text(
-                'Take selfie',
-                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+          : OnboardPrimaryButton(
+              label: 'Take selfie',
+              onTap: _runSelfieStep,
+              busy: _loading,
             ),
-        ],
-      ),
     );
   }
 
@@ -369,49 +325,39 @@ class _HeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: AppTheme.primaryGradient,
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: OnboardPalette.paperCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.9), size: 36),
+          Icon(icon, color: AppTheme.primaryColor, size: 36),
           const SizedBox(height: 14),
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
+          Text(title, style: onboardDisplay(size: 20)),
           const SizedBox(height: 8),
           Text(
             body,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.white.withValues(alpha: 0.85),
+            style: onboardFont(
+              size: 14,
+              weight: FontWeight.w700,
+              color: AppTheme.textMedium,
+              height: 1.35,
             ),
           ),
           if (address != null && address!.isNotEmpty) ...[
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
+              decoration: OnboardPalette.paperField,
               child: Row(
                 children: [
-                  Icon(Icons.place_outlined, color: Colors.white.withValues(alpha: 0.9), size: 18),
+                  const Icon(Icons.place_outlined, color: AppTheme.primaryColor, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       address!,
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: Colors.white.withValues(alpha: 0.9),
+                      style: onboardFont(
+                        size: 13,
+                        weight: FontWeight.w700,
+                        color: AppTheme.primaryColor,
                       ),
                     ),
                   ),

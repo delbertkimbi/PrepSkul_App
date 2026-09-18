@@ -46,17 +46,18 @@ class NotificationPermissionSheet extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    gradient: AppTheme.primaryGradient,
+                    color: AppTheme.skyBlueLight,
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
+                    border: Border.all(color: AppTheme.primaryColor, width: 2),
+                    boxShadow: const [
                       BoxShadow(
-                        color: Colors.black.withAlpha(15),
-                        blurRadius: 12,
-                        offset: const Offset(0, 6),
+                        color: Color(0x381E3A8A),
+                        offset: Offset(0, 4),
+                        blurRadius: 0,
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.notifications_active, color: Colors.white),
+                  child: const Icon(Icons.notifications_active, color: AppTheme.primaryColor),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
