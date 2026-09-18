@@ -106,40 +106,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         const SizedBox(height: 12),
 
                         // Continue Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton(
-                            onPressed: _selectedRole == null || _isLoading 
-                                ? null 
-                                : _handleContinue,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryColor,
-                              foregroundColor: Colors.white,
-                              elevation: 2,
-                              shadowColor: AppTheme.primaryColor.withOpacity(0.3),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(28),
-                              ),
-                              disabledBackgroundColor: AppTheme.softBorder,
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Text(
-                                    'Continue',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                          ),
+                        OnboardPrimaryButton(
+                          label: 'Continue',
+                          enabled: _selectedRole != null,
+                          busy: _isLoading,
+                          onTap: _handleContinue,
                         ),
                         const SizedBox(height: 24),
                       ],
@@ -293,31 +264,6 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   }
 }
 
-class WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height * 0.85);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      size.height,
-      size.width * 0.5,
-      size.height * 0.85,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      size.height * 0.7,
-      size.width,
-      size.height * 0.85,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}
 
 
 

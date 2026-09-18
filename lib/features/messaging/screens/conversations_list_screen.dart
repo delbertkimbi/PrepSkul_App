@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -255,21 +256,13 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Messages',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Messages',
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(44),
           child: Container(
+            color: OnboardPalette.cream,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [

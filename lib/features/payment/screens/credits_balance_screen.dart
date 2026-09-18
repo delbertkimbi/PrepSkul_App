@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -91,19 +92,9 @@ class _CreditsBalanceScreenState extends State<CreditsBalanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: AppTheme.primaryColor,
-        elevation: 0,
-        title: Text(
-          'Credits Balance',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Credits',
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

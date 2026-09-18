@@ -19,6 +19,7 @@ import 'package:prepskul/features/sessions/widgets/classroom_offline_banner.dart
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/core/config/app_config.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Pre-join screen for Agora video sessions
 /// Allows users to grant permissions and choose initial camera/mic state
@@ -617,7 +618,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
 
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: OnboardPalette.cream,
       body: Stack(
         children: [
           SafeArea(

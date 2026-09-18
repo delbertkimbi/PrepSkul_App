@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -212,22 +213,9 @@ Thank you!''';
     final t = AppLocalizations.of(context)!;
     
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Help & Support',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Help & Support',
         centerTitle: false,
       ),
       body: SingleChildScrollView(

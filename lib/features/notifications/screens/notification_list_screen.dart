@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/features/notifications/widgets/notification_item.dart';
 import 'package:prepskul/features/notifications/widgets/notification_group_item.dart';
 import 'package:prepskul/features/notifications/screens/notification_preferences_screen.dart';
@@ -381,21 +382,12 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Notifications',
         leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
+          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.primaryColor),
           onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Notifications',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
         ),
         actions: [
           IconButton(
@@ -428,7 +420,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           // Filter Chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            color: Colors.white,
+            color: OnboardPalette.cream,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(

@@ -110,6 +110,28 @@ InputDecoration paperFieldDecoration({
   );
 }
 
+AppBar paperAppBar({
+  required String title,
+  List<Widget>? actions,
+  Widget? leading,
+  PreferredSizeWidget? bottom,
+  bool automaticallyImplyLeading = true,
+  bool centerTitle = false,
+}) {
+  return AppBar(
+    automaticallyImplyLeading: automaticallyImplyLeading,
+    backgroundColor: OnboardPalette.cream,
+    surfaceTintColor: OnboardPalette.cream,
+    elevation: 0,
+    leading: leading,
+    centerTitle: centerTitle,
+    title: Text(title, style: onboardDisplay(size: 22)),
+    actions: actions,
+    bottom: bottom,
+    iconTheme: const IconThemeData(color: AppTheme.primaryColor),
+  );
+}
+
 class AuthPaperHeader extends StatelessWidget {
   const AuthPaperHeader({
     super.key,
@@ -477,15 +499,18 @@ class OnboardPrimaryButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.enabled = true,
+    this.busy = false,
   });
   final String label;
   final VoidCallback onTap;
   final bool enabled;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
+    final active = enabled && !busy;
     return GestureDetector(
-      onTap: enabled ? onTap : null,
+      onTap: active ? onTap : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         width: double.infinity,
@@ -502,10 +527,19 @@ class OnboardPrimaryButton extends StatelessWidget {
                   BoxShadow(color: Color(0xFFA8B3C4), offset: Offset(0, 2), blurRadius: 0),
                 ],
         ),
-        child: Text(
-          label.toUpperCase(),
-          style: onboardDisplay(size: 20, color: Colors.white),
-        ),
+        child: busy
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                label.toUpperCase(),
+                style: onboardDisplay(size: 20, color: Colors.white),
+              ),
       ),
     );
   }

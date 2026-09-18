@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/widgets/neumorphic_surface.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -201,22 +202,9 @@ class _IdentityVerificationFlowScreenState
     required Widget body,
   }) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          title,
-          style: GoogleFonts.poppins(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: title,
         centerTitle: true,
       ),
       body: Column(

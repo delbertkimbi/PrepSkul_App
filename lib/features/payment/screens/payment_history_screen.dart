@@ -14,7 +14,7 @@ import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/features/tutor/screens/tutor_earnings_screen.dart';
 import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
-import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
@@ -438,26 +438,19 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      appBar: AppBar(
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: t.paymentHistoryTitle,
         leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft, color: Colors.white),
+          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.primaryColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          t.paymentHistoryTitle,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: AppTheme.primaryColor,
-        elevation: 0,
         bottom: TabBar(
           controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
+          indicatorColor: AppTheme.primaryColor,
+          labelColor: AppTheme.primaryColor,
+          unselectedLabelColor: AppTheme.textMedium,
+          labelStyle: onboardFont(size: 14),
           tabs: [
             Tab(text: t.paymentHistoryTabBookings),
             Tab(text: t.paymentHistoryTabTrials),

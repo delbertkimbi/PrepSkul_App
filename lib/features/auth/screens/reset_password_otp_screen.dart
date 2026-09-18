@@ -229,40 +229,10 @@ class _ResetPasswordOTPScreenState extends State<ResetPasswordOTPScreen> {
                                 List.generate(6, (i) => _buildOTPField(i)),
                           ),
                           const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 56,
-                            child: ElevatedButton(
-                              onPressed: _isVerifying ? () {} : _verifyOTP,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primaryColor,
-                                foregroundColor: Colors.white,
-                                disabledBackgroundColor: AppTheme.primaryColor,
-                                disabledForegroundColor: Colors.white,
-                                elevation: 2,
-                                shadowColor:
-                                    AppTheme.primaryColor.withOpacity(0.3),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(28),
-                                ),
-                              ),
-                              child: _isVerifying
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : Text(
-                                      'Verify & Continue',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                            ),
+                          OnboardPrimaryButton(
+                            label: 'Verify & Continue',
+                            busy: _isVerifying,
+                            onTap: _verifyOTP,
                           ),
                           const SizedBox(height: 30),
                           Row(
@@ -407,28 +377,3 @@ class _ResetPasswordOTPScreenState extends State<ResetPasswordOTPScreen> {
   }
 }
 
-class _WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    var path = Path();
-    path.lineTo(0, size.height - 28);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      size.height - 14,
-      size.width * 0.5,
-      size.height - 20,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      size.height - 28,
-      size.width,
-      size.height - 20,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}

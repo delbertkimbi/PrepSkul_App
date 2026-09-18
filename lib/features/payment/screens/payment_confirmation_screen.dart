@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -472,12 +473,11 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Complete Payment',
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: () {
             // Prevent back navigation while processing
             if (_isPolling || _isProcessing) {
@@ -486,14 +486,6 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
               Navigator.pop(context, false);
             }
           },
-        ),
-        title: Text(
-          'Complete Payment',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
         ),
       ),
       body: SafeArea(

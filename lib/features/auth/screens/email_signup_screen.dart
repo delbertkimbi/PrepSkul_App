@@ -69,11 +69,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                               // Full Name Field
                               Text(
                                 'Full Name',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -87,51 +83,14 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
-                                  hintText: 'Enter your name',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                ),
+                                decoration: paperFieldDecoration(hintText: 'Enter your name'),
                               ),
                               const SizedBox(height: 20),
 
                               // Email Field
                               Text(
                                 'Email Address',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -146,51 +105,14 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
-                                  hintText: 'your.email@example.com',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                ),
+                                decoration: paperFieldDecoration(hintText: 'your.email@example.com'),
                               ),
                               const SizedBox(height: 20),
 
                               // Password Field
                               Text(
                                 'Password',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -205,12 +127,8 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
+                                decoration: paperFieldDecoration(
                                   hintText: 'Enter your password',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
@@ -223,33 +141,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                       });
                                     },
                                   ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
                                 ),
                               ),
                               const SizedBox(height: 20),
@@ -257,11 +148,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                               // Confirm Password Field
                               Text(
                                 'Confirm Password',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -276,12 +163,8 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
+                                decoration: paperFieldDecoration(
                                   hintText: 'Confirm your password',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscureConfirmPassword
@@ -295,75 +178,15 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                       });
                                     },
                                   ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
                                 ),
                               ),
                               const SizedBox(height: 12),
 
                               // Signup Button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 56,
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? () {} : _handleSignup,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryColor,
-                                    foregroundColor: Colors.white,
-                                    disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
-                                    disabledForegroundColor: Colors.white, // Keep white text when disabled
-                                    elevation: 2,
-                                    shadowColor: AppTheme.primaryColor
-                                        .withOpacity(0.3),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(28),
-                                    ),
-                                  ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2.5,
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  Colors.white,
-                                                ),
-                                          ),
-                                        )
-                                      : Text(
-                                          'Create Account',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                ),
+                              OnboardPrimaryButton(
+                                label: 'Create Account',
+                                busy: _isLoading,
+                                onTap: _handleSignup,
                               ),
                               const SizedBox(height: 32),
 
@@ -603,29 +426,3 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   }
 }
 
-// Reuse WaveClipper from beautiful_signup_screen
-class WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height * 0.85);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      size.height,
-      size.width * 0.5,
-      size.height * 0.85,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      size.height * 0.7,
-      size.width,
-      size.height * 0.85,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}

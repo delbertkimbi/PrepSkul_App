@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -982,12 +983,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: OnboardPalette.cream,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
+        surfaceTintColor: OnboardPalette.cream,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
+          icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.primaryColor),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(

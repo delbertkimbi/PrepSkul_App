@@ -3,6 +3,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/storage_service.dart';
@@ -301,22 +302,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'Edit Profile',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Edit Profile',
         actions: [
           if (!_isLoading)
             TextButton(
@@ -329,11 +317,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     )
                   : Text(
                       'Save',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primaryColor,
-                      ),
+                      style: onboardFont(size: 14, weight: FontWeight.w800),
                     ),
             ),
         ],

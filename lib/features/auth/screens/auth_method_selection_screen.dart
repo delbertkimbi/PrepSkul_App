@@ -13,8 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'beautiful_login_screen.dart' hide WaveClipper;
-import 'beautiful_signup_screen.dart' hide WaveClipper;
+import 'beautiful_login_screen.dart';
+import 'beautiful_signup_screen.dart';
 import 'email_login_screen.dart';
 import 'email_signup_screen.dart';
 
@@ -374,29 +374,3 @@ class _AuthMethodButton extends StatelessWidget {
   }
 }
 
-// Reuse WaveClipper from beautiful_login_screen
-class WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height * 0.85);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      size.height,
-      size.width * 0.5,
-      size.height * 0.85,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      size.height * 0.7,
-      size.width,
-      size.height * 0.85,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}
