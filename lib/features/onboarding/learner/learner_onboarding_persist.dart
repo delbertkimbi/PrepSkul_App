@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
@@ -9,6 +11,41 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Maps the tutor onboarding into the same profile rows booking still reads.
 class LearnerOnboardingPersist {
+  static const _draftKey = 'learner_onboarding_draft';
+
+  /// Keep a learner's answers on this device until they create an account.
+  static Future<void> saveDraft(LearnerOnboardingAnswers answers) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_draftKey, jsonEncode(answers.toJson()));
+    await prefs.setString('preferred_language', answers.locale);
+    await markOnboardingComplete();
+  }
+
+  static Future<void> markOnboardingComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_completed', true);
+  }
+
+  static Future<LearnerOnboardingAnswers?> loadDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString(_draftKey);
+    if (value == null || value.isEmpty) return null;
+    try {
+      return LearnerOnboardingAnswers.fromJson(
+        jsonDecode(value) as Map<String, dynamic>,
+      );
+    } catch (e) {
+      LogService.warning('Could not restore learner onboarding draft: $e');
+      await prefs.remove(_draftKey);
+      return null;
+    }
+  }
+
+  static Future<void> clearDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_draftKey);
+  }
+
   static Map<String, dynamic> toSurveyMap(LearnerOnboardingAnswers a) {
     final pack = packById(a.countryId);
     final system = systemById(pack, a.systemId);
@@ -64,11 +101,9 @@ class LearnerOnboardingPersist {
     };
   }
 
-  static Future<void> save(LearnerOnboardingAnswers answers) async {
+  static Future<bool> save(LearnerOnboardingAnswers answers) async {
     await LanguageService.setLanguage(Locale(answers.locale));
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('survey_completed', true);
-    await prefs.setBool('survey_intro_seen', true);
     await prefs.setString('preferred_language', answers.locale);
     if (answers.superChoice != null) {
       await prefs.setString('skulmate.super', answers.superChoice!);
@@ -78,14 +113,19 @@ class LearnerOnboardingPersist {
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String?;
-      if (userId == null || userId.isEmpty) return;
+      if (userId == null || userId.isEmpty) return false;
       if (answers.accountRole == 'parent') {
         await SurveyRepository.saveParentSurvey(userId, data);
       } else {
         await SurveyRepository.saveStudentSurvey(userId, data);
       }
+      await prefs.setBool('survey_completed', true);
+      await prefs.setBool('survey_intro_seen', true);
+      await prefs.remove(_draftKey);
+      return true;
     } catch (e) {
       LogService.warning('Learner onboarding save deferred: $e');
+      return false;
     }
   }
 

@@ -31,7 +31,7 @@ class TTSService {
       final prefs = await SharedPreferences.getInstance();
       _ttsVolume = prefs.getDouble('game_tts_volume') ?? 1.0;
       _flutterTts = FlutterTts();
-      
+
       // Set language based on user preference
       final userLanguage = LanguageService.languageCode;
       _currentLanguage = userLanguage == 'fr' ? 'fr-FR' : 'en-US';
@@ -41,7 +41,7 @@ class TTSService {
       await _flutterTts!.setVolume(_ttsVolume);
       await _flutterTts!.setPitch(1.0);
       await _preferNeuralVoice();
-      
+
       // Set completion handler (used by speakAndWait)
       _flutterTts!.setCompletionHandler(() {
         LogService.debug('[TTS] Speech completed');
@@ -73,7 +73,7 @@ class TTSService {
         _speakCompleter = null;
         unawaited(GameSoundService().resumeBgmIfNeeded());
       });
-      
+
       _isInitialized = true;
       LogService.success('[TTS] Initialized with language: $_currentLanguage');
     } catch (e) {
@@ -162,23 +162,37 @@ class TTSService {
     if (!_isInitialized) await ensureInitialized();
     if (!_isInitialized) return;
 
-    _speakCompleter = Completer<void>();
+    await stop();
+    final completer = Completer<void>();
+    _speakCompleter = completer;
+    _activeSpeakText = text;
     try {
-      await stop();
       await _flutterTts!.speak(text);
-      final t = timeout ?? Duration(
-        milliseconds: (text.length * 80).clamp(2000, 15000),
+      final t =
+          timeout ??
+          Duration(milliseconds: (text.length * 80).clamp(2000, 15000));
+      await completer.future.timeout(
+        t,
+        onTimeout: () {
+          if (identical(_speakCompleter, completer)) {
+            _speakCompleter = null;
+          }
+        },
       );
-      await _speakCompleter!.future.timeout(t, onTimeout: () {
-        _speakCompleter = null;
-      });
     } catch (e) {
-      _speakCompleter = null;
+      if (identical(_speakCompleter, completer)) {
+        _speakCompleter = null;
+      }
       if (e is TimeoutException) {
         LogService.debug('[TTS] speakAndWait timed out');
       } else {
         LogService.error('[TTS] Error speaking: $e');
       }
+    } finally {
+      if (identical(_speakCompleter, completer)) {
+        _speakCompleter = null;
+      }
+      if (_activeSpeakText == text) _activeSpeakText = null;
     }
   }
 
@@ -281,6 +295,3 @@ class TTSService {
     }
   }
 }
-
-
-

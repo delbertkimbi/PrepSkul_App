@@ -18,12 +18,7 @@ class AliveMate extends StatelessWidget {
   final double size;
   final bool flip;
 
-  /// Body fill from the site `MatePoint` SVG.
-  static const bodyBlue = Color(0xFF1B6FCF);
-
-  /// Belly fill from the site `MatePoint` SVG.
-  static const bellyTeal = Color(0xFF3DB8C4);
-
+  /// Shared PrepSkul site palette. Keep app Mate identical to the website.
   @override
   Widget build(BuildContext context) {
     return Mate(
@@ -32,9 +27,9 @@ class AliveMate extends StatelessWidget {
       flip: flip,
       keepHopping: true,
       ink: AppTheme.primaryColor,
-      body: bodyBlue,
-      belly: bellyTeal,
-      accent: AppTheme.softYellow,
+      body: AppTheme.mateBodyBlue,
+      belly: AppTheme.mateBellyTeal,
+      accent: AppTheme.mateAntennaYellow,
     );
   }
 }

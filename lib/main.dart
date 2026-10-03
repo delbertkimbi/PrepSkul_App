@@ -7,7 +7,6 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
-import 'package:prepskul/features/onboarding/screens/simple_onboarding_screen.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_screen.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/widgets/alive_mate.dart';
@@ -1419,11 +1418,18 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
         // Handle all routes with fade transition to prevent white screen
         switch (settings.name) {
           case '/onboarding':
-            return _createFadeRoute(() => const SimpleOnboardingScreen());
+            return _createFadeRoute(
+              () => const LearnerOnboardingScreen(beforeAuth: true),
+            );
           case '/role-selection':
             return _createFadeRoute(() => const RoleSelectionScreen());
           case '/auth-method-selection':
-            return _createFadeRoute(() => const AuthMethodSelectionScreen());
+            final args = settings.arguments as Map<String, dynamic>?;
+            return _createFadeRoute(
+              () => AuthMethodSelectionScreen(
+                isLogin: args?['isLogin'] as bool? ?? true,
+              ),
+            );
           case '/login':
           case '/beautiful-login': {
             final loginArgs = settings.arguments as Map<String, dynamic>?;
@@ -2275,10 +2281,13 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
       // Map route names to widgets directly
       switch (routeName) {
         case '/onboarding':
-          page = const SimpleOnboardingScreen();
+          page = const LearnerOnboardingScreen(beforeAuth: true);
           break;
         case '/auth-method-selection':
-          page = const AuthMethodSelectionScreen();
+          final args = arguments as Map<String, dynamic>?;
+          page = AuthMethodSelectionScreen(
+            isLogin: args?['isLogin'] as bool? ?? true,
+          );
           break;
         case '/tutor-nav':
           final args = arguments as Map<String, dynamic>?;

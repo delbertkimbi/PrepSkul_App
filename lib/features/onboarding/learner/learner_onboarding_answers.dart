@@ -33,6 +33,46 @@ class LearnerOnboardingAnswers {
   final List<String> interestIds;
   final String? superChoice;
 
+  Map<String, dynamic> toJson() => {
+        'locale': locale,
+        'accountRole': accountRole,
+        'name': name,
+        'countryId': countryId,
+        'cityId': cityId,
+        'systemId': systemId,
+        'levelId': levelId,
+        'subjectId': subjectId,
+        'examId': examId,
+        'examWhenId': examWhenId,
+        'channelId': channelId,
+        'paceId': paceId,
+        'examFeelId': examFeelId,
+        'interestIds': interestIds,
+        'superChoice': superChoice,
+      };
+
+  factory LearnerOnboardingAnswers.fromJson(Map<String, dynamic> json) {
+    return LearnerOnboardingAnswers(
+      locale: json['locale'] as String? ?? 'en',
+      accountRole: json['accountRole'] as String? ?? 'learner',
+      name: json['name'] as String? ?? '',
+      countryId: json['countryId'] as String? ?? 'cm',
+      cityId: json['cityId'] as String?,
+      systemId: json['systemId'] as String?,
+      levelId: json['levelId'] as String?,
+      subjectId: json['subjectId'] as String?,
+      examId: json['examId'] as String?,
+      examWhenId: json['examWhenId'] as String?,
+      channelId: json['channelId'] as String? ?? 'mix',
+      paceId: json['paceId'] as String? ?? 'balanced',
+      examFeelId: json['examFeelId'] as String?,
+      interestIds: (json['interestIds'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(),
+      superChoice: json['superChoice'] as String?,
+    );
+  }
+
   LearnerOnboardingAnswers copyWith({
     String? locale,
     String? accountRole,

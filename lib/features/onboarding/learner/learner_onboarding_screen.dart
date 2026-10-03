@@ -9,7 +9,6 @@ import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.d
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_copy.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 import 'package:prepskul/features/onboarding/region/region_packs.dart';
-import 'package:prepskul/features/primar/presentation/mascot.dart';
 import 'package:prepskul/features/skulmate/services/tts_service.dart';
 
 enum LearnerOnboardStep {
@@ -33,9 +32,10 @@ enum LearnerOnboardStep {
 }
 
 class LearnerOnboardingScreen extends StatefulWidget {
-  const LearnerOnboardingScreen({super.key, this.userRole = 'student'});
+  const LearnerOnboardingScreen({super.key, this.userRole = 'student', this.beforeAuth = false});
 
   final String userRole;
+  final bool beforeAuth;
 
   @override
   State<LearnerOnboardingScreen> createState() => _LearnerOnboardingScreenState();
@@ -58,9 +58,35 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       accountRole: widget.userRole == 'parent' ? 'parent' : 'learner',
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_tts.ensureInitialized());
-      unawaited(_speakWelcome());
+      unawaited(_initializeOnboarding());
     });
+  }
+
+  Future<void> _initializeOnboarding() async {
+    await _tts.ensureInitialized();
+    if (!widget.beforeAuth) {
+      final draft = await LearnerOnboardingPersist.loadDraft();
+      if (draft != null) {
+        final saved = await LearnerOnboardingPersist.save(draft);
+        if (saved) {
+          if (!mounted) return;
+          final role = draft.accountRole == 'parent' ? 'parent' : 'student';
+          NavigationService.resetStackNamed(
+            context,
+            role == 'parent' ? '/parent-nav' : '/student-nav',
+          );
+          return;
+        }
+        if (mounted) {
+          setState(() {
+            _answers = draft;
+            _name.text = draft.name;
+            _index = _steps.length - 1;
+          });
+          return;
+        }
+      }
+    }
   }
 
   @override
@@ -97,7 +123,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   Future<void> _speakWelcome() async {
     try {
       await _tts.stop();
-      await _tts.speakAndWait(_c.welcomeTitle);
+      await _tts.setLanguage(_answers.locale);
+      await _tts.speakAndWait('${_c.welcomeTitle} ${_c.welcomeNote}');
     } catch (_) {}
   }
 
@@ -130,13 +157,48 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   Future<void> _finish({String superChoice = 'skip'}) async {
     if (_saving) return;
     setState(() => _saving = true);
-    final named = _answers.copyWith(name: _name.text.trim(), superChoice: superChoice);
-    await LearnerOnboardingPersist.save(named);
+    final named = _answers.copyWith(
+      name: _name.text.trim(),
+      superChoice: superChoice,
+    );
+    if (widget.beforeAuth) {
+      await LearnerOnboardingPersist.saveDraft(named);
+      if (!mounted) return;
+      await _goToAuth();
+      return;
+    }
+    final saved = await LearnerOnboardingPersist.save(named);
     if (!mounted) return;
+    if (!saved) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _answers.locale == 'fr'
+                ? 'Impossible d’enregistrer pour le moment. Réessaie.'
+                : 'We couldn’t save that yet. Please try again.',
+          ),
+        ),
+      );
+      return;
+    }
     final role = named.accountRole == 'parent' ? 'parent' : 'student';
     NavigationService.resetStackNamed(
       context,
       role == 'parent' ? '/parent-nav' : '/student-nav',
+    );
+  }
+
+  Future<void> _goToAuth({bool asTutor = false}) async {
+    if (asTutor) {
+      await LearnerOnboardingPersist.clearDraft();
+      await LearnerOnboardingPersist.markOnboardingComplete();
+    }
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      '/auth-method-selection',
+      (route) => false,
+      arguments: const {'isLogin': false},
     );
   }
 
@@ -223,7 +285,12 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               note: _c.welcomeNote,
               tail: false,
               onTyped: () {
-                if (mounted && !_welcomeTyped) setState(() => _welcomeTyped = true);
+                if (mounted && !_welcomeTyped) {
+                  setState(() => _welcomeTyped = true);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) unawaited(_speakWelcome());
+                  });
+                }
               },
             ),
             const SizedBox(height: 28),
@@ -235,6 +302,13 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                 child: OnboardPrimaryButton(label: _c.welcomeCta, onTap: _next),
               ),
             ),
+            if (widget.beforeAuth) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => unawaited(_goToAuth(asTutor: true)),
+                child: Text(_c.tutorEntry, style: onboardFont(size: 15)),
+              ),
+            ],
           ],
         ),
       LearnerOnboardStep.language => _ask(

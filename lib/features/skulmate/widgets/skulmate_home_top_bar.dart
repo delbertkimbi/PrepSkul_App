@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 import '../l10n/skulmate_copy.dart';
@@ -9,7 +10,6 @@ import '../screens/skulmate_games_screen.dart';
 import '../screens/skulmate_progress_screen.dart';
 import '../screens/leaderboard_screen.dart';
 import 'skulmate_history_sheet.dart';
-import 'skulmate_surface_styles.dart';
 
 /// Gizmo-style top pills: History (left) · More menu (right).
 class SkulMateHomeTopBar extends StatelessWidget {
@@ -35,7 +35,7 @@ class SkulMateHomeTopBar extends StatelessWidget {
       child: Row(
         children: [
           _PillButton(
-            icon: Icons.history_rounded,
+            icon: PhosphorIcons.clockCounterClockwise,
             label: copy.history,
             onTap: () => SkulMateHistorySheet.show(
               context,
@@ -53,22 +53,26 @@ class SkulMateHomeTopBar extends StatelessWidget {
             ),
             onSelected: (value) => _onMenuSelected(context, value),
             itemBuilder: (context) => [
-              _menuItem(Icons.grid_view_rounded, copy.myGames, 'library'),
-              _menuItem(Icons.trending_up_rounded, copy.myProgressTitle, 'progress'),
+              _menuItem(PhosphorIcons.gridFour, copy.myGames, 'library'),
               _menuItem(
-                Icons.emoji_events_outlined,
+                PhosphorIcons.chartLineUp,
+                copy.myProgressTitle,
+                'progress',
+              ),
+              _menuItem(
+                PhosphorIcons.trophy,
                 copy.isFrench ? 'Classement' : 'Leaderboard',
                 'leaderboard',
               ),
-              _menuItem(Icons.people_outline, copy.friendsTitle, 'friends'),
+              _menuItem(PhosphorIcons.users, copy.friendsTitle, 'friends'),
               _menuItem(
-                Icons.sports_esports_outlined,
+                PhosphorIcons.gameController,
                 copy.challengesTitle,
                 'challenges',
               ),
             ],
             child: _PillButton(
-              icon: Icons.menu_rounded,
+              icon: PhosphorIcons.dotsThree,
               label: copy.more,
               onTap: null,
             ),
@@ -131,41 +135,35 @@ class _PillButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
 
-  const _PillButton({
-    required this.icon,
-    required this.label,
-    this.onTap,
-  });
+  const _PillButton({required this.icon, required this.label, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final child = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
-      decoration: SkulMateSurfaceStyles.chipCard(),
+    final child = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: AppTheme.textDark),
-          const SizedBox(width: 6),
+          Icon(icon, size: 20, color: AppTheme.primaryColor),
+          const SizedBox(width: 7),
           Text(
             label,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.primaryColor,
             ),
           ),
         ],
       ),
     );
 
-    if (onTap == null) return child;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(SkulMateSurfaceStyles.pillRadius),
+        borderRadius: BorderRadius.circular(16),
         child: child,
       ),
     );

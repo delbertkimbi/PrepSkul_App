@@ -6,11 +6,12 @@ class LearnerOnboardingCopy {
 
   String get welcomeKicker => isFrench ? 'TON TUTEUR' : 'YOUR TUTOR';
   String get welcomeTitle =>
-      isFrench ? 'Salut ! Moi c’est Mate.' : 'Hi there! I’m Mate.';
+      isFrench ? 'Salut, moi c’est Mate.' : 'Hi. I’m Mate.';
   String get welcomeNote => isFrench
-      ? 'On commence par ton école. Mate t’écoute à voix haute. Un tuteur humain, tu le trouves ou tu le demandes.'
-      : 'We start with your school. Mate listens out loud. A human tutor is someone you find or request.';
+      ? 'Je peux t’aider à comprendre tes cours. Tu cherches un tuteur ? Je peux t’aider à en trouver un.'
+      : 'I can help you understand your lessons. Need a tutor? I’ll help you find one.';
   String get welcomeCta => isFrench ? 'C’est parti !' : 'Let’s go';
+  String get tutorEntry => isFrench ? 'Je suis tuteur' : 'I’m a tutor';
 
   String get languageKicker => isFrench ? 'LANGUE' : 'LANGUAGE';
   String get languageTitle => isFrench
@@ -32,7 +33,8 @@ class LearnerOnboardingCopy {
       : 'Both accounts are students for me. Nobody is “watching”.';
 
   String get nameKicker => isFrench ? 'PRÉNOM' : 'NAME';
-  String get nameTitle => isFrench ? 'Comment je t’appelle ?' : 'What should I call you?';
+  String get nameTitle =>
+      isFrench ? 'Comment je t’appelle ?' : 'What should I call you?';
   String get nameHint => isFrench ? 'Ton prénom' : 'Your first name';
   String get next => isFrench ? 'Continuer' : 'Continue';
   String get skip => isFrench ? 'Passer' : 'Skip';
@@ -40,8 +42,8 @@ class LearnerOnboardingCopy {
 
   String get countryKicker => isFrench ? 'PAYS' : 'COUNTRY';
   String get countryTitle => isFrench
-      ? 'Où est ton école ?'
-      : 'Where is your school?';
+      ? 'Dans quel pays se trouve ton école ?'
+      : 'Where is your school located?';
   String get countryNote => isFrench
       ? 'Cameroun d’abord. On adapte le système scolaire, pas un modèle US.'
       : 'Cameroon first. We adapt the school system, not a US grade list.';
@@ -51,16 +53,15 @@ class LearnerOnboardingCopy {
 
   String get systemKicker => isFrench ? 'SYSTÈME' : 'SYSTEM';
   String get systemTitle => isFrench
-      ? 'Francophone ou anglophone ?'
-      : 'Francophone or anglophone?';
+      ? 'Ton école suit le système français ou anglais ?'
+      : 'Does your school follow the French or English system?';
   String get systemNote => isFrench
-      ? 'Ça change les classes et les examens. Ce n’est pas la même école.'
-      : 'This changes the classes and exams. It’s not the same school.';
+      ? 'Je m’en sers pour choisir les bonnes classes et matières.'
+      : 'I’ll use this to match your classes and subjects.';
 
   String get levelKicker => isFrench ? 'CLASSE' : 'CLASS';
-  String get levelTitle => isFrench
-      ? 'Tu es en quelle classe ?'
-      : 'What class are you in?';
+  String get levelTitle =>
+      isFrench ? 'Tu es en quelle classe ?' : 'What class are you in?';
 
   String get subjectKicker => isFrench ? 'MATIÈRE' : 'SUBJECT';
   String get subjectTitle => isFrench
@@ -68,17 +69,15 @@ class LearnerOnboardingCopy {
       : 'What do you need the most help with right now?';
 
   String get examKicker => isFrench ? 'EXAMEN' : 'EXAM';
-  String get examTitle => isFrench
-      ? 'Tu vises quel examen ?'
-      : 'Which exam are you aiming at?';
+  String get examTitle =>
+      isFrench ? 'Tu vises quel examen ?' : 'Which exam are you aiming at?';
   String get examNote => isFrench
       ? 'On s’en sert comme objectif, pas comme script.'
       : 'I treat it as a goal, not a script.';
 
   String get whenKicker => isFrench ? 'QUAND' : 'WHEN';
-  String get whenTitle => isFrench
-      ? 'C’est pour quand, cet examen ?'
-      : 'How soon is that exam?';
+  String get whenTitle =>
+      isFrench ? 'C’est pour quand, cet examen ?' : 'How soon is that exam?';
 
   String get channelKicker => isFrench ? 'VOIX' : 'VOICE';
   String get channelTitle => isFrench
@@ -89,9 +88,8 @@ class LearnerOnboardingCopy {
       : 'On a shared phone, type. At home, speak.';
 
   String get paceKicker => isFrench ? 'RYTHME' : 'PACE';
-  String get paceTitle => isFrench
-      ? 'Quel rythme te va ?'
-      : 'What teaching pace fits you?';
+  String get paceTitle =>
+      isFrench ? 'Quel rythme te va ?' : 'What teaching pace fits you?';
 
   String get feelKicker => isFrench ? 'JOUR J' : 'EXAM DAY';
   String get feelTitle => isFrench
@@ -119,7 +117,9 @@ class LearnerOnboardingCopy {
     if (name.trim().isEmpty) {
       return isFrench ? 'Essaie Super.' : 'Try Super.';
     }
-    return isFrench ? '${name.trim()}, essaie Super.' : '${name.trim()}, try Super.';
+    return isFrench
+        ? '${name.trim()}, essaie Super.'
+        : '${name.trim()}, try Super.';
   }
 
   String get payNote => isFrench

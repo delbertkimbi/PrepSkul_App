@@ -309,6 +309,8 @@ class NavigationService {
                 arguments: {'userRole': userRole},
               );
             } else {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('learner_onboarding_draft');
               final result = _getDashboardRoute(userRole);
               _analytics.trackRouteDetermined(
                 result.route,

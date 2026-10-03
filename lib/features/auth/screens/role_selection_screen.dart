@@ -10,6 +10,7 @@ import 'package:prepskul/core/services/profile_bootstrap_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -25,7 +26,20 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _redirectReturningUserIfNeeded();
+    _initializeRoleSelection();
+  }
+
+  Future<void> _initializeRoleSelection() async {
+    final draft = await LearnerOnboardingPersist.loadDraft();
+    if (!mounted) return;
+    if (draft != null && SupabaseService.isAuthenticated) {
+      safeSetState(() {
+        _selectedRole = draft.accountRole == 'parent' ? 'parent' : 'student';
+      });
+      await _handleContinue();
+      return;
+    }
+    await _redirectReturningUserIfNeeded();
   }
 
   /// Returning users can land here after an offline nav glitch — send them back.
@@ -227,14 +241,18 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         final navService = NavigationService();
         if (navService.isReady) {
           if (_selectedRole == 'tutor') {
+            await LearnerOnboardingPersist.clearDraft();
             await navService.navigateToRoute(
               '/tutor-onboarding-choice',
               replace: true,
             );
           } else {
+            final hasPreAuthAnswers =
+                await LearnerOnboardingPersist.loadDraft() != null;
+            if (!mounted) return;
             await navService.navigateToRoute(
-              '/survey-intro',
-              arguments: {'userType': _selectedRole},
+              hasPreAuthAnswers ? '/profile-setup' : '/survey-intro',
+              arguments: {'userRole': _selectedRole, 'userType': _selectedRole},
               replace: true,
             );
           }
@@ -263,7 +281,3 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     }
   }
 }
-
-
-
-

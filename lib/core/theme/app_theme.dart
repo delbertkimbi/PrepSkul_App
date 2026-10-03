@@ -4,6 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 class AppTheme {
   // Primary Colors - PrepSkul Deep Blue Palette
   static const Color primaryColor = Color(0xFF1B2C4F); // Deep Blue
+  static const Color mateBodyBlue = Color(0xFF1B6FCF);
+  static const Color mateBellyTeal = Color(0xFF3DB8C4);
+  static const Color mateAntennaYellow = Color(0xFFEAB308);
   static const Color primaryLight = Color(0xFF4A6FBF); // Lighter blue
   static const Color primaryDark = Color(0xFF0F1A2E); // Darker blue
 

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/skulmate/l10n/skulmate_copy.dart';
 import 'package:prepskul/features/skulmate/widgets/skulmate_import_action_grid.dart';
-import 'package:prepskul/features/skulmate/widgets/skulmate_surface_styles.dart';
 
 class SkulMateTutorComposer extends StatelessWidget {
   final TextEditingController controller;
@@ -13,6 +13,7 @@ class SkulMateTutorComposer extends StatelessWidget {
   final VoidCallback onMicTap;
   final bool busy;
   final bool recording;
+  final bool speaking;
   final String? childId;
   final bool attachOpen;
   final VoidCallback onToggleAttach;
@@ -27,6 +28,7 @@ class SkulMateTutorComposer extends StatelessWidget {
     required this.onMicTap,
     required this.busy,
     required this.recording,
+    required this.speaking,
     required this.attachOpen,
     required this.onToggleAttach,
     this.childId,
@@ -49,40 +51,44 @@ class SkulMateTutorComposer extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              GestureDetector(
-                onTap: onMicTap,
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: privacyMuted
-                        ? AppTheme.neutral300
-                        : recording
-                            ? AppTheme.skyBlue
-                            : AppTheme.primaryColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (privacyMuted
-                                ? AppTheme.neutral300
-                                : AppTheme.skyBlue)
-                            .withValues(alpha: 0.45),
-                        offset: const Offset(0, 4),
-                        blurRadius: privacyMuted ? 0 : 12,
+              Semantics(
+                button: true,
+                label: privacyMuted
+                    ? copy.tutorResumeListening
+                    : speaking
+                    ? copy.tutorInterruptMate
+                    : copy.tutorPauseListening,
+                child: Material(
+                  color: privacyMuted
+                      ? AppTheme.neutral300
+                      : recording
+                      ? AppTheme.skyBlue
+                      : AppTheme.primaryColor,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    onTap: onMicTap,
+                    customBorder: const CircleBorder(),
+                    child: SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: Icon(
+                        privacyMuted
+                            ? PhosphorIcons.microphoneSlash
+                            : PhosphorIcons.microphone,
+                        color: Colors.white,
                       ),
-                    ],
-                  ),
-                  child: Icon(
-                    privacyMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                    color: Colors.white,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Container(
-                  decoration: SkulMateSurfaceStyles.homeCard(radius: 22),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: AppTheme.neutral200),
+                  ),
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                   child: Row(
                     children: [
@@ -91,8 +97,8 @@ class SkulMateTutorComposer extends StatelessWidget {
                         onPressed: busy ? null : onToggleAttach,
                         icon: Icon(
                           attachOpen
-                              ? Icons.close_rounded
-                              : Icons.note_add_outlined,
+                              ? PhosphorIcons.x
+                              : PhosphorIcons.notePencil,
                           color: AppTheme.primaryColor,
                         ),
                       ),
@@ -129,7 +135,7 @@ class SkulMateTutorComposer extends StatelessWidget {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Icon(Icons.arrow_upward_rounded),
+                            : const Icon(PhosphorIcons.arrowUp),
                       ),
                     ],
                   ),

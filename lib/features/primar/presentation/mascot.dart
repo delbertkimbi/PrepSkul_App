@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import 'primar_theme.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
 
 /// Mate — the companion.
 ///
@@ -52,10 +52,10 @@ class Mate extends StatefulWidget {
     super.key,
     required this.mood,
     this.size = 96,
-    this.ink = PrimarTheme.navy,
-    this.body = PrimarTheme.blue,
-    this.belly = PrimarTheme.teal,
-    this.accent = PrimarTheme.yellow,
+    this.ink = AppTheme.primaryColor,
+    this.body = AppTheme.mateBodyBlue,
+    this.belly = AppTheme.mateBellyTeal,
+    this.accent = AppTheme.mateAntennaYellow,
     this.keepHopping = false,
     this.flip = false,
   });

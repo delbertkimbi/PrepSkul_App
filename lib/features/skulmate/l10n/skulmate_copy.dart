@@ -24,8 +24,91 @@ class SkulMateCopy {
   }
 
   String get heroQuestion => isFrench
-      ? 'Qu\'est-ce qu\'on révise aujourd\'hui ?'
-      : 'What shall we revise today?';
+      ? 'Qu’est-ce que tu veux comprendre ?'
+      : 'What would you like to figure out?';
+
+  String get tutorStartTitle =>
+      isFrench ? 'Qu’est-ce qui te bloque ?' : 'What feels tricky?';
+
+  String get tutorStartBody => isFrench
+      ? 'Pose une question, ajoute tes notes ou fais un petit exercice. Mate te guide pas à pas.'
+      : 'Ask a question, add your notes, or try a quick practice. Mate will guide you step by step.';
+
+  String get tutorContextTitle =>
+      isFrench ? 'Ton parcours guide Mate' : 'Your learning guides Mate';
+
+  String get tutorContextEmpty => isFrench
+      ? 'Ajoute ta classe et tes matières dans ton profil pour personnaliser les exemples.'
+      : 'Add your class and subjects to your profile so Mate can tailor examples.';
+
+  String get tutorContextReady => isFrench
+      ? 'Mate adapte ses exemples à ton parcours.'
+      : 'Mate uses this to adapt examples and practice.';
+
+  String get tutorStartChoices =>
+      isFrench ? 'On commence par quoi ?' : 'Choose a place to start';
+
+  String get tutorActionExplainTitle =>
+      isFrench ? 'Comprendre un sujet' : 'Understand a topic';
+
+  String get tutorActionExplainBody =>
+      isFrench ? 'Une explication simple, étape par étape' : 'A simple explanation, one step at a time';
+
+  String get tutorActionQuestionTitle =>
+      isFrench ? 'Résoudre une question' : 'Work through a question';
+
+  String get tutorActionQuestionBody =>
+      isFrench ? 'On avance ensemble, sans sauter d’étape' : 'Work it out together, without skipping steps';
+
+  String get tutorActionPracticeTitle =>
+      isFrench ? 'Faire un petit exercice' : 'Try a quick practice';
+
+  String get tutorActionPracticeBody =>
+      isFrench ? 'Vérifie ce que tu as retenu' : 'Check what you remember';
+
+  String get tutorActionMaterial =>
+      isFrench ? 'Ajouter mes notes ou une photo' : 'Add notes or a photo';
+
+  String get tutorStarterExplain =>
+      isFrench ? 'Comprendre un sujet' : 'Understand a topic';
+
+  String get tutorStarterHomework =>
+      isFrench ? 'Travailler une question' : 'Work through a question';
+
+  String get tutorStarterQuiz =>
+      isFrench ? 'M’entraîner' : 'Try a practice question';
+
+  String get tutorLearningTrack =>
+      isFrench ? 'Ton parcours' : 'Your learning track';
+
+  String get tutorExplainAnotherWay =>
+      isFrench ? 'Explique autrement' : 'Explain another way';
+
+  String get tutorCheckUnderstanding =>
+      isFrench ? 'Vérifier si j’ai compris' : 'Check my understanding';
+
+  String get tutorRetry => isFrench ? 'Réessayer' : 'Try again';
+
+  String get tutorPauseListening =>
+      isFrench ? 'Mettre le micro en pause' : 'Pause listening';
+
+  String get tutorResumeListening =>
+      isFrench ? 'Reprendre le micro' : 'Resume listening';
+
+  String get tutorInterruptMate =>
+      isFrench ? 'Interrompre Mate' : 'Interrupt Mate';
+
+  String get tutorConnectionError => isFrench
+      ? 'La connexion a coupé. Ta question est toujours là.'
+      : 'The connection paused. Your question is still here.';
+
+  String get tutorSessionError => isFrench
+      ? 'Je n’ai pas pu ouvrir cette séance. Réessaie.'
+      : 'I couldn’t open that lesson. Try again.';
+
+  String get tutorMaterialError => isFrench
+      ? 'Je n’ai pas pu lire ce document. Réessaie.'
+      : 'I couldn’t read that page. Try again.';
 
   String get tutorComposerHint => isFrench
       ? 'Parle. J’écoute déjà.'

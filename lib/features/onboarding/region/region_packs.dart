@@ -112,8 +112,8 @@ const _cmFrLevels = [
 const cameroonFrancophone = RegionSystem(
   id: 'cm-francophone',
   label: Bilingual(
-    en: 'Francophone (BEPC / Probatoire / Bac)',
-    fr: 'Francophone (BEPC / Probatoire / Bac)',
+    en: 'French education system',
+    fr: 'Système éducatif francophone',
   ),
   levels: _cmFrLevels,
   exams: [
@@ -129,8 +129,8 @@ const cameroonFrancophone = RegionSystem(
 const cameroonAnglophone = RegionSystem(
   id: 'cm-anglophone',
   label: Bilingual(
-    en: 'Anglophone (GCE O / A Level)',
-    fr: 'Anglophone (GCE O / A Level)',
+    en: 'English education system',
+    fr: 'Système éducatif anglophone',
   ),
   levels: [
     RegionLevel(id: 'class1', label: Bilingual(en: 'Class 1', fr: 'Class 1'), educationLevel: 'Primary School'),

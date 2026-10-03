@@ -13,13 +13,15 @@ class SkulMateTutorVoiceService {
 
   final SpeechToText _stt = SpeechToText();
   final TTSService _tts = TTSService();
-  final ValueNotifier<TutorVoiceState> state =
-      ValueNotifier<TutorVoiceState>(TutorVoiceState.idle);
+  final ValueNotifier<TutorVoiceState> state = ValueNotifier<TutorVoiceState>(
+    TutorVoiceState.idle,
+  );
 
   bool _sttReady = false;
   String _heard = '';
   bool voiceOut = true;
   bool _alwaysOn = false;
+  bool _speaking = false;
   bool privacyMute = false;
   void Function(String text)? _onUtterance;
   String _locale = 'en';
@@ -29,13 +31,13 @@ class SkulMateTutorVoiceService {
     try {
       _sttReady = await _stt.initialize(
         onError: (_) {
-          if (_alwaysOn && !privacyMute) {
+          if (_alwaysOn && !privacyMute && !_speaking) {
             Future<void>.delayed(const Duration(milliseconds: 400), _restart);
           }
         },
         onStatus: (status) {
           if (status == 'done' || status == 'notListening') {
-            if (_alwaysOn && !privacyMute) {
+            if (_alwaysOn && !privacyMute && !_speaking) {
               Future<void>.delayed(const Duration(milliseconds: 200), _restart);
             }
           }
@@ -59,16 +61,19 @@ class SkulMateTutorVoiceService {
   }
 
   Future<void> _restart() async {
-    if (!_alwaysOn || privacyMute || !_sttReady) return;
+    if (!_alwaysOn || privacyMute || !_sttReady || _speaking) return;
     if (_stt.isListening) return;
     _heard = '';
     state.value = TutorVoiceState.recording;
     try {
       await _stt.listen(
-        localeId: _locale.startsWith('fr') ? 'fr_FR' : 'en_NG',
-        pauseFor: const Duration(milliseconds: 1400),
-        listenFor: const Duration(minutes: 8),
-        partialResults: true,
+        listenOptions: SpeechListenOptions(
+          localeId: _locale.startsWith('fr') ? 'fr_FR' : 'en_NG',
+          pauseFor: const Duration(milliseconds: 1400),
+          listenFor: const Duration(minutes: 8),
+          partialResults: true,
+          listenMode: ListenMode.dictation,
+        ),
         onResult: (result) {
           _heard = result.recognizedWords;
           if (state.value == TutorVoiceState.speaking &&
@@ -120,15 +125,22 @@ class SkulMateTutorVoiceService {
   Future<void> speakTutor(String text, {bool keepListening = true}) async {
     if (!voiceOut) return;
     if (text.trim().isEmpty) return;
+    _speaking = true;
+    if (_stt.isListening) {
+      try {
+        await _stt.stop();
+      } catch (_) {}
+    }
     state.value = TutorVoiceState.speaking;
     try {
-      if (keepListening && _sttReady && !_stt.isListening && !privacyMute) {
-        await _restart();
-      }
+      await _tts.setLanguage(_locale.startsWith('fr') ? 'fr' : 'en');
       await _tts.speakAndWait(text);
     } finally {
-      if (state.value == TutorVoiceState.speaking) {
-        state.value = privacyMute ? TutorVoiceState.idle : TutorVoiceState.recording;
+      _speaking = false;
+      if (keepListening && _alwaysOn && _sttReady && !privacyMute) {
+        await _restart();
+      } else if (state.value == TutorVoiceState.speaking) {
+        state.value = TutorVoiceState.idle;
       }
     }
   }
@@ -136,7 +148,8 @@ class SkulMateTutorVoiceService {
   Future<void> interrupt() async {
     await _tts.stop();
     if (!privacyMute && _alwaysOn) {
-      state.value = TutorVoiceState.recording;
+      _speaking = false;
+      await _restart();
       return;
     }
     await stopListening();
