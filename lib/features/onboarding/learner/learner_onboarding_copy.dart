@@ -18,25 +18,30 @@ class LearnerOnboardingCopy {
       ? 'On se parle en quelle langue ?'
       : 'What language should I use with you?';
   String get languageNote => isFrench
-      ? 'Tu pourras changer plus tard. Je lis chaque question à voix haute.'
-      : 'You can switch later. I’ll read each question out loud.';
+      ? 'Tu pourras changer plus tard. Touche le haut-parleur pour entendre une question.'
+      : 'You can switch later. Tap the speaker to hear any question.';
 
   String get whoKicker => isFrench ? 'TOI' : 'YOU';
   String get whoTitle =>
       isFrench ? 'Qui apprend ici ?' : 'Who is learning here?';
   String get whoStudent => isFrench ? 'C’est moi l’élève' : 'I’m the student';
-  String get whoParent => isFrench
-      ? 'Je suis parent, et j’apprends aussi'
-      : 'I’m a parent, and I’m studying too';
+  String get whoParent =>
+      isFrench ? 'Je choisis pour mon enfant' : 'I’m choosing for my child';
   String get whoNote => isFrench
-      ? 'Les deux comptes sont des élèves pour moi. Personne ne “surveille”.'
-      : 'Both accounts are students for me. Nobody is “watching”.';
+      ? 'Je vais poser quelques questions sur l’élève pour adapter les leçons et trouver un tuteur.'
+      : 'I’ll ask a few things about the learner so lessons and tutor suggestions fit them.';
 
   String get nameKicker => isFrench ? 'PRÉNOM' : 'NAME';
   String get nameTitle =>
       isFrench ? 'Comment je t’appelle ?' : 'What should I call you?';
   String get nameHint => isFrench ? 'Ton prénom' : 'Your first name';
+  String meetTitle(String name) =>
+      isFrench ? 'Ravi de te rencontrer, $name.' : 'Nice to meet you, $name.';
+  String get meetNote => isFrench
+      ? 'Je vais utiliser tes réponses pour adapter la suite à tes besoins.'
+      : 'I’ll use your answers to make the next steps fit your needs.';
   String get next => isFrench ? 'Continuer' : 'Continue';
+  String get listen => isFrench ? 'Écouter' : 'Listen';
   String get skip => isFrench ? 'Passer' : 'Skip';
   String get back => isFrench ? 'Retour' : 'Back';
 
@@ -67,6 +72,18 @@ class LearnerOnboardingCopy {
   String get subjectTitle => isFrench
       ? 'De quoi tu as le plus besoin maintenant ?'
       : 'What do you need the most help with right now?';
+
+  String get goalTitle => isFrench
+      ? 'Qu’aimerais-tu réussir en premier ?'
+      : 'What would you like help with first?';
+  String get goalLessons => isFrench
+      ? 'Comprendre mes cours et devoirs'
+      : 'Understand lessons and homework';
+  String get goalCatchUp => isFrench
+      ? 'Rattraper ce que j’ai manqué'
+      : 'Catch up on something I missed';
+  String get goalExam =>
+      isFrench ? 'Me préparer à un examen' : 'Prepare for an exam';
 
   String get examKicker => isFrench ? 'EXAMEN' : 'EXAM';
   String get examTitle =>
@@ -105,12 +122,39 @@ class LearnerOnboardingCopy {
       : 'I’ll use these in examples. Pick as many as you like.';
 
   String get readyKicker => isFrench ? 'PRÊT' : 'READY';
-  String get readyTitle => isFrench
-      ? 'Je te coach à voix haute. Pour une personne, tu fais défiler les tuteurs ou tu en demandes un.'
-      : 'I tutor you out loud. For a person, scroll recommended tutors or request one.';
-  String get readyNote => isFrench
-      ? 'Plus de 100 matières. BEPC, Bac, GCE, et ce que tu m’apportes.'
-      : 'A hundred subjects. BEPC, Bac, GCE, and whatever you bring me.';
+  String get modeTitle => isFrench
+      ? 'Comment préfères-tu apprendre avec un tuteur ?'
+      : 'How would you prefer to learn with a tutor?';
+  String get modeOnline => isFrench ? 'En ligne' : 'Online';
+  String get modeInPerson => isFrench ? 'En personne' : 'In person';
+  String get modeFlexible =>
+      isFrench ? 'Les deux me conviennent' : 'I’m open to either';
+
+  String readyTitle(String name, String subject, String level) {
+    final learner = name.trim().isEmpty
+        ? (isFrench ? 'On' : 'Let’s')
+        : name.trim();
+    final detail = [
+      if (subject.isNotEmpty) subject,
+      if (level.isNotEmpty) level,
+    ].join(isFrench ? ' · ' : ' · ');
+    if (detail.isEmpty) {
+      return isFrench
+          ? '$learner, on avance à ton rythme.'
+          : '$learner, let’s learn at your pace.';
+    }
+    return isFrench
+        ? '$learner, on avance en $subject, niveau $level.'
+        : '$learner, let’s work on $subject at $level.';
+  }
+
+  String readyNote(bool examPrep) => isFrench
+      ? examPrep
+            ? 'Mate t’aidera à comprendre la matière et à te préparer à l’examen que tu as choisi. Tu peux aussi trouver un tuteur selon ta ville et ta préférence.'
+            : 'Mate t’aidera à comprendre tes cours. Tu peux aussi trouver un tuteur selon ta matière, ta classe et ta préférence.'
+      : examPrep
+      ? 'Mate can help you understand the subject and prepare for the exam you chose. You can also find a tutor based on your location and preference.'
+      : 'Mate can help with your lessons. You can also find a tutor based on your subject, class, and learning preference.';
   String get readyCta => isFrench ? 'Continuer' : 'Continue';
 
   String payTitle(String name) {
@@ -122,9 +166,13 @@ class LearnerOnboardingCopy {
         : '${name.trim()}, try Super.';
   }
 
-  String get payNote => isFrench
-      ? '7 jours offerts. Ensuite 2 500 XAF par mois.'
-      : '7 days free. Then 2,500 XAF a month.';
+  String payNote(String countryId) => countryId == 'cm'
+      ? isFrench
+            ? '7 jours offerts. Ensuite 2 500 XAF par mois.'
+            : '7 days free. Then 2,500 XAF a month.'
+      : isFrench
+      ? '7 jours offerts. Le prix local sera affiché avant tout abonnement.'
+      : '7 days free. Your local price is shown before you subscribe.';
   String get payCta => isFrench ? 'Essayer Super' : 'Try Super';
   String get paySkip => isFrench ? 'Pas maintenant' : 'Not now';
   List<String> get payBenefits => isFrench

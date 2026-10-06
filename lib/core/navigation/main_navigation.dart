@@ -86,7 +86,8 @@ class _MainNavigationState extends State<MainNavigation>
     WidgetsBinding.instance.addObserver(this);
     // Initialize with widget parameter first (available in initState)
     // Route arguments will be read in didChangeDependencies
-    _selectedIndex = widget.initialTab ?? 0;
+    _selectedIndex = widget.initialTab ??
+        (widget.userRole != 'tutor' && AppConfig.enableSkulMate ? 2 : 0);
     _stopGameMusicOnShellTab();
     if (widget.userRole == 'student' ||
         widget.userRole == 'learner' ||

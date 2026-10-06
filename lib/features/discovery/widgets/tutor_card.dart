@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/pricing_service.dart';
 import '../../../core/services/log_service.dart';
@@ -266,8 +265,7 @@ class TutorCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    // Subtle monthly estimate (not emphasized)
-                    _buildSubtleMonthlyEstimate(tutor),
+                    _buildSessionPrice(tutor),
                   ],
                 ),
               ],
@@ -320,41 +318,20 @@ class TutorCard extends StatelessWidget {
     );
   }
 
-  Widget _buildSubtleMonthlyEstimate(Map<String, dynamic> tutor) {
-    // Calculate monthly pricing but display it subtly
-    final name = tutor['full_name'] ?? 'Unknown';
+  Widget _buildSessionPrice(Map<String, dynamic> tutor) {
     final pricing = PricingService.calculateFromTutorData(tutor);
-    final monthlyAmount = pricing['perMonth'] as double;
-    final hasDiscount = pricing['hasDiscount'] as bool? ?? false;
-    
-    // DEBUG: Log pricing values (debug mode only)
-    LogService.debug('Tutor Card Pricing - Name: $name', {
-      'base_session_price': tutor['base_session_price'],
-      'admin_price_override': tutor['admin_price_override'],
-      'hourly_rate': tutor['hourly_rate'],
-      'per_session_rate': tutor['per_session_rate'],
-      'final_monthly_amount': monthlyAmount,
-      'formatted': PricingService.formatPrice(monthlyAmount),
-    });
-
-    // On cards, show only discount price if available
-    if (hasDiscount) {
-      return Text(
-        'From ${PricingService.formatPrice(monthlyAmount)}/mo',
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          color: AppTheme.primaryColor,
-          fontWeight: FontWeight.w700,
-        ),
-      );
-    }
+    final sessionAmount = pricing['perSession'] as double;
+    final duration = (tutor['session_duration_minutes'] ??
+            tutor['duration_minutes'] ??
+            60)
+        .toString();
 
     return Text(
-      'From ${PricingService.formatPrice(monthlyAmount)}/mo',
+      '${PricingService.formatPrice(sessionAmount)} / $duration min session',
       style: GoogleFonts.poppins(
         fontSize: 12,
-        color: Colors.grey[700],
-        fontWeight: FontWeight.w700, // Bold as requested
+        color: AppTheme.primaryColor,
+        fontWeight: FontWeight.w700,
       ),
     );
   }

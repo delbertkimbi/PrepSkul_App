@@ -12,13 +12,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Maps the tutor onboarding into the same profile rows booking still reads.
 class LearnerOnboardingPersist {
   static const _draftKey = 'learner_onboarding_draft';
+  static const _draftStepKey = 'learner_onboarding_draft_step';
 
   /// Keep a learner's answers on this device until they create an account.
-  static Future<void> saveDraft(LearnerOnboardingAnswers answers) async {
+  static Future<void> saveDraft(
+    LearnerOnboardingAnswers answers, {
+    int? step,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_draftKey, jsonEncode(answers.toJson()));
     await prefs.setString('preferred_language', answers.locale);
-    await markOnboardingComplete();
+    await prefs.setString('skulmate.voiceOut', answers.voiceOut ? 'on' : 'off');
+    if (step != null) await prefs.setInt(_draftStepKey, step);
+  }
+
+  static Future<int> loadDraftStep({int fallback = 0}) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_draftStepKey) ?? fallback;
   }
 
   static Future<void> markOnboardingComplete() async {
@@ -37,6 +47,7 @@ class LearnerOnboardingPersist {
     } catch (e) {
       LogService.warning('Could not restore learner onboarding draft: $e');
       await prefs.remove(_draftKey);
+      await prefs.remove(_draftStepKey);
       return null;
     }
   }
@@ -44,6 +55,7 @@ class LearnerOnboardingPersist {
   static Future<void> clearDraft() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_draftKey);
+    await prefs.remove(_draftStepKey);
   }
 
   static Map<String, dynamic> toSurveyMap(LearnerOnboardingAnswers a) {
@@ -65,39 +77,51 @@ class LearnerOnboardingPersist {
     for (final item in pack.cities) {
       if (item.id == a.cityId) city = item;
     }
+    final cityName = city?.id == 'other' || city == null
+        ? a.cityOther?.trim()
+        : city.label.t(a.locale);
     final locale = a.locale;
     final educationLevel = level?.educationLevel ?? 'Secondary School';
-    final examLabel =
-        exam == null || exam.id == 'none' ? null : exam.label.t(locale);
+    final examLabel = exam == null || exam.id == 'none'
+        ? null
+        : exam.label.t(locale);
     final examType = _examType(exam?.id, pack.id);
-    final goal = _goal(a.examWhenId, examLabel, locale);
+    final goals = _goal(a.learningGoalId, a.examWhenId, examLabel, locale);
+    final subjectName = subject?.id == 'other'
+        ? a.subjectOther?.trim()
+        : subject?.label.t(locale);
 
     return {
       'preferred_language': locale,
       'language_preference': locale,
-      'student_name': a.name,
-      'country': pack.id,
-      'city': city?.id,
-      'preferred_city': city?.label.t(locale),
-      'curriculum': system.id,
+      if (a.accountRole == 'parent') 'child_name': a.name,
+      'country_code': pack.countryCode,
+      'city': cityName,
       'school_system': system.id,
-      'student_grade': educationLevel,
       'education_level': educationLevel,
       'class_level': level?.label.t(locale) ?? a.levelId,
-      'exam': exam?.id,
       'exam_type': examType,
       'specific_exam': examLabel,
-      'target_exam': examLabel,
-      'exam_when': a.examWhenId,
-      'subjects': subject == null ? <String>[] : [subject.label.t(locale)],
-      'subject_preferences': subject == null ? <String>[] : [subject.id],
-      'learning_goals': goal == null ? <String>[] : [goal],
+      'subjects': subjectName == null || subjectName.isEmpty
+          ? <String>[]
+          : [subjectName],
+      'learning_path': a.learningGoalId == 'exam-prep'
+          ? 'Exam Preparation'
+          : 'Academic Tutoring',
+      'learning_goals': goals,
       'learning_style': a.paceId,
-      'learning_styles': [a.channelId, if (a.examFeelId != null) a.examFeelId],
-      'pace': a.paceId,
-      'channel': a.channelId,
-      'interests': a.interestIds,
-      'account_role': a.accountRole,
+      'learning_styles': [a.channelId],
+      'confidence_level': a.examFeelId,
+      'preferred_location': switch (a.tutorModeId) {
+        'in-person' => 'onsite',
+        'flexible' => 'online_or_onsite',
+        'online' => 'online',
+        _ => null,
+      },
+      // The relational columns above power current tutor matching. This
+      // versioned JSONB keeps every answer, including custom/region-specific
+      // values, available for future recommendations.
+      'onboarding_context': a.toJson(),
     };
   }
 
@@ -108,6 +132,7 @@ class LearnerOnboardingPersist {
     if (answers.superChoice != null) {
       await prefs.setString('skulmate.super', answers.superChoice!);
     }
+    await prefs.setString('skulmate.voiceOut', answers.voiceOut ? 'on' : 'off');
 
     final data = toSurveyMap(answers);
     try {
@@ -122,6 +147,7 @@ class LearnerOnboardingPersist {
       await prefs.setBool('survey_completed', true);
       await prefs.setBool('survey_intro_seen', true);
       await prefs.remove(_draftKey);
+      await prefs.remove(_draftStepKey);
       return true;
     } catch (e) {
       LogService.warning('Learner onboarding save deferred: $e');
@@ -130,7 +156,7 @@ class LearnerOnboardingPersist {
   }
 
   static String? _examType(String? examId, String countryId) {
-    if (examId == null || examId == 'none') return null;
+    if (examId == null || examId == 'none' || examId == 'unsure') return null;
     if (examId == 'sat' || examId == 'ap' || examId == 'ielts') {
       return 'International Exams';
     }
@@ -139,15 +165,32 @@ class LearnerOnboardingPersist {
     return 'Regional Exams';
   }
 
-  static String? _goal(String? whenId, String? examLabel, String locale) {
-    if (examLabel == null) {
-      return locale == 'fr' ? 'Comprendre vraiment' : 'Understand it for real';
+  static List<String> _goal(
+    String? goalId,
+    String? whenId,
+    String? examLabel,
+    String locale,
+  ) {
+    if (goalId == 'exam-prep') {
+      if (examLabel == null) {
+        return [locale == 'fr' ? 'Préparer un examen' : 'Prepare for an exam'];
+      }
+      return [
+        if (whenId == 'soon')
+          locale == 'fr' ? 'Préparer $examLabel' : 'Prepare for $examLabel'
+        else
+          locale == 'fr'
+              ? 'Progresser vers $examLabel'
+              : 'Build toward $examLabel',
+      ];
     }
-    if (whenId == 'soon') {
-      return locale == 'fr' ? 'Préparer $examLabel' : 'Prepare for $examLabel';
+    if (goalId == 'catch-up') {
+      return [locale == 'fr' ? 'Rattraper les leçons' : 'Catch up on lessons'];
     }
-    return locale == 'fr'
-        ? 'Progresser vers $examLabel'
-        : 'Build toward $examLabel';
+    return [
+      locale == 'fr'
+          ? 'Comprendre les leçons et les devoirs'
+          : 'Understand lessons and homework',
+    ];
   }
 }

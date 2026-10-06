@@ -11,7 +11,6 @@ import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
-import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/features/group_classes/screens/group_classes_discovery_screen.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
@@ -32,6 +31,35 @@ import 'package:prepskul/core/utils/debouncer.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
+
+String _prepSkulSubjectGlyph(String subject) {
+  final value = subject.toLowerCase();
+  if (value.contains('math')) return 'maths';
+  if (value.contains('french')) return 'french';
+  if (value.contains('english')) return 'english';
+  if (value.contains('computer') ||
+      value.contains('informatics') ||
+      value == 'ict') {
+    return 'cs';
+  }
+  if (value.contains('physics') ||
+      value.contains('chemistry') ||
+      value == 'pct') {
+    return 'pct';
+  }
+  if (value.contains('biology') ||
+      value.contains('life') ||
+      value.contains('earth') ||
+      value == 'svt') {
+    return 'svt';
+  }
+  if (value.contains('geography')) return 'geography';
+  if (value.contains('history')) return 'histgeo';
+  if (value.contains('philosophy')) return 'philo';
+  if (value.contains('literature')) return 'literature';
+  if (value.contains('economics')) return 'economics';
+  return 'english';
+}
 
 class FindTutorsScreen extends StatefulWidget {
   const FindTutorsScreen({Key? key}) : super(key: key);
@@ -87,8 +115,6 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   // Based on typical monthly pricing: 2-3 sessions/week × 4 weeks
   // Example: 3k/session × 2 sessions/week × 4 weeks = 24k/month
 
-
-
   // Get localized price ranges
   List<Map<String, dynamic>> _getPriceRanges(BuildContext context) {
     final t = AppLocalizations.of(context)!;
@@ -101,8 +127,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     ];
   }
 
-
-    // Get localized price ranges
+  // Get localized price ranges
 
   @override
   void initState() {
@@ -122,7 +147,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         );
       });
     });
-    
+
     // Listen to search text changes with debouncing
     _searchController.addListener(() {
       _searchDebouncer.run(() {
@@ -131,7 +156,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         }
       });
     });
-    
+
     // Listen to scroll for lazy loading
     _scrollController.addListener(_onScroll);
   }
@@ -149,9 +174,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   /// Handle scroll events for lazy loading
   void _onScroll() {
     // Load more tutors when user scrolls near the bottom
-    if (_scrollController.position.pixels > 
-        _scrollController.position.maxScrollExtent - 200 && 
-        !_isLoadingMore && 
+    if (_scrollController.position.pixels >
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore &&
         _hasMoreTutors &&
         !_isLoading &&
         !_isOffline) {
@@ -163,7 +188,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   Future<void> _initializeConnectivity() async {
     await _connectivity.initialize();
     _checkConnectivity();
-    
+
     // Listen to connectivity changes
     _connectivity.connectivityStream.listen((isOnline) {
       if (mounted) {
@@ -171,7 +196,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         safeSetState(() {
           _isOffline = !isOnline;
         });
-        
+
         // If came back online, reload tutors and clear offline state
         if (isOnline && wasOffline) {
           LogService.info('🌐 Connection restored - reloading tutors');
@@ -189,7 +214,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       safeSetState(() {
         _isOffline = !isOnline;
       });
-      
+
       // If we just came back online, reload data
       if (isOnline && wasOffline) {
         LogService.info('🌐 Connection detected - reloading tutors');
@@ -232,7 +257,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       if (surveyData != null && mounted) {
         // Get user's preferred subjects from survey
         final userSubjects = List<String>.from(surveyData['subjects'] ?? []);
-        
+
         // Get education level, system, and stream for dynamic subject loading
         final system = surveyData['system']?.toString() ?? 'anglophone';
         final stream = surveyData['stream']?.toString();
@@ -252,17 +277,17 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         // Combine user's subjects with available subjects
         // Priority: User's subjects first, then other available subjects, then default
         final Set<String> allSubjectsSet = {};
-        
+
         // Add user's preferred subjects first (these will be highlighted)
         for (var subject in userSubjects) {
           allSubjectsSet.add(subject);
         }
-        
+
         // Add available subjects based on education level/stream
         for (var subject in availableSubjects) {
           allSubjectsSet.add(subject);
         }
-        
+
         // If still empty or very few, add default subjects
         if (allSubjectsSet.length < 5) {
           for (var subject in _defaultSubjects) {
@@ -272,25 +297,27 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
         // Convert to list and sort: user's subjects first, then alphabetically
         final List<String> sortedSubjects = [];
-        
+
         // Add user's preferred subjects first
         for (var subject in userSubjects) {
-          if (allSubjectsSet.contains(subject) && !sortedSubjects.contains(subject)) {
+          if (allSubjectsSet.contains(subject) &&
+              !sortedSubjects.contains(subject)) {
             sortedSubjects.add(subject);
           }
         }
-        
+
         // Add other available subjects (alphabetically)
-        final otherSubjects = allSubjectsSet
-            .where((s) => !userSubjects.contains(s))
-            .toList()
-          ..sort();
+        final otherSubjects =
+            allSubjectsSet.where((s) => !userSubjects.contains(s)).toList()
+              ..sort();
         sortedSubjects.addAll(otherSubjects);
 
         if (mounted) {
           safeSetState(() {
             _userPreferredSubjects = userSubjects;
-            _subjects = sortedSubjects.isNotEmpty ? sortedSubjects : _defaultSubjects;
+            _subjects = sortedSubjects.isNotEmpty
+                ? sortedSubjects
+                : _defaultSubjects;
             _subjectsLoaded = true;
           });
         }
@@ -320,19 +347,29 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     final level = eduLevel.toLowerCase();
     if (level.contains('primary')) return 'primary';
     if (level.contains('secondary') || level.contains('high school')) {
-      if (level.contains('lower') || level.contains('form 1') || level.contains('form 2') || 
-          level.contains('form 3') || level.contains('grade 7') || level.contains('grade 8') || 
+      if (level.contains('lower') ||
+          level.contains('form 1') ||
+          level.contains('form 2') ||
+          level.contains('form 3') ||
+          level.contains('grade 7') ||
+          level.contains('grade 8') ||
           level.contains('grade 9')) {
         return 'lower_secondary';
       }
-      if (level.contains('upper') || level.contains('form 4') || level.contains('form 5') || 
-          level.contains('form 6') || level.contains('grade 10') || level.contains('grade 11') || 
+      if (level.contains('upper') ||
+          level.contains('form 4') ||
+          level.contains('form 5') ||
+          level.contains('form 6') ||
+          level.contains('grade 10') ||
+          level.contains('grade 11') ||
           level.contains('grade 12')) {
         return 'upper_secondary';
       }
       return 'upper_secondary'; // Default to upper secondary
     }
-    if (level.contains('university') || level.contains('college') || level.contains('undergraduate')) {
+    if (level.contains('university') ||
+        level.contains('college') ||
+        level.contains('undergraduate')) {
       return 'university';
     }
     return 'upper_secondary'; // Default fallback
@@ -353,11 +390,13 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           _isOffline = !isOnline;
         });
       }
-      
+
       // If offline, try cache first — but still attempt network if cache is empty
       // (connectivity checks can be wrong on web while Supabase still works).
       if (_isOffline) {
-        LogService.info('FindTutorsScreen: Offline signal — trying cache first...');
+        LogService.info(
+          'FindTutorsScreen: Offline signal — trying cache first...',
+        );
         final cachedTutors = await OfflineCacheService.getCachedTutors();
         if (cachedTutors != null && cachedTutors.isNotEmpty) {
           final currentUserData = await AuthService.getCurrentUser();
@@ -381,14 +420,18 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   : null;
             });
           }
-          LogService.success('FindTutorsScreen: Loaded ${cachedTutors.length} tutors from cache');
+          LogService.success(
+            'FindTutorsScreen: Loaded ${cachedTutors.length} tutors from cache',
+          );
           return;
         }
-        LogService.warning('FindTutorsScreen: Cache empty — attempting network fetch anyway');
+        LogService.warning(
+          'FindTutorsScreen: Cache empty — attempting network fetch anyway',
+        );
       }
-      
+
       LogService.debug('FindTutorsScreen: Starting to load tutors...');
-      
+
       // Get current user info
       final currentUserData = await AuthService.getCurrentUser();
       if (currentUserData == null) {
@@ -416,11 +459,11 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
       // Determine user type - only if we have a valid user ID
       final userId = currentUserData['id']?.toString();
-      final userType = userId != null && userId.isNotEmpty 
+      final userType = userId != null && userId.isNotEmpty
           ? await _getUserType(userId)
           : 'student'; // Default to student if no valid ID
       _userIdForSort = userId;
-      
+
       // Use matching algorithm if user has preferences
       try {
         final matchedTutors = await TutorMatchingService.matchTutorsForUser(
@@ -443,7 +486,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             _tutors = tutorList;
             _matchScores = {
               for (var mt in matchedTutors)
-                mt.tutor['id'] as String: mt.matchScore
+                mt.tutor['id'] as String: mt.matchScore,
             };
             _filteredTutors = _tutors;
             _isLoading = false;
@@ -451,7 +494,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             _hasMoreTutors = false; // Matching service returns all matches
             _cacheTimestamp = DateTime.now();
           });
-          LogService.success('FindTutorsScreen: Loaded ${matchedTutors.length} matched tutors');
+          LogService.success(
+            'FindTutorsScreen: Loaded ${matchedTutors.length} matched tutors',
+          );
         } else {
           // Fallback to regular loading if no matches
           final tutors = await TutorService.fetchTutors(
@@ -471,11 +516,15 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               _cacheTimestamp = DateTime.now();
             });
           }
-          LogService.warning('FindTutorsScreen: No matches found, using regular tutor list');
+          LogService.warning(
+            'FindTutorsScreen: No matches found, using regular tutor list',
+          );
         }
       } catch (e) {
         // Fallback to regular loading on error
-        LogService.warning('FindTutorsScreen: Matching error, using regular loading: $e');
+        LogService.warning(
+          'FindTutorsScreen: Matching error, using regular loading: $e',
+        );
         final tutors = await TutorService.fetchTutors(
           limit: _tutorsPerPage,
           offset: _currentOffset,
@@ -503,20 +552,26 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             _filteredTutors = ordered;
             _isLoading = false;
           });
-          LogService.info('FindTutorsScreen: Restored ${ordered.length} tutors from cache after empty fetch');
+          LogService.info(
+            'FindTutorsScreen: Restored ${ordered.length} tutors from cache after empty fetch',
+          );
         }
       }
     } catch (e, stackTrace) {
       LogService.error('FindTutorsScreen: Error loading tutors: $e');
       LogService.error('Error type: ${e.runtimeType}');
       LogService.error('Stack trace: $stackTrace');
-      
+
       // Log specific error details for null type errors
       if (e.toString().contains('null') || e.toString().contains('Null')) {
-        LogService.warning('Null type error detected - checking tutor data transformation');
-        LogService.warning('This may indicate a field is null when String is expected');
+        LogService.warning(
+          'Null type error detected - checking tutor data transformation',
+        );
+        LogService.warning(
+          'This may indicate a field is null when String is expected',
+        );
       }
-      
+
       if (mounted) {
         safeSetState(() => _isLoading = false);
         ErrorHandlerService.showErrorSnackbar(
@@ -545,10 +600,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       if (mounted && newTutors.isNotEmpty) {
         safeSetState(() {
           // Append and reorder to keep a stable, user-specific ordering
-          _tutors = _applyUserSpecificOrder(
-            [..._tutors, ...newTutors],
-            _userIdForSort,
-          );
+          _tutors = _applyUserSpecificOrder([
+            ..._tutors,
+            ...newTutors,
+          ], _userIdForSort);
           _filteredTutors = _tutors; // Re-apply filters if needed
           _currentOffset = _tutors.length;
           _hasMoreTutors = newTutors.length >= _tutorsPerPage;
@@ -574,28 +629,30 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     try {
       // Validate userId - must not be empty for UUID queries
       if (userId.isEmpty || userId.trim().isEmpty) {
-        LogService.warning('Empty userId provided to _getUserType, defaulting to student');
+        LogService.warning(
+          'Empty userId provided to _getUserType, defaulting to student',
+        );
         return 'student';
       }
-      
+
       // Check if user is a parent
       final parentProfile = await SupabaseService.client
           .from('parent_profiles')
           .select('user_id')
           .eq('user_id', userId)
           .maybeSingle();
-      
+
       if (parentProfile != null) return 'parent';
-      
+
       // Check if user is a student
       final learnerProfile = await SupabaseService.client
           .from('learner_profiles')
           .select('user_id')
           .eq('user_id', userId)
           .maybeSingle();
-      
+
       if (learnerProfile != null) return 'student';
-      
+
       return 'student'; // Default
     } catch (e) {
       LogService.warning('Error determining user type: $e');
@@ -610,12 +667,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       (r) => r['label'] == _selectedPriceRange,
       orElse: () => {'min': 0, 'max': 200000},
     );
-    return {
-      'minRate': range['min'] as int,
-      'maxRate': range['max'] as int,
-    };
+    return {'minRate': range['min'] as int, 'maxRate': range['max'] as int};
   }
-
 
   void _filterTutors() {
     safeSetState(() {
@@ -638,13 +691,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         }
 
         if (_selectedPriceRange != null) {
-          final priceRange = _getPriceRanges(context).firstWhere(
-            (range) => range['label'] == _selectedPriceRange,
-          );
+          final priceRange = _getPriceRanges(
+            context,
+          ).firstWhere((range) => range['label'] == _selectedPriceRange);
           // Calculate monthly price for this tutor
           final pricing = PricingService.calculateFromTutorData(tutor);
           final monthlyPrice = (pricing['perMonth'] ?? 0.0) as double;
-          if (monthlyPrice < priceRange['min'] || monthlyPrice > priceRange['max']) {
+          if (monthlyPrice < priceRange['min'] ||
+              monthlyPrice > priceRange['max']) {
             return false;
           }
         }
@@ -700,10 +754,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               ),
               onPressed: _isOffline
                   ? () => OfflineDialog.show(
-                        context,
-                        message:
-                            'Group classes require an internet connection. Please check your connection and try again.',
-                      )
+                      context,
+                      message:
+                          'Group classes require an internet connection. Please check your connection and try again.',
+                    )
                   : () {
                       Navigator.push(
                         context,
@@ -713,7 +767,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         ),
                       );
                     },
-              tooltip: _isOffline ? 'Group classes unavailable offline' : 'Group classes',
+              tooltip: _isOffline
+                  ? 'Group classes unavailable offline'
+                  : 'Group classes',
             ),
           IconButton(
             icon: Icon(
@@ -732,16 +788,19 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           ),
           IconButton(
             icon: Icon(
-              Icons.tune, 
+              Icons.tune,
               color: _isOffline ? Colors.grey[400] : Colors.black,
             ),
-            onPressed: _isOffline 
+            onPressed: _isOffline
                 ? () => OfflineDialog.show(
-                      context,
-                      message: 'Filters require an internet connection. Please check your connection and try again.',
-                    )
+                    context,
+                    message:
+                        'Filters require an internet connection. Please check your connection and try again.',
+                  )
                 : _showFilterBottomSheet,
-            tooltip: _isOffline ? 'Filters unavailable offline' : 'Filter tutors',
+            tooltip: _isOffline
+                ? 'Filters unavailable offline'
+                : 'Filter tutors',
           ),
         ],
       ),
@@ -751,15 +810,30 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           Container(
             padding: EdgeInsets.fromLTRB(
               ResponsiveHelper.responsiveHorizontalPadding(context),
-              ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12),
+              ResponsiveHelper.responsiveSpacing(
+                context,
+                mobile: 8,
+                tablet: 10,
+                desktop: 12,
+              ),
               ResponsiveHelper.responsiveHorizontalPadding(context),
-              ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
+              ResponsiveHelper.responsiveSpacing(
+                context,
+                mobile: 12,
+                tablet: 16,
+                desktop: 20,
+              ),
             ),
             child: Column(
               children: [
                 // Search Bar - Responsive
                 Container(
-                  height: ResponsiveHelper.responsiveSpacing(context, mobile: 46, tablet: 50, desktop: 54),
+                  height: ResponsiveHelper.responsiveSpacing(
+                    context,
+                    mobile: 46,
+                    tablet: 50,
+                    desktop: 54,
+                  ),
                   decoration: OnboardPalette.paperField,
                   child: TextField(
                     controller: _searchController,
@@ -772,33 +846,47 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         // Show offline dialog if user tries to search while offline
                         OfflineDialog.show(
                           context,
-                          message: 'Search requires an internet connection. Please check your connection and try again.',
+                          message:
+                              'Search requires an internet connection. Please check your connection and try again.',
                         );
                       }
                     },
                     style: GoogleFonts.poppins(
                       color: Colors.black,
-                      fontSize: ResponsiveHelper.responsiveBodySize(context) + 1,
+                      fontSize:
+                          ResponsiveHelper.responsiveBodySize(context) + 1,
                     ),
                     decoration: InputDecoration(
-                      hintText: Localizations.localeOf(context).languageCode == 'fr'
+                      hintText:
+                          Localizations.localeOf(context).languageCode == 'fr'
                           ? 'Nom ou matière'
                           : 'Name or subject',
                       hintStyle: GoogleFonts.poppins(
                         color: Colors.grey[500],
-                        fontSize: ResponsiveHelper.responsiveBodySize(context) + 1,
+                        fontSize:
+                            ResponsiveHelper.responsiveBodySize(context) + 1,
                       ),
                       prefixIcon: Icon(
                         Icons.search,
                         color: Colors.grey[600],
-                        size: ResponsiveHelper.responsiveIconSize(context, mobile: 20, tablet: 22, desktop: 24),
+                        size: ResponsiveHelper.responsiveIconSize(
+                          context,
+                          mobile: 20,
+                          tablet: 22,
+                          desktop: 24,
+                        ),
                       ),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: Icon(
                                 Icons.close,
                                 color: Colors.grey[600],
-                                size: ResponsiveHelper.responsiveIconSize(context, mobile: 18, tablet: 20, desktop: 22),
+                                size: ResponsiveHelper.responsiveIconSize(
+                                  context,
+                                  mobile: 18,
+                                  tablet: 20,
+                                  desktop: 22,
+                                ),
                               ),
                               onPressed: () {
                                 _searchController.clear();
@@ -809,8 +897,16 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           : null,
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.symmetric(
-                        horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
-                        vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16),
+                        horizontal:
+                            ResponsiveHelper.responsiveHorizontalPadding(
+                              context,
+                            ),
+                        vertical: ResponsiveHelper.responsiveSpacing(
+                          context,
+                          mobile: 12,
+                          tablet: 14,
+                          desktop: 16,
+                        ),
                       ),
                     ),
                   ),
@@ -821,7 +917,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     _selectedPriceRange != null ||
                     _minRating > 0)
                   Padding(
-                    padding: EdgeInsets.only(top: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
+                    padding: EdgeInsets.only(
+                      top: ResponsiveHelper.responsiveSpacing(
+                        context,
+                        mobile: 10,
+                        tablet: 12,
+                        desktop: 14,
+                      ),
+                    ),
                     child: Row(
                       children: [
                         Expanded(
@@ -835,14 +938,30 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                     _filterTutors();
                                   }),
                                 if (_selectedPriceRange != null) ...[
-                                  SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                                  SizedBox(
+                                    width: ResponsiveHelper.responsiveSpacing(
+                                      context,
+                                      mobile: 8,
+                                      tablet: 10,
+                                      desktop: 12,
+                                    ),
+                                  ),
                                   _buildFilterChip(_selectedPriceRange!, () {
-                                    safeSetState(() => _selectedPriceRange = null);
+                                    safeSetState(
+                                      () => _selectedPriceRange = null,
+                                    );
                                     _filterTutors();
                                   }),
                                 ],
                                 if (_minRating > 0) ...[
-                                  SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                                  SizedBox(
+                                    width: ResponsiveHelper.responsiveSpacing(
+                                      context,
+                                      mobile: 8,
+                                      tablet: 10,
+                                      desktop: 12,
+                                    ),
+                                  ),
                                   _buildFilterChip(
                                     '${_minRating.toInt()}+ ⭐',
                                     () {
@@ -862,7 +981,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             style: GoogleFonts.poppins(
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w600,
-                              fontSize: ResponsiveHelper.responsiveBodySize(context),
+                              fontSize: ResponsiveHelper.responsiveBodySize(
+                                context,
+                              ),
                             ),
                           ),
                         ),
@@ -871,20 +992,22 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   ),
               ],
             ),
-
-
-
           ),
 
           // Results Count and Cache Info - Responsive
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
-                vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+              vertical: ResponsiveHelper.responsiveSpacing(
+                context,
+                mobile: 6,
+                tablet: 8,
+                desktop: 10,
               ),
-              child: Row(
+            ),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+              children: [
                 if (_isFilterActive)
                   Text(
                     'Found ${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
@@ -894,11 +1017,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                       color: Colors.grey[700],
                     ),
                   ),
-                ],
-              ),
+              ],
             ),
-
-          
+          ),
 
           // Tutors List
           Expanded(
@@ -909,67 +1030,113 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 : _filteredTutors.isEmpty
                 ? _buildEmptyState()
                 : RefreshIndicator(
-                    onRefresh: _isOffline 
-                    ? () => OfflineDialog.show(
-                          context,
-                          message: 'Refresh requires an internet connection. Please check your connection and try again.',
-                        )
-                    : _loadTutors,
+                    onRefresh: _isOffline
+                        ? () => OfflineDialog.show(
+                            context,
+                            message:
+                                'Refresh requires an internet connection. Please check your connection and try again.',
+                          )
+                        : _loadTutors,
                     child: ResponsiveHelper.isMobile(context)
                         ? ListView.builder(
-                      controller: _scrollController,
+                            controller: _scrollController,
                             padding: EdgeInsets.fromLTRB(
-                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              ResponsiveHelper.responsiveHorizontalPadding(
+                                context,
+                              ),
                               0,
-                              ResponsiveHelper.responsiveHorizontalPadding(context),
-                              ResponsiveHelper.responsiveVerticalPadding(context),
+                              ResponsiveHelper.responsiveHorizontalPadding(
+                                context,
+                              ),
+                              ResponsiveHelper.responsiveVerticalPadding(
+                                context,
+                              ),
                             ),
-                      itemCount: _filteredTutors.length + (_isLoadingMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        // Show loading indicator at bottom when loading more
-                        if (_isLoadingMore && index == _filteredTutors.length) {
+                            itemCount:
+                                _filteredTutors.length +
+                                (_isLoadingMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              // Show loading indicator at bottom when loading more
+                              if (_isLoadingMore &&
+                                  index == _filteredTutors.length) {
                                 return Padding(
-                                  padding: EdgeInsets.symmetric(vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+                                  padding: EdgeInsets.symmetric(
+                                    vertical:
+                                        ResponsiveHelper.responsiveSpacing(
+                                          context,
+                                          mobile: 12,
+                                          tablet: 16,
+                                          desktop: 20,
+                                        ),
+                                  ),
                                   child: const Center(
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
-                        }
-                        
-                        if (index >= _filteredTutors.length) {
-                          return const SizedBox.shrink();
-                        }
-                        
-                        return _buildTutorCard(_filteredTutors[index]);
-                      },
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                              }
+
+                              if (index >= _filteredTutors.length) {
+                                return const SizedBox.shrink();
+                              }
+
+                              return _buildTutorCard(_filteredTutors[index]);
+                            },
                           )
                         : GridView.builder(
                             controller: _scrollController,
                             padding: EdgeInsets.fromLTRB(
-                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              ResponsiveHelper.responsiveHorizontalPadding(
+                                context,
+                              ),
                               0,
-                              ResponsiveHelper.responsiveHorizontalPadding(context),
-                              ResponsiveHelper.responsiveVerticalPadding(context),
+                              ResponsiveHelper.responsiveHorizontalPadding(
+                                context,
+                              ),
+                              ResponsiveHelper.responsiveVerticalPadding(
+                                context,
+                              ),
                             ),
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: ResponsiveHelper.responsiveGridColumns(context),
-                              crossAxisSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
-                              mainAxisSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
-                              childAspectRatio: ResponsiveHelper.isTablet(context) ? 0.75 : 0.7,
-                            ),
-                            itemCount: _filteredTutors.length + (_isLoadingMore ? 1 : 0),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount:
+                                      ResponsiveHelper.responsiveGridColumns(
+                                        context,
+                                      ),
+                                  crossAxisSpacing:
+                                      ResponsiveHelper.responsiveSpacing(
+                                        context,
+                                        mobile: 12,
+                                        tablet: 16,
+                                        desktop: 20,
+                                      ),
+                                  mainAxisSpacing:
+                                      ResponsiveHelper.responsiveSpacing(
+                                        context,
+                                        mobile: 12,
+                                        tablet: 16,
+                                        desktop: 20,
+                                      ),
+                                  childAspectRatio:
+                                      ResponsiveHelper.isTablet(context)
+                                      ? 0.75
+                                      : 0.7,
+                                ),
+                            itemCount:
+                                _filteredTutors.length +
+                                (_isLoadingMore ? 1 : 0),
                             itemBuilder: (context, index) {
                               // Show loading indicator at bottom when loading more
-                              if (_isLoadingMore && index == _filteredTutors.length) {
+                              if (_isLoadingMore &&
+                                  index == _filteredTutors.length) {
                                 return const Center(
                                   child: CircularProgressIndicator(),
                                 );
                               }
-                              
+
                               if (index >= _filteredTutors.length) {
                                 return const SizedBox.shrink();
                               }
-                              
+
                               return _buildTutorCard(_filteredTutors[index]);
                             },
                           ),
@@ -980,7 +1147,11 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
-  Widget _buildRatingIndicator(int rating, String label, {StateSetter? modalSetState}) {
+  Widget _buildRatingIndicator(
+    int rating,
+    String label, {
+    StateSetter? modalSetState,
+  }) {
     // Show as selected if this exact rating value is closest to current minRating
     // Round to nearest integer for selection
     final currentRating = _minRating.round();
@@ -1068,18 +1239,16 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     }
     final fullName = TutorDisplayNameUtils.resolve(tutor, profile);
     final displayName = TutorDisplayNameUtils.cardLabel(tutor, profile);
-    
+
     // Use pre-calculated values from tutor_service (no duplicate calculation)
     final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
-    
+
     // DEBUG: Log values being used (debug mode only)
-    LogService.debug('Find Tutors - Tutor: $fullName', {
-      'rating': rating,
-    });
+    LogService.debug('Find Tutors - Tutor: $fullName', {'rating': rating});
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
     final isVerified = tutor['is_verified'] == true;
-    
+
     // Remove "Hello!" from bio if it starts with it (for cards)
     String displayBio = bio;
     if (displayBio.toLowerCase().startsWith('hello!')) {
@@ -1090,9 +1259,24 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       }
     }
 
-    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
-    final avatarSize = ResponsiveHelper.responsiveSpacing(context, mobile: 58, tablet: 68, desktop: 78);
-    final cardMargin = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
+    final cardPadding = ResponsiveHelper.responsiveSpacing(
+      context,
+      mobile: 12,
+      tablet: 14,
+      desktop: 16,
+    );
+    final avatarSize = ResponsiveHelper.responsiveSpacing(
+      context,
+      mobile: 58,
+      tablet: 68,
+      desktop: 78,
+    );
+    final cardMargin = ResponsiveHelper.responsiveSpacing(
+      context,
+      mobile: 10,
+      tablet: 12,
+      desktop: 14,
+    );
 
     return Container(
       margin: EdgeInsets.only(bottom: cardMargin),
@@ -1104,9 +1288,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             child: InkWell(
               onTap: _isOffline
                   ? () => OfflineDialog.show(
-                        context,
-                        message: 'Viewing tutor details requires an internet connection. Please check your connection and try again.',
-                      )
+                      context,
+                      message:
+                          'Viewing tutor details requires an internet connection. Please check your connection and try again.',
+                    )
                   : () {
                       Navigator.push(
                         context,
@@ -1132,7 +1317,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             height: avatarSize,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: AppTheme.primaryColor.withOpacity(0.1), // Background for fallback
+                              color: AppTheme.primaryColor.withOpacity(
+                                0.1,
+                              ), // Background for fallback
                               border: Border.all(
                                 color: AppTheme.primaryColor.withOpacity(0.3),
                                 width: 2,
@@ -1147,13 +1334,21 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             ),
                             child: ClipOval(
                               child: _buildAvatarImage(
-                                tutor['avatar_url'] ?? tutor['profile_photo_url'],
+                                tutor['avatar_url'] ??
+                                    tutor['profile_photo_url'],
                                 displayName,
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
+                        SizedBox(
+                          width: ResponsiveHelper.responsiveSpacing(
+                            context,
+                            mobile: 10,
+                            tablet: 12,
+                            desktop: 14,
+                          ),
+                        ),
                         // Info - Responsive
                         Expanded(
                           child: Column(
@@ -1162,24 +1357,49 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               Text(
                                 displayName,
                                 style: GoogleFonts.poppins(
-                                  fontSize: ResponsiveHelper.responsiveSubheadingSize(context) - 2,
+                                  fontSize:
+                                      ResponsiveHelper.responsiveSubheadingSize(
+                                        context,
+                                      ) -
+                                      2,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.black,
                                 ),
                               ),
-                              SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 2 : 4),
+                              SizedBox(
+                                height: ResponsiveHelper.isSmallHeight(context)
+                                    ? 2
+                                    : 4,
+                              ),
                               Row(
                                 children: [
                                   Icon(
                                     Icons.star,
-                                    size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18),
+                                    size: ResponsiveHelper.responsiveIconSize(
+                                      context,
+                                      mobile: 14,
+                                      tablet: 16,
+                                      desktop: 18,
+                                    ),
                                     color: Colors.amber[700],
                                   ),
-                                  SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 5, desktop: 6)),
+                                  SizedBox(
+                                    width: ResponsiveHelper.responsiveSpacing(
+                                      context,
+                                      mobile: 4,
+                                      tablet: 5,
+                                      desktop: 6,
+                                    ),
+                                  ),
                                   Text(
-                                    rating > 0 ? rating.toStringAsFixed(1) : 'N/A',
+                                    rating > 0
+                                        ? rating.toStringAsFixed(1)
+                                        : 'N/A',
                                     style: GoogleFonts.poppins(
-                                      fontSize: ResponsiveHelper.responsiveBodySize(context),
+                                      fontSize:
+                                          ResponsiveHelper.responsiveBodySize(
+                                            context,
+                                          ),
                                       fontWeight: FontWeight.w600,
                                       color: Colors.black,
                                     ),
@@ -1191,51 +1411,111 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                    SizedBox(
+                      height: ResponsiveHelper.responsiveSpacing(
+                        context,
+                        mobile: 8,
+                        tablet: 10,
+                        desktop: 12,
+                      ),
+                    ),
                     // Subjects - Responsive
                     Wrap(
-                      spacing: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8),
-                      runSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8),
+                      spacing: ResponsiveHelper.responsiveSpacing(
+                        context,
+                        mobile: 4,
+                        tablet: 6,
+                        desktop: 8,
+                      ),
+                      runSpacing: ResponsiveHelper.responsiveSpacing(
+                        context,
+                        mobile: 4,
+                        tablet: 6,
+                        desktop: 8,
+                      ),
                       children:
                           (tutor['subjects'] as List?)
                               ?.take(3)
                               .map(
                                 (subject) => Container(
                                   padding: EdgeInsets.symmetric(
-                                    horizontal: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12),
-                                    vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 3, tablet: 4, desktop: 5),
+                                    horizontal:
+                                        ResponsiveHelper.responsiveSpacing(
+                                          context,
+                                          mobile: 8,
+                                          tablet: 10,
+                                          desktop: 12,
+                                        ),
+                                    vertical:
+                                        ResponsiveHelper.responsiveSpacing(
+                                          context,
+                                          mobile: 3,
+                                          tablet: 4,
+                                          desktop: 5,
+                                        ),
                                   ),
                                   decoration: BoxDecoration(
                                     color: Colors.grey[100],
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: Text(
-                                    subject.toString(),
-                                    style: GoogleFonts.poppins(
-                                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.grey[700],
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      OnboardGlyph(
+                                        seed: _prepSkulSubjectGlyph(
+                                          subject.toString(),
+                                        ),
+                                        size: 22,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        subject.toString(),
+                                        style: GoogleFonts.poppins(
+                                          fontSize:
+                                              ResponsiveHelper.responsiveBodySize(
+                                                context,
+                                              ) -
+                                              2,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.grey[700],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               )
                               .toList() ??
                           [],
                     ),
-                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
-                    // Bio (personal statement, with "Hello!" removed for cards) - Responsive
-                    if (displayBio.isNotEmpty)
-                    Text(
-                        displayBio,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                        fontSize: ResponsiveHelper.responsiveBodySize(context) - 3,
-                        color: Colors.grey[600],
-                        height: 1.5,
+                    SizedBox(
+                      height: ResponsiveHelper.responsiveSpacing(
+                        context,
+                        mobile: 8,
+                        tablet: 10,
+                        desktop: 12,
                       ),
                     ),
-                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                    // Bio (personal statement, with "Hello!" removed for cards) - Responsive
+                    if (displayBio.isNotEmpty)
+                      Text(
+                        displayBio,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize:
+                              ResponsiveHelper.responsiveBodySize(context) - 3,
+                          color: Colors.grey[600],
+                          height: 1.5,
+                        ),
+                      ),
+                    SizedBox(
+                      height: ResponsiveHelper.responsiveSpacing(
+                        context,
+                        mobile: 8,
+                        tablet: 10,
+                        desktop: 12,
+                      ),
+                    ),
                     // Bottom Info Row - Focus on value, not pricing - Responsive
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1245,22 +1525,43 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           children: [
                             Icon(
                               Icons.school_outlined,
-                              size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18),
+                              size: ResponsiveHelper.responsiveIconSize(
+                                context,
+                                mobile: 14,
+                                tablet: 16,
+                                desktop: 18,
+                              ),
                               color: Colors.grey[600],
                             ),
-                            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 5, desktop: 6)),
+                            SizedBox(
+                              width: ResponsiveHelper.responsiveSpacing(
+                                context,
+                                mobile: 4,
+                                tablet: 5,
+                                desktop: 6,
+                              ),
+                            ),
                             Text(
                               '$completedSessions',
                               style: GoogleFonts.poppins(
-                                fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
+                                fontSize:
+                                    ResponsiveHelper.responsiveBodySize(
+                                      context,
+                                    ) -
+                                    2,
                                 color: Colors.grey[700],
-                                fontWeight: FontWeight.w700, // Bold as requested
+                                fontWeight:
+                                    FontWeight.w700, // Bold as requested
                               ),
                             ),
                             Text(
                               ' lessons',
                               style: GoogleFonts.poppins(
-                                fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
+                                fontSize:
+                                    ResponsiveHelper.responsiveBodySize(
+                                      context,
+                                    ) -
+                                    2,
                                 color: Colors.grey[600],
                                 fontWeight: FontWeight.w500,
                               ),
@@ -1296,7 +1597,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 ),
                 child: Icon(
                   PhosphorIcons.checkFill,
-                  size: ResponsiveHelper.responsiveIconSize(context, mobile: 12, tablet: 14, desktop: 16),
+                  size: ResponsiveHelper.responsiveIconSize(
+                    context,
+                    mobile: 12,
+                    tablet: 14,
+                    desktop: 16,
+                  ),
                   color: Colors.white,
                 ),
               ),
@@ -1305,7 +1611,6 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       ),
     );
   }
-
 
   Color _getMatchScoreColor(double percentage) {
     if (percentage >= 80) return Colors.green;
@@ -1354,7 +1659,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       ),
     );
   }
-  
+
   void _applySorting() {
     safeSetState(() {
       _filteredTutors.sort((a, b) {
@@ -1381,7 +1686,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   int _stableHash(String input) {
-    return input.codeUnits.fold(0, (hash, code) => (hash * 31 + code) & 0x7fffffff);
+    return input.codeUnits.fold(
+      0,
+      (hash, code) => (hash * 31 + code) & 0x7fffffff,
+    );
   }
 
   List<Map<String, dynamic>> _applyUserSpecificOrder(
@@ -1405,7 +1713,6 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
     return ordered;
   }
-
 
   Widget _buildSubtleMonthlyEstimate(Map<String, dynamic> tutor) {
     // Calculate monthly pricing but display it subtly
@@ -1486,21 +1793,21 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 OnboardPrimaryButton(
                   label: 'Request a person',
                   onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => RequestTutorFlowScreen(
-                            prefillData: {
-                              'subjects': _selectedSubject != null
-                                  ? [_selectedSubject]
-                                  : [],
-                              'teaching_mode': null,
-                              'location': null,
-                            },
-                          ),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => RequestTutorFlowScreen(
+                          prefillData: {
+                            'subjects': _selectedSubject != null
+                                ? [_selectedSubject]
+                                : [],
+                            'teaching_mode': null,
+                            'location': null,
+                          },
                         ),
-                      );
-                    },
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -1514,7 +1821,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   String _getCacheAgeText(DateTime cacheTime) {
     final now = DateTime.now();
     final difference = now.difference(cacheTime);
-    
+
     if (difference.inMinutes < 1) {
       return 'Just now';
     } else if (difference.inMinutes < 60) {
@@ -1540,18 +1847,21 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         'data': {'isOffline': _isOffline},
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       };
-      File('/Users/user/Desktop/PrepSkul/.cursor/debug.log').writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
+      File(
+        '/Users/user/Desktop/PrepSkul/.cursor/debug.log',
+      ).writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
     } catch (_) {}
     // #endregion
-    
+
     if (_isOffline) {
       OfflineDialog.show(
         context,
-        message: 'Filters require an internet connection. Please check your connection and try again.',
+        message:
+            'Filters require an internet connection. Please check your connection and try again.',
       );
       return;
     }
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1559,346 +1869,407 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setModalState) {
           return Container(
-        height: MediaQuery.of(context).size.height * 0.75,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-          ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
+            height: MediaQuery.of(context).size.height * 0.75,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Filters',
-                    style: GoogleFonts.poppins(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black,
-                    ),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      _clearFilters();
-                      Navigator.pop(context);
-                    },
-                    child: Text(
-                      'Clear all',
-                      style: GoogleFonts.poppins(
-                        color: AppTheme.primaryColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Divider(color: Colors.grey[200]),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                  children: [
-                    Text(
-                      'Subject',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filters',
+                        style: GoogleFonts.poppins(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
                         ),
-                        if (_userPreferredSubjects.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            '(⭐ = Your preferences)',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.grey[600],
-                              fontStyle: FontStyle.italic,
-                            ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          _clearFilters();
+                          Navigator.pop(context);
+                        },
+                        child: Text(
+                          'Clear all',
+                          style: GoogleFonts.poppins(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Show loading indicator if subjects haven't loaded yet
-                    _subjectsLoaded
-                        ? Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _subjects.map((subject) {
-                        final isSelected = _selectedSubject == subject;
-                              final isUserPreferred = _userPreferredSubjects.contains(subject);
-                        return GestureDetector(
-                          onTap: () {
-                            safeSetState(() {
-                              _selectedSubject = isSelected ? null : subject;
-                            });
-                            // Update modal state to reflect the change
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              setModalState(() {});
-                            });
-                            _filterTutors(); // Apply filter when subject changes
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(color: Colors.grey[200]),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Subject',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black,
+                              ),
                             ),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? AppTheme.primaryColor
-                                        : isUserPreferred
-                                            ? AppTheme.primaryColor.withOpacity(0.1)
-                                  : Colors.grey[100],
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isSelected
-                                    ? AppTheme.primaryColor
-                                          : isUserPreferred
-                                              ? AppTheme.primaryColor.withOpacity(0.5)
-                                    : Colors.grey[300]!,
-                                      width: isUserPreferred && !isSelected ? 2 : 1,
+                            if (_userPreferredSubjects.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                '(⭐ = Your preferences)',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Show loading indicator if subjects haven't loaded yet
+                        _subjectsLoaded
+                            ? Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _subjects.map((subject) {
+                                  final isSelected =
+                                      _selectedSubject == subject;
+                                  final isUserPreferred = _userPreferredSubjects
+                                      .contains(subject);
+                                  return GestureDetector(
+                                    onTap: () {
+                                      safeSetState(() {
+                                        _selectedSubject = isSelected
+                                            ? null
+                                            : subject;
+                                      });
+                                      // Update modal state to reflect the change
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                            setModalState(() {});
+                                          });
+                                      _filterTutors(); // Apply filter when subject changes
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? AppTheme.primaryColor
+                                            : isUserPreferred
+                                            ? AppTheme.primaryColor.withOpacity(
+                                                0.1,
+                                              )
+                                            : Colors.grey[100],
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? AppTheme.primaryColor
+                                              : isUserPreferred
+                                              ? AppTheme.primaryColor
+                                                    .withOpacity(0.5)
+                                              : Colors.grey[300]!,
+                                          width: isUserPreferred && !isSelected
+                                              ? 2
+                                              : 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          OnboardGlyph(
+                                            seed: _prepSkulSubjectGlyph(
+                                              subject,
+                                            ),
+                                            size: 26,
+                                            selected: isSelected,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          if (isUserPreferred &&
+                                              !isSelected) ...[
+                                            Icon(
+                                              Icons.star,
+                                              size: 14,
+                                              color: AppTheme.primaryColor,
+                                            ),
+                                            const SizedBox(width: 4),
+                                          ],
+                                          Text(
+                                            subject,
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 14,
+                                              fontWeight: isUserPreferred
+                                                  ? FontWeight.w600
+                                                  : FontWeight.w500,
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : isUserPreferred
+                                                  ? AppTheme.primaryColor
+                                                  : Colors.grey[700],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              )
+                            : const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(20.0),
+                                  child: CircularProgressIndicator(),
+                                ),
+                              ),
+                        const SizedBox(height: 24),
+                        Text(
+                          AppLocalizations.of(context)!.filterMonthlyPriceRange,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _getPriceRanges(context).map((range) {
+                            final label = range['label'] as String;
+                            final isSelected = _selectedPriceRange == label;
+                            return GestureDetector(
+                              onTap: () {
+                                safeSetState(() {
+                                  _selectedPriceRange = isSelected
+                                      ? null
+                                      : label;
+                                });
+                                // Update modal state to reflect the change
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
+                                  setModalState(() {});
+                                });
+                                _filterTutors(); // Apply filter when price range changes
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? AppTheme.primaryColor
+                                      : Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? AppTheme.primaryColor
+                                        : Colors.grey[300]!,
+                                  ),
+                                ),
+                                child: Text(
+                                  label,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          AppLocalizations.of(context)!.filterMinimumRating,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Slider(
+                                      value: _minRating,
+                                      min: 0,
+                                      max: 5,
+                                      divisions: 5,
+                                      label: _minRating == 0
+                                          ? AppLocalizations.of(
+                                              context,
+                                            )!.filterAny
+                                          : '${_minRating.toStringAsFixed(1)} ⭐',
+                                      activeColor: AppTheme.primaryColor,
+                                      inactiveColor: Colors.grey[300],
+                                      onChanged: (value) {
+                                        // Update parent state first
+                                        safeSetState(() {
+                                          // Round to nearest integer for proper snapping
+                                          _minRating = value.round().toDouble();
+                                        });
+                                        // Then update modal state to reflect the change
+                                        // Schedule modal state update after current frame to ensure parent state is committed
+                                        WidgetsBinding.instance
+                                            .addPostFrameCallback((_) {
+                                              setModalState(() {});
+                                            });
+                                        _filterTutors(); // Apply filter when rating changes
+                                      },
                                     ),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (isUserPreferred && !isSelected) ...[
-                                        Icon(
-                                          Icons.star,
-                                          size: 14,
-                                          color: AppTheme.primaryColor,
-                                        ),
-                                        const SizedBox(width: 4),
-                                      ],
-                                      Text(
-                              subject,
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                          fontWeight: isUserPreferred
-                                              ? FontWeight.w600
-                                              : FontWeight.w500,
-                                color: isSelected
-                                    ? Colors.white
-                                              : isUserPreferred
-                                                  ? AppTheme.primaryColor
-                                    : Colors.grey[700],
-                              ),
-                                      ),
-                                    ],
+                                ),
+                                const SizedBox(width: 12),
+                                Container(
+                                  width: 60,
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    _minRating == 0
+                                        ? AppLocalizations.of(
+                                            context,
+                                          )!.filterAny
+                                        : '${_minRating.toStringAsFixed(1)}+',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        );
-                      }).toList(),
-                          )
-                        : const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(20.0),
-                              child: CircularProgressIndicator(),
+                            const SizedBox(height: 8),
+                            // Rating value indicators
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _buildRatingIndicator(
+                                  0,
+                                  AppLocalizations.of(context)!.filterAny,
+                                  modalSetState: setModalState,
+                                ),
+                                _buildRatingIndicator(
+                                  1,
+                                  '1',
+                                  modalSetState: setModalState,
+                                ),
+                                _buildRatingIndicator(
+                                  2,
+                                  '2',
+                                  modalSetState: setModalState,
+                                ),
+                                _buildRatingIndicator(
+                                  3,
+                                  '3',
+                                  modalSetState: setModalState,
+                                ),
+                                _buildRatingIndicator(
+                                  4,
+                                  '4',
+                                  modalSetState: setModalState,
+                                ),
+                                _buildRatingIndicator(
+                                  5,
+                                  '5',
+                                  modalSetState: setModalState,
+                                ),
+                              ],
                             ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      AppLocalizations.of(context)!.filterMonthlyPriceRange,
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _getPriceRanges(context).map((range) {
-                        final label = range['label'] as String;
-                        final isSelected = _selectedPriceRange == label;
-                        return GestureDetector(
-                          onTap: () {
-                            safeSetState(() {
-                              _selectedPriceRange = isSelected ? null : label;
-                            });
-                            // Update modal state to reflect the change
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              setModalState(() {});
-                            });
-                            _filterTutors(); // Apply filter when price range changes
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? AppTheme.primaryColor
-                                  : Colors.grey[100],
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isSelected
-                                    ? AppTheme.primaryColor
-                                    : Colors.grey[300]!,
-                              ),
-                            ),
-                            child: Text(
-                              label,
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: isSelected
-                                    ? Colors.white
-                                    : Colors.grey[700],
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      AppLocalizations.of(context)!.filterMinimumRating,
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Column(
-                      children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            child: Slider(
-                            value: _minRating,
-                            min: 0,
-                            max: 5,
-                            divisions: 5,
-                                label: _minRating == 0 ? AppLocalizations.of(context)!.filterAny : '${_minRating.toStringAsFixed(1)} ⭐',
-                            activeColor: AppTheme.primaryColor,
-                                inactiveColor: Colors.grey[300],
-                            onChanged: (value) {
-                              // Update parent state first
-                              safeSetState(() {
-                                // Round to nearest integer for proper snapping
-                                _minRating = value.round().toDouble();
-                              });
-                              // Then update modal state to reflect the change
-                              // Schedule modal state update after current frame to ensure parent state is committed
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                setModalState(() {});
-                              });
-                              _filterTutors(); // Apply filter when rating changes
-                            },
-                          ),
-                        ),
-                          ),
-                        const SizedBox(width: 12),
-                        Container(
-                          width: 60,
-                          alignment: Alignment.center,
-                          child: Text(
-                                _minRating == 0 ? AppLocalizations.of(context)!.filterAny : '${_minRating.toStringAsFixed(1)}+',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primaryColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                        const SizedBox(height: 8),
-                        // Rating value indicators
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _buildRatingIndicator(0, AppLocalizations.of(context)!.filterAny, modalSetState: setModalState),
-                            _buildRatingIndicator(1, '1', modalSetState: setModalState),
-                            _buildRatingIndicator(2, '2', modalSetState: setModalState),
-                            _buildRatingIndicator(3, '3', modalSetState: setModalState),
-                            _buildRatingIndicator(4, '4', modalSetState: setModalState),
-                            _buildRatingIndicator(5, '5', modalSetState: setModalState),
                           ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: ElevatedButton(
-                  onPressed: () {
-                    _filterTutors();
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Apply Filters',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
                 ),
-              ),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, -5),
+                      ),
+                    ],
+                  ),
+                  child: SafeArea(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        _filterTutors();
+                        Navigator.pop(context);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Apply Filters',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      );
+          );
         },
       ),
     );
   }
 
-  Widget _buildAvatarImage(String? avatarUrl, String name, {bool isLarge = false}) {
+  Widget _buildAvatarImage(
+    String? avatarUrl,
+    String name, {
+    bool isLarge = false,
+  }) {
     // Check if avatarUrl is a network URL or asset path
-    final isNetworkUrl = avatarUrl != null &&
+    final isNetworkUrl =
+        avatarUrl != null &&
         (avatarUrl.startsWith('http://') ||
             avatarUrl.startsWith('https://') ||
             avatarUrl.startsWith('//'));
-    
+
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       if (isNetworkUrl) {
         // Use CachedNetworkImage for URLs from Supabase storage
@@ -1927,13 +2298,18 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               ),
             );
           },
-          placeholder: (context, url) => _buildAvatarPlaceholder(name, isLarge: isLarge), // Show letter immediately instead of loading indicator
+          placeholder: (context, url) => _buildAvatarPlaceholder(
+            name,
+            isLarge: isLarge,
+          ), // Show letter immediately instead of loading indicator
           errorWidget: (context, url, error) {
             // Log error for debugging (but don't crash on cache errors)
-            if (error.toString().contains('readonly database') || 
+            if (error.toString().contains('readonly database') ||
                 error.toString().contains('DatabaseException')) {
               // Cache permission issue - try direct network load as fallback
-              LogService.debug('Cache database permission issue, falling back to network image');
+              LogService.debug(
+                'Cache database permission issue, falling back to network image',
+              );
               return Image.network(
                 url,
                 fit: isLarge ? BoxFit.contain : BoxFit.cover,
@@ -1949,7 +2325,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 },
               );
             }
-            LogService.warning('Failed to load avatar image: $url, error: $error');
+            LogService.warning(
+              'Failed to load avatar image: $url, error: $error',
+            );
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
         );
@@ -1964,7 +2342,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         );
       }
     }
-    
+
     // Fallback to placeholder
     return _buildAvatarPlaceholder(name, isLarge: isLarge);
   }
@@ -2002,7 +2380,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         ),
       );
     }
-    
+
     // For card avatars - ensure it fills the circular container
     return Container(
       width: double.infinity,
@@ -2040,7 +2418,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     maxWidth: MediaQuery.of(context).size.width * 0.9,
                   ),
                   child: AspectRatio(
-                    aspectRatio: 1.0, // Square aspect ratio to prevent stretching
+                    aspectRatio:
+                        1.0, // Square aspect ratio to prevent stretching
                     child: Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20),
@@ -2086,5 +2465,4 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       ),
     );
   }
-
 }

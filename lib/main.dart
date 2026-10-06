@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -8,6 +10,8 @@ import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_answers.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/features/profile/screens/survey_intro_screen.dart';
@@ -67,6 +71,7 @@ import 'package:prepskul/features/payment/services/payment_local_reminder_servic
 import 'package:prepskul/core/services/startup_schema_service.dart';
 import 'package:prepskul/core/services/app_presence_service.dart';
 import 'package:prepskul/features/sessions/services/agora_service.dart';
+import 'package:prepskul/core/services/web_onboarding_handoff.dart';
 
 /// Set by password reset deep link handler before exchangeCodeForSession.
 /// Auth listener skips handleEmailConfirmation when true (recovery sign-in must go to reset-password screen).
@@ -242,8 +247,7 @@ void main() async {
 Future<void> _initializePushNotifications() async {
   try {
     await PushNotificationService().initialize(
-      
-            onNotificationTap: (message) {
+      onNotificationTap: (message) {
         // Handle notification tap navigation (deep links).
         // This is critical for message notifications: user expects to land in the DM.
         try {
@@ -452,8 +456,7 @@ Future<void> handleEmailConfirmation() async {
   // Get user role from profile or stored data (empty → role selection).
   final userRoleRaw = existingProfile?['user_type']?.toString().trim() ?? '';
   final storedRoleTrimmed = storedRole?.trim() ?? '';
-  final userRole =
-      userRoleRaw.isNotEmpty ? userRoleRaw : storedRoleTrimmed;
+  final userRole = userRoleRaw.isNotEmpty ? userRoleRaw : storedRoleTrimmed;
   final hasCompletedSurvey = existingProfile?['survey_completed'] ?? false;
 
   // Get name with proper priority - avoid 'User' or 'Student' defaults
@@ -519,7 +522,9 @@ Future<void> handleEmailConfirmation() async {
   final navService = NavigationService();
   if (navService.isReady) {
     if (userRole.isEmpty) {
-      LogService.info('[EMAIL_CONFIRM] No role yet — routing to role selection');
+      LogService.info(
+        '[EMAIL_CONFIRM] No role yet — routing to role selection',
+      );
       await navService.navigateToRoute('/role-selection', clearStack: true);
       return;
     }
@@ -680,7 +685,9 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             merged.putIfAbsent(e.key, () => e.value);
           }
         } catch (e) {
-          LogService.debug('🔗 [DEEP_LINK] Unable to parse fragment params: $e');
+          LogService.debug(
+            '🔗 [DEEP_LINK] Unable to parse fragment params: $e',
+          );
         }
       }
     }
@@ -726,6 +733,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
       if (m == null) return null;
       return Uri.decodeQueryComponent(m.group(1)!);
     }
+
     code ??= _extractParamFromRaw('code');
     type ??= _extractParamFromRaw('type');
     provider ??= _extractParamFromRaw('provider');
@@ -893,10 +901,16 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
     // Handle optional group class join deep links: /join/class/{token}
     if (path.startsWith('/join/class/')) {
       if (!AppConfig.enableGroupClasses) {
-        LogService.debug('🔗 [DEEP_LINK] Group classes disabled by feature flag');
+        LogService.debug(
+          '🔗 [DEEP_LINK] Group classes disabled by feature flag',
+        );
         return;
       }
-      final token = path.replaceFirst('/join/class/', '').trim().split('/').first;
+      final token = path
+          .replaceFirst('/join/class/', '')
+          .trim()
+          .split('/')
+          .first;
       if (token.isEmpty) return;
 
       final navService = NavigationService();
@@ -1431,17 +1445,18 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
               ),
             );
           case '/login':
-          case '/beautiful-login': {
-            final loginArgs = settings.arguments as Map<String, dynamic>?;
-            return _createFadeRoute(
-              () => BeautifulLoginScreen(
-                initialPhone: loginArgs?['phone'] as String?,
-                initialCountryIso: loginArgs?['countryIso'] as String?,
-                accountCreatedMessage:
-                    loginArgs?['accountCreatedMessage'] as String?,
-              ),
-            );
-          }
+          case '/beautiful-login':
+            {
+              final loginArgs = settings.arguments as Map<String, dynamic>?;
+              return _createFadeRoute(
+                () => BeautifulLoginScreen(
+                  initialPhone: loginArgs?['phone'] as String?,
+                  initialCountryIso: loginArgs?['countryIso'] as String?,
+                  accountCreatedMessage:
+                      loginArgs?['accountCreatedMessage'] as String?,
+                ),
+              );
+            }
           case '/beautiful-signup':
             return _createFadeRoute(() => const BeautifulSignupScreen());
           case '/email-signup':
@@ -1472,25 +1487,16 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
           case '/skulmate':
             if (AppConfig.enableSkulMate) {
               return _createFadeRoute(
-                () => MainNavigation(
-                  userRole: 'student',
-                  initialTab: 2,
-                ),
+                () => MainNavigation(userRole: 'student', initialTab: 2),
               );
             } else {
-              return _createFadeRoute(
-                () => _mateUnavailableScaffold(),
-              );
+              return _createFadeRoute(() => _mateUnavailableScaffold());
             }
           case '/skulmate/upload':
             if (AppConfig.enableSkulMate) {
-              return _createFadeRoute(
-                () => const SkulMateGamesScreen(),
-              );
+              return _createFadeRoute(() => const SkulMateGamesScreen());
             } else {
-              return _createFadeRoute(
-                () => _mateUnavailableScaffold(),
-              );
+              return _createFadeRoute(() => _mateUnavailableScaffold());
             }
           case '/skulmate/library':
             // SkulMate controlled by AppConfig feature flag
@@ -1502,28 +1508,24 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
                 ),
               );
             } else {
-              return _createFadeRoute(
-                () => _mateUnavailableScaffold(),
-              );
+              return _createFadeRoute(() => _mateUnavailableScaffold());
             }
           case '/skulmate/leaderboard':
             if (AppConfig.enableSkulMate) {
               return _createFadeRoute(() => const LeaderboardScreen());
             } else {
-              return _createFadeRoute(
-                () => _mateUnavailableScaffold(),
-              );
+              return _createFadeRoute(() => _mateUnavailableScaffold());
             }
         }
 
         if (settings.name != null &&
             settings.name!.startsWith('/skulmate/game/')) {
           if (!AppConfig.enableSkulMate) {
-            return _createFadeRoute(
-              () => _mateUnavailableScaffold(),
-            );
+            return _createFadeRoute(() => _mateUnavailableScaffold());
           }
-          final gameId = settings.name!.replaceFirst('/skulmate/game/', '').trim();
+          final gameId = settings.name!
+              .replaceFirst('/skulmate/game/', '')
+              .trim();
           return _createFadeRoute(
             () => SkulMateGamesScreen(
               initialGameId: gameId.isEmpty ? null : gameId,
@@ -1804,7 +1806,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         uri.queryParameters['error_code'] != null;
     final path = uri.path.toLowerCase();
     final isEmailLoginPath = path.contains('email-login');
-    final isAuthType = type == 'signup' || type == 'email' || type == 'recovery';
+    final isAuthType =
+        type == 'signup' || type == 'email' || type == 'recovery';
     return (code != null && isAuthType) || hasAuthError || isEmailLoginPath;
   }
 
@@ -1889,6 +1892,30 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     if (_isNavigating || _navigationComplete) return;
     _isNavigating = true;
 
+    if (kIsWeb) {
+      try {
+        final handoff = await consumeWebOnboardingHandoff();
+        if (handoff != null && handoff.isNotEmpty) {
+          final decoded = utf8.decode(
+            base64Url.decode(base64Url.normalize(handoff)),
+          );
+          final answers = LearnerOnboardingAnswers.fromJson(
+            jsonDecode(decoded) as Map<String, dynamic>,
+          );
+          // Keep the full draft on this app origin until signup, then save it
+          // through the normal learner/parent profile repository.
+          await LearnerOnboardingPersist.saveDraft(answers, step: 999);
+          LogService.info(
+            '[INIT_LOAD] Imported website learner onboarding draft',
+          );
+        }
+      } catch (e) {
+        LogService.warning(
+          '[INIT_LOAD] Could not import website onboarding draft: $e',
+        );
+      }
+    }
+
     // If app was opened via tutor link, store pending tutor BEFORE determining route
     // so we land on tutor detail after auth with no transitional UI.
     try {
@@ -1927,12 +1954,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         }
       }
       final appLinks = AppLinks();
-      final initialUri = await appLinks
-          .getInitialLink()
-          .timeout(
-            const Duration(seconds: 2),
-            onTimeout: () => null,
-          );
+      final initialUri = await appLinks.getInitialLink().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
       if (initialUri != null) {
         final path = initialUri.path;
         if (path.startsWith('/tutor/') &&
@@ -2062,9 +2087,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           try {
             NavigationResult result;
             try {
-              result = await navService
-                  .determineInitialRoute()
-                  .timeout(const Duration(seconds: 12));
+              result = await navService.determineInitialRoute().timeout(
+                const Duration(seconds: 12),
+              );
             } on TimeoutException {
               LogService.warning(
                 '[INIT_LOAD] determineInitialRoute timed out — using emergency prefs route',
@@ -2854,10 +2879,7 @@ class _SplashContentState extends State<_SplashContent>
         // App name with fade animation
         FadeTransition(
           opacity: _fadeAnimation,
-          child: Text(
-            'PrepSkul',
-            style: onboardDisplay(size: 32),
-          ),
+          child: Text('PrepSkul', style: onboardDisplay(size: 32)),
         ),
 
         const SizedBox(height: 12),

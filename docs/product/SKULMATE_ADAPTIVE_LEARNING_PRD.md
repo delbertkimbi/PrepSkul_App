@@ -1,3 +1,5 @@
+> **Direction update — 2026-10-05:** The deck/game-first navigation and positioning in this document are historical. Follow [the teaching-first redesign and cleanup plan](../redesign/SKULMATE_REDESIGN.md) for new product work. Existing backend or feature descriptions here are not proof of deployment.
+
 # SkulMate Adaptive Learning — Product Requirements Document
 
 **Product:** PrepSkul — SkulMate module  

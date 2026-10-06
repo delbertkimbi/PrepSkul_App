@@ -30,6 +30,20 @@
   <meta name="msapplication-navbutton-color" content="#1B2C4F">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
+  <!-- The marketing onboarding hands off a short-lived profile draft in the URL
+       fragment. Fragments are not sent to the server; store it on this app
+       origin and remove it before Flutter or analytics start. -->
+  <script>
+    (function () {
+      var match = window.location.hash.match(/^#ps-onboarding=([A-Za-z0-9_-]+)$/);
+      if (!match) return;
+      try {
+        window.localStorage.setItem('ps_onboarding_handoff', match[1]);
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+      } catch (_) {}
+    })();
+  </script>
+
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://app.prepskul.com/">

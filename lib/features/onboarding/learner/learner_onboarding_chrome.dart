@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -38,21 +39,23 @@ TextStyle onboardDisplay({
 class OnboardPalette {
   static const cream = Color(0xFFFAF8F3);
 
-  static BoxDecoration get page => const BoxDecoration(
-        color: cream,
-      );
+  static BoxDecoration get page => const BoxDecoration(color: cream);
 
   static BoxDecoration card({required bool selected}) {
     return BoxDecoration(
       color: selected ? AppTheme.skyBlueLight : Colors.white,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
-        color: selected ? AppTheme.skyBlue : AppTheme.primaryColor.withValues(alpha: 0.16),
+        color: selected
+            ? AppTheme.skyBlue
+            : AppTheme.primaryColor.withValues(alpha: 0.16),
         width: 2,
       ),
       boxShadow: [
         BoxShadow(
-          color: selected ? AppTheme.primaryColor : AppTheme.primaryColor.withValues(alpha: 0.18),
+          color: selected
+              ? AppTheme.primaryColor
+              : AppTheme.primaryColor.withValues(alpha: 0.18),
           blurRadius: 0,
           offset: const Offset(0, 6),
         ),
@@ -61,22 +64,22 @@ class OnboardPalette {
   }
 
   static BoxDecoration get paperCard => BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.primaryColor, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 5), blurRadius: 0),
-        ],
-      );
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(18),
+    border: Border.all(color: AppTheme.primaryColor, width: 2),
+    boxShadow: const [
+      BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 5), blurRadius: 0),
+    ],
+  );
 
   static BoxDecoration get paperField => BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.22),
-          width: 2,
-        ),
-      );
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(18),
+    border: Border.all(
+      color: AppTheme.primaryColor.withValues(alpha: 0.22),
+      width: 2,
+    ),
+  );
 }
 
 InputDecoration paperFieldDecoration({
@@ -128,8 +131,7 @@ AppBar paperAppBar({
     elevation: 0,
     leading: leading,
     centerTitle: centerTitle,
-    title: titleWidget ??
-        Text(title ?? '', style: onboardDisplay(size: 22)),
+    title: titleWidget ?? Text(title ?? '', style: onboardDisplay(size: 22)),
     actions: actions,
     bottom: bottom,
     iconTheme: const IconThemeData(color: AppTheme.primaryColor),
@@ -141,7 +143,7 @@ class AuthPaperHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
-    this.mood = Mood.wave,
+    this.mood = Mood.idle,
     this.extra,
   });
 
@@ -176,10 +178,7 @@ class AuthPaperHeader extends StatelessWidget {
               ),
             ),
           ],
-          if (extra != null) ...[
-            const SizedBox(height: 6),
-            extra!,
-          ],
+          if (extra != null) ...[const SizedBox(height: 6), extra!],
         ],
       ),
     );
@@ -266,11 +265,17 @@ class OnboardSpeech extends StatefulWidget {
     this.note,
     this.tail = true,
     this.onTyped,
+    this.onListen,
+    this.listenLabel = 'Listen',
+    this.voiceEnabled = true,
   });
   final String title;
   final String? note;
   final bool tail;
   final VoidCallback? onTyped;
+  final Future<void> Function()? onListen;
+  final String listenLabel;
+  final bool voiceEnabled;
 
   @override
   State<OnboardSpeech> createState() => _OnboardSpeechState();
@@ -327,7 +332,10 @@ class _OnboardSpeechState extends State<OnboardSpeech> {
   @override
   Widget build(BuildContext context) {
     final done = _shown >= widget.title.length;
-    final visible = widget.title.substring(0, _shown.clamp(0, widget.title.length));
+    final visible = widget.title.substring(
+      0,
+      _shown.clamp(0, widget.title.length),
+    );
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
@@ -335,23 +343,55 @@ class _OnboardSpeechState extends State<OnboardSpeech> {
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppTheme.primaryColor, width: 3),
         boxShadow: const [
-          BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 6), blurRadius: 0),
+          BoxShadow(
+            color: Color(0x381E3A8A),
+            offset: Offset(0, 6),
+            blurRadius: 0,
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(text: visible, style: onboardDisplay(size: 22)),
-                if (!done)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text.rich(
                   TextSpan(
-                    text: '|',
-                    style: onboardDisplay(size: 22, color: AppTheme.primaryColor),
+                    children: [
+                      TextSpan(text: visible, style: onboardDisplay(size: 22)),
+                      if (!done)
+                        TextSpan(
+                          text: '|',
+                          style: onboardDisplay(
+                            size: 22,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                    ],
                   ),
-              ],
-            ),
+                ),
+              ),
+              if (widget.onListen != null)
+                IconButton(
+                  tooltip: widget.listenLabel,
+                  onPressed: widget.onListen,
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  color: AppTheme.primaryColor,
+                  icon: Icon(
+                    widget.voiceEnabled
+                        ? Icons.volume_up_rounded
+                        : Icons.volume_off_outlined,
+                    size: 23,
+                  ),
+                ),
+            ],
           ),
           if (done && widget.note != null) ...[
             const SizedBox(height: 4),
@@ -377,11 +417,17 @@ class OnboardAsk extends StatefulWidget {
     required this.mood,
     required this.child,
     this.note,
+    this.onListen,
+    this.listenLabel = 'Listen',
+    this.voiceEnabled = true,
   });
   final String title;
   final String? note;
   final Mood mood;
   final Widget child;
+  final Future<void> Function()? onListen;
+  final String listenLabel;
+  final bool voiceEnabled;
 
   @override
   State<OnboardAsk> createState() => _OnboardAskState();
@@ -413,6 +459,9 @@ class _OnboardAskState extends State<OnboardAsk> {
               child: OnboardSpeech(
                 title: widget.title,
                 note: widget.note,
+                onListen: widget.onListen,
+                listenLabel: widget.listenLabel,
+                voiceEnabled: widget.voiceEnabled,
                 onTyped: () {
                   if (mounted && !_typed) setState(() => _typed = true);
                 },
@@ -525,10 +574,18 @@ class OnboardPrimaryButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: enabled
               ? const [
-                  BoxShadow(color: AppTheme.primaryDark, offset: Offset(0, 7), blurRadius: 0),
+                  BoxShadow(
+                    color: AppTheme.primaryDark,
+                    offset: Offset(0, 7),
+                    blurRadius: 0,
+                  ),
                 ]
               : const [
-                  BoxShadow(color: Color(0xFFA8B3C4), offset: Offset(0, 2), blurRadius: 0),
+                  BoxShadow(
+                    color: Color(0xFFA8B3C4),
+                    offset: Offset(0, 2),
+                    blurRadius: 0,
+                  ),
                 ],
         ),
         child: busy
@@ -573,16 +630,17 @@ class OnboardPaperButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppTheme.primaryColor, width: 2.5),
           boxShadow: const [
-            BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 5), blurRadius: 0),
+            BoxShadow(
+              color: Color(0x381E3A8A),
+              offset: Offset(0, 5),
+              blurRadius: 0,
+            ),
           ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (leading != null) ...[
-              leading!,
-              const SizedBox(width: 10),
-            ],
+            if (leading != null) ...[leading!, const SizedBox(width: 10)],
             Flexible(
               child: Text(
                 label,
@@ -617,46 +675,46 @@ class OnboardPeopleMateStage extends StatelessWidget {
         width: 300,
         height: 248,
         child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: const Alignment(-0.55, -0.1),
-            child: Container(
-              width: 176,
-              height: 176,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: AppTheme.primaryColor, width: 3),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x381E3A8A),
-                    offset: Offset(0, 8),
-                    blurRadius: 0,
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: const Alignment(-0.55, -0.1),
+              child: Container(
+                width: 176,
+                height: 176,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: AppTheme.primaryColor, width: 3),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x381E3A8A),
+                      offset: Offset(0, 8),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(25),
+                  child: Image.asset(
+                    photoAsset,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return ColoredBox(
+                        color: AppTheme.skyBlueLight,
+                        child: Center(child: prepMate(mood: mood, size: 96)),
+                      );
+                    },
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(25),
-                child: Image.asset(
-                  photoAsset,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return ColoredBox(
-                      color: AppTheme.skyBlueLight,
-                      child: Center(child: prepMate(mood: mood, size: 96)),
-                    );
-                  },
                 ),
               ),
             ),
-          ),
-          Align(
-            alignment: const Alignment(0.72, 0.55),
-            child: AliveMate(mood: mood, size: 132, flip: flipMate),
-          ),
-        ],
+            Align(
+              alignment: const Alignment(0.72, 0.55),
+              child: AliveMate(mood: mood, size: 132, flip: flipMate),
+            ),
+          ],
         ),
       ),
     );
@@ -664,56 +722,66 @@ class OnboardPeopleMateStage extends StatelessWidget {
 }
 
 class OnboardGlyph extends StatelessWidget {
-  const OnboardGlyph({super.key, required this.seed, this.selected = false});
+  const OnboardGlyph({
+    super.key,
+    required this.seed,
+    this.selected = false,
+    this.size = 48,
+  });
   final String seed;
   final bool selected;
+  final double size;
 
-  static const _flags = <String, String>{
-    'en': '🇬🇧',
-    'gb': '🇬🇧',
-    'fr': '🇫🇷',
-    'fr_country': '🇫🇷',
-    'cm-francophone': '🇫🇷',
-    'cm-anglophone': '🇬🇧',
-    'cm': '🇨🇲',
-    'ng': '🇳🇬',
-    'gh': '🇬🇭',
-    'ke': '🇰🇪',
-    'ci': '🇨🇮',
-    'za': '🇿🇦',
-    'us': '🇺🇸',
-    'global': '🌍',
+  static const _flagCodes = <String, String>{
+    'en': 'gb',
+    'fr': 'fr',
+    'gb_country': 'gb',
+    'fr_country': 'fr',
+    'cm_country': 'cm',
+    'ng_country': 'ng',
+    'gh_country': 'gh',
+    'ke_country': 'ke',
+    'ci_country': 'ci',
+    'za_country': 'za',
+    'us_country': 'us',
+  };
+
+  static const _languageLabels = <String, String>{
+    'en': 'EN',
+    'fr': 'FR',
+    'cm-francophone': 'FR',
+    'cm-anglophone': 'EN',
   };
 
   static const _art = <String, String>{
-    'student': 'assets/onboard/art/tile-backpack.png',
-    'parent': 'assets/onboard/art/tile-heart.png',
-    'maths': 'assets/onboard/art/tile-maths.png',
-    'french': 'assets/onboard/art/tile-pencil.png',
-    'english': 'assets/onboard/art/tile-book.png',
-    'cs': 'assets/onboard/art/tile-laptop.png',
-    'pct': 'assets/onboard/art/tile-flask.png',
-    'svt': 'assets/onboard/art/tile-leaf.png',
-    'physics': 'assets/onboard/art/tile-flask.png',
-    'chemistry': 'assets/onboard/art/tile-flask.png',
-    'biology': 'assets/onboard/art/tile-leaf.png',
-    'geography': 'assets/onboard/art/tile-globe.png',
-    'literature': 'assets/onboard/art/tile-book.png',
-    'economics': 'assets/onboard/art/tile-maths.png',
-    'histgeo': 'assets/onboard/art/tile-globe.png',
-    'philo': 'assets/onboard/art/tile-book.png',
-    'bepc': 'assets/onboard/art/tile-medal.png',
-    'bac': 'assets/onboard/art/tile-medal.png',
-    'gce': 'assets/onboard/art/tile-pencil.png',
-    'probatoire': 'assets/onboard/art/tile-medal.png',
-    'ng-waec': 'assets/onboard/art/tile-medal.png',
-    'gh-wassce': 'assets/onboard/art/tile-medal.png',
-    'ke-cbc': 'assets/onboard/art/tile-medal.png',
-    'za-nsc': 'assets/onboard/art/tile-medal.png',
-    'fr-bac': 'assets/onboard/art/tile-medal.png',
-    'gb-gcse': 'assets/onboard/art/tile-medal.png',
-    'us-k12': 'assets/onboard/art/tile-medal.png',
-    'global-open': 'assets/onboard/art/tile-globe.png',
+    'student': 'assets/onboard/art/tile-backpack.webp',
+    'parent': 'assets/onboard/art/tile-heart.webp',
+    'maths': 'assets/onboard/art/tile-maths.webp',
+    'french': 'assets/onboard/art/tile-pencil.webp',
+    'english': 'assets/onboard/art/tile-book.webp',
+    'cs': 'assets/onboard/art/tile-laptop.webp',
+    'pct': 'assets/onboard/art/tile-flask.webp',
+    'svt': 'assets/onboard/art/tile-leaf.webp',
+    'physics': 'assets/onboard/art/tile-flask.webp',
+    'chemistry': 'assets/onboard/art/tile-flask.webp',
+    'biology': 'assets/onboard/art/tile-leaf.webp',
+    'geography': 'assets/onboard/art/tile-globe.webp',
+    'literature': 'assets/onboard/art/tile-book.webp',
+    'economics': 'assets/onboard/art/tile-maths.webp',
+    'histgeo': 'assets/onboard/art/tile-globe.webp',
+    'philo': 'assets/onboard/art/tile-book.webp',
+    'bepc': 'assets/onboard/art/tile-medal.webp',
+    'bac': 'assets/onboard/art/tile-medal.webp',
+    'gce': 'assets/onboard/art/tile-pencil.webp',
+    'probatoire': 'assets/onboard/art/tile-medal.webp',
+    'ng-waec': 'assets/onboard/art/tile-medal.webp',
+    'gh-wassce': 'assets/onboard/art/tile-medal.webp',
+    'ke-cbc': 'assets/onboard/art/tile-medal.webp',
+    'za-nsc': 'assets/onboard/art/tile-medal.webp',
+    'fr-bac': 'assets/onboard/art/tile-medal.webp',
+    'gb-gcse': 'assets/onboard/art/tile-medal.webp',
+    'us-k12': 'assets/onboard/art/tile-medal.webp',
+    'global-open': 'assets/onboard/art/tile-globe.webp',
   };
 
   static const _paper = <String, Color>{
@@ -749,37 +817,231 @@ class OnboardGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final flag = _flags[seed];
+    final flagCode = _flagCodes[seed];
+    final language = _languageLabels[seed];
     final art = _art[seed];
+    final borderWidth = size < 32 ? 1.4 : 2.0;
     return Container(
-      width: 48,
-      height: 48,
+      width: size,
+      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: flag != null ? Colors.white : (_paper[seed] ?? const Color(0xFFE0F2FE)),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.primaryColor, width: 2),
+        color: flagCode != null
+            ? Colors.white
+            : (_paper[seed] ?? const Color(0xFFE0F2FE)),
+        borderRadius: BorderRadius.circular(size * 0.29),
+        border: Border.all(color: AppTheme.primaryColor, width: borderWidth),
         boxShadow: [
           BoxShadow(
-            color: selected ? AppTheme.primaryColor : AppTheme.primaryColor.withValues(alpha: 0.18),
-            offset: const Offset(0, 3),
+            color: selected
+                ? AppTheme.primaryColor
+                : AppTheme.primaryColor.withValues(alpha: 0.18),
+            offset: Offset(0, size * 0.0625),
             blurRadius: 0,
           ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: flag != null
-          ? Text(flag, style: const TextStyle(fontSize: 26, height: 1))
+      child: flagCode != null
+          ? Padding(
+              padding: EdgeInsets.all(size * 0.1),
+              child: CustomPaint(
+                painter: _OnboardFlagPainter(flagCode),
+                child: SizedBox(width: size * 0.8, height: size * 0.53),
+              ),
+            )
+          : language != null
+          ? Text(
+              language,
+              style: onboardDisplay(
+                size: size * 0.34,
+                color: AppTheme.primaryColor,
+              ),
+            )
           : art != null
-              ? Padding(
-                  padding: const EdgeInsets.all(5),
-                  child: Image.asset(
-                    art,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                  ),
-                )
-              : const Text('✨', style: TextStyle(fontSize: 22)),
+          ? Padding(
+              padding: EdgeInsets.all(size * 0.1),
+              child: Image.asset(
+                art,
+                fit: BoxFit.contain,
+                cacheWidth: (size * MediaQuery.devicePixelRatioOf(context))
+                    .round(),
+                cacheHeight: (size * MediaQuery.devicePixelRatioOf(context))
+                    .round(),
+                filterQuality: FilterQuality.low,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.school_rounded,
+                  color: AppTheme.primaryColor,
+                  size: size * 0.58,
+                ),
+              ),
+            )
+          : Icon(
+              seed == 'global_country'
+                  ? Icons.public_rounded
+                  : Icons.auto_awesome_rounded,
+              color: AppTheme.primaryColor,
+              size: size * 0.54,
+            ),
     );
   }
+}
+
+/// Tiny vector flags avoid platform-dependent emoji glyphs and load instantly.
+class _OnboardFlagPainter extends CustomPainter {
+  const _OnboardFlagPainter(this.code);
+  final String code;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final p = Paint()..style = PaintingStyle.fill;
+    void rect(Color color, double x, double y, double width, double height) {
+      p.color = color;
+      canvas.drawRect(Rect.fromLTWH(x, y, width, height), p);
+    }
+
+    void star(Color color, Offset center, double radius) {
+      final path = Path();
+      for (var i = 0; i < 10; i++) {
+        final angle = -pi / 2 + i * pi / 5;
+        final r = i.isEven ? radius : radius * 0.42;
+        final point = Offset(
+          center.dx + cos(angle) * r,
+          center.dy + sin(angle) * r,
+        );
+        if (i == 0) {
+          path.moveTo(point.dx, point.dy);
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      path.close();
+      p.color = color;
+      canvas.drawPath(path, p);
+    }
+
+    const navy = Color(0xFF17233F);
+    const red = Color(0xFFCE1126);
+    const green = Color(0xFF078A4B);
+    const yellow = Color(0xFFFFD21E);
+    const blue = Color(0xFF123B9A);
+    switch (code) {
+      case 'cm':
+        rect(green, 0, 0, w / 3, h);
+        rect(red, w / 3, 0, w / 3, h);
+        rect(yellow, 2 * w / 3, 0, w / 3, h);
+        star(yellow, Offset(w / 2, h / 2), h * 0.24);
+      case 'ng':
+        rect(green, 0, 0, w / 3, h);
+        rect(Colors.white, w / 3, 0, w / 3, h);
+        rect(green, 2 * w / 3, 0, w / 3, h);
+      case 'ci':
+        rect(const Color(0xFFF77F00), 0, 0, w / 3, h);
+        rect(Colors.white, w / 3, 0, w / 3, h);
+        rect(green, 2 * w / 3, 0, w / 3, h);
+      case 'fr':
+        rect(blue, 0, 0, w / 3, h);
+        rect(Colors.white, w / 3, 0, w / 3, h);
+        rect(red, 2 * w / 3, 0, w / 3, h);
+      case 'gh':
+        rect(red, 0, 0, w, h / 3);
+        rect(yellow, 0, h / 3, w, h / 3);
+        rect(green, 0, 2 * h / 3, w, h / 3);
+        star(navy, Offset(w / 2, h / 2), h * 0.22);
+      case 'ke':
+        rect(Colors.black, 0, 0, w, h * 0.29);
+        rect(Colors.white, 0, h * 0.29, w, h * 0.08);
+        rect(red, 0, h * 0.37, w, h * 0.28);
+        rect(Colors.white, 0, h * 0.65, w, h * 0.08);
+        rect(green, 0, h * 0.73, w, h * 0.27);
+        p.color = Colors.black;
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(w / 2, h / 2),
+            width: w * 0.24,
+            height: h * 0.55,
+          ),
+          p,
+        );
+        p.color = red;
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(w / 2, h / 2),
+            width: w * 0.12,
+            height: h * 0.43,
+          ),
+          p,
+        );
+      case 'za':
+        rect(const Color(0xFFDE3831), 0, 0, w, h / 2);
+        rect(const Color(0xFF002395), 0, h / 2, w, h / 2);
+        p.color = Colors.white;
+        canvas.drawRect(Rect.fromLTWH(0, h * .38, w, h * .24), p);
+        p.color = const Color(0xFF007A4D);
+        final y = Path()
+          ..moveTo(0, h * .3)
+          ..lineTo(w * .58, h * .3)
+          ..lineTo(w, h * .5)
+          ..lineTo(w * .58, h * .7)
+          ..lineTo(0, h * .7)
+          ..lineTo(w * .38, h * .5)
+          ..close();
+        canvas.drawPath(y, p);
+        p.color = const Color(0xFFFFB612);
+        final gold = Path()
+          ..moveTo(0, h * .18)
+          ..lineTo(w * .53, h * .18)
+          ..lineTo(w, h * .5)
+          ..lineTo(w * .53, h * .82)
+          ..lineTo(0, h * .82)
+          ..lineTo(w * .39, h * .5)
+          ..close();
+        canvas.drawPath(gold, p);
+        p.color = Colors.black;
+        final black = Path()
+          ..moveTo(0, h * .27)
+          ..lineTo(w * .45, h * .27)
+          ..lineTo(w * .86, h * .5)
+          ..lineTo(w * .45, h * .73)
+          ..lineTo(0, h * .73)
+          ..lineTo(w * .34, h * .5)
+          ..close();
+        canvas.drawPath(black, p);
+      case 'gb':
+        rect(blue, 0, 0, w, h);
+        p.color = Colors.white;
+        p.strokeWidth = h * 0.26;
+        canvas.drawLine(Offset(0, 0), Offset(w, h), p);
+        canvas.drawLine(Offset(w, 0), Offset(0, h), p);
+        p.color = red;
+        p.strokeWidth = h * 0.1;
+        canvas.drawLine(Offset(0, 0), Offset(w, h), p);
+        canvas.drawLine(Offset(w, 0), Offset(0, h), p);
+        rect(Colors.white, w * .42, 0, w * .16, h);
+        rect(Colors.white, 0, h * .38, w, h * .24);
+        rect(red, w * .46, 0, w * .08, h);
+        rect(red, 0, h * .44, w, h * .12);
+      case 'us':
+        for (var i = 0; i < 13; i++) {
+          rect(i.isEven ? red : Colors.white, 0, h * i / 13, w, h / 13 + 0.5);
+        }
+        rect(blue, 0, 0, w * .48, h * .56);
+        for (var row = 0; row < 3; row++) {
+          for (var col = 0; col < 4; col++) {
+            p.color = Colors.white;
+            canvas.drawCircle(
+              Offset(w * (.08 + col * .09), h * (.1 + row * .16)),
+              h * .025,
+              p,
+            );
+          }
+        }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _OnboardFlagPainter oldDelegate) =>
+      oldDelegate.code != code;
 }

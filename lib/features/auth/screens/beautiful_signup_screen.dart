@@ -1,3 +1,4 @@
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -34,6 +35,21 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   PhoneCountry _selectedCountry = PhoneCountry.cameroon;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreLearnerName();
+  }
+
+  Future<void> _restoreLearnerName() async {
+    final draft = await LearnerOnboardingPersist.loadDraft();
+    if (!mounted || draft == null || _nameController.text.isNotEmpty) return;
+    // A parent's account name is distinct from their child's learning name.
+    if (draft.accountRole != 'parent') {
+      setState(() => _nameController.text = draft.name);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

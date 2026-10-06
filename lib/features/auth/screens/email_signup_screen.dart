@@ -1,3 +1,4 @@
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -33,6 +34,21 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreLearnerName();
+  }
+
+  Future<void> _restoreLearnerName() async {
+    final draft = await LearnerOnboardingPersist.loadDraft();
+    if (!mounted || draft == null || _nameController.text.isNotEmpty) return;
+    // A parent's account name is distinct from their child's learning name.
+    if (draft.accountRole != 'parent') {
+      setState(() => _nameController.text = draft.name);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +101,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                 },
                                 decoration: paperFieldDecoration(hintText: 'Enter your name'),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 12),
 
                               // Email Field
                               Text(
@@ -107,7 +123,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                 },
                                 decoration: paperFieldDecoration(hintText: 'your.email@example.com'),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 12),
 
                               // Password Field
                               Text(
@@ -143,7 +159,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 12),
 
                               // Confirm Password Field
                               Text(

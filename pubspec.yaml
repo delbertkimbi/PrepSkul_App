@@ -171,7 +171,17 @@ flutter:
     - assets/characters/animations/Think.mp4
     - assets/characters/animations/Encouraging.mp4
     - assets/characters/animations/Celebrate.mp4
-    - assets/onboard/art/
+    # Small WebP choice illustrations keep onboarding quick on mobile data.
+    - assets/onboard/art/tile-backpack.webp
+    - assets/onboard/art/tile-book.webp
+    - assets/onboard/art/tile-flask.webp
+    - assets/onboard/art/tile-globe.webp
+    - assets/onboard/art/tile-heart.webp
+    - assets/onboard/art/tile-laptop.webp
+    - assets/onboard/art/tile-leaf.webp
+    - assets/onboard/art/tile-maths.webp
+    - assets/onboard/art/tile-medal.webp
+    - assets/onboard/art/tile-pencil.webp
     - assets/fonts/
     - .env  # Root .env file (bundled for web, used for all platforms)
 

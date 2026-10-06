@@ -53,6 +53,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   String? _retrySessionId;
   SkulMateIntakePayload? _failedPayload;
   bool _busy = false;
+  bool _showTranscript = false;
   bool _attachOpen = false;
   bool _recording = false;
   bool _demo = false;
@@ -488,6 +489,10 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   @override
   Widget build(BuildContext context) {
     final copy = SkulMateCopy.of(context);
+    final latestReply = _turns.where((turn) => !turn.isUser).lastOrNull;
+    final visibleTurns = _showTranscript
+        ? _turns
+        : latestReply != null ? [latestReply] : <TutorTurn>[];
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SkulMateSurfaceStyles.lightStatusBarOverlay,
@@ -525,7 +530,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        copy.heroQuestion,
+                        Localizations.localeOf(context).languageCode == 'fr'
+                            ? 'Ton espace pour apprendre' : 'Your learning desk',
                         style: SkulMateTypography.heroTitle(),
                       ),
                     ),
@@ -563,7 +569,18 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                           ),
                           child: _buildEmptyStart(copy),
                         ),
-                      for (final turn in _turns) ...[
+                      if (_turns.isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => setState(() => _showTranscript = !_showTranscript),
+                            icon: Icon(_showTranscript ? Icons.dashboard_outlined : Icons.history),
+                            label: Text(Localizations.localeOf(context).languageCode == 'fr'
+                              ? (_showTranscript ? 'Revenir à la leçon' : 'Voir la conversation')
+                              : (_showTranscript ? 'Back to lesson' : 'View conversation')),
+                          ),
+                        ),
+                      for (final turn in visibleTurns) ...[
                         TutorChatBubble.text(
                           isUser: turn.isUser,
                           text: turn.text,

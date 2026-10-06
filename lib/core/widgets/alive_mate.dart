@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/primar/presentation/mascot.dart';
 
-export 'package:prepskul/features/primar/presentation/mascot.dart' show Mate, Mood;
+export 'package:prepskul/features/primar/presentation/mascot.dart'
+    show Mate, Mood;
 
-/// Marketplace Mate: the same vector rig as Primar, painted in the site SVG
-/// colors, with the 0.9s hop that makes the mascot feel alive.
+/// Marketplace Mate: the same vector rig as Primar, painted in the site colors.
 class AliveMate extends StatelessWidget {
   const AliveMate({
     super.key,
@@ -25,7 +25,9 @@ class AliveMate extends StatelessWidget {
       mood: mood,
       size: size,
       flip: flip,
-      keepHopping: true,
+      // Let Mate react to what the learner does. A permanent hop makes him
+      // jittery and competes with the lesson; celebrations are event-driven.
+      keepHopping: false,
       ink: AppTheme.primaryColor,
       body: AppTheme.mateBodyBlue,
       belly: AppTheme.mateBellyTeal,

@@ -5,7 +5,11 @@ class MatchScore {
   final double totalScore;
   final double percentage;
   final Map<String, double> breakdown;
-  MatchScore({required this.totalScore, required this.breakdown, required this.percentage});
+  MatchScore({
+    required this.totalScore,
+    required this.breakdown,
+    required this.percentage,
+  });
 }
 
 class MatchedTutor {
@@ -40,8 +44,10 @@ class TutorMatchingService {
     String? userQuarter;
     int? userMinBudget;
     int? userMaxBudget;
+    String? userPreferredLocation;
+    final learnerSubjects = <String>{};
     bool hasSurveyData = false;
-    
+
     try {
       // Check profiles table for location
       final profile = await SupabaseService.client
@@ -53,24 +59,48 @@ class TutorMatchingService {
       if (profile != null) {
         userCity = profile['city']?.toString();
         userQuarter = profile['quarter']?.toString();
-        if ((userCity != null && userCity.isNotEmpty) || 
+        if ((userCity != null && userCity.isNotEmpty) ||
             (userQuarter != null && userQuarter.isNotEmpty)) {
           hasSurveyData = true;
         }
       }
-      
+
       // Check learner_profiles for budget (if user is a student)
-      if (userType == 'student' || userType == 'learner') {
+      if (userType == 'student' ||
+          userType == 'learner' ||
+          userType == 'parent') {
         try {
+          final profileTable = userType == 'parent'
+              ? 'parent_profiles'
+              : 'learner_profiles';
           final learnerProfile = await SupabaseService.client
-              .from('learner_profiles')
-              .select('min_budget, max_budget')
+              .from(profileTable)
+              .select(
+                'city, min_budget, max_budget, subjects, preferred_location',
+              )
               .eq('user_id', userId)
               .maybeSingle();
-          
+
           if (learnerProfile != null) {
+            final learnerCity = learnerProfile['city']?.toString().trim();
+            if ((userCity == null || userCity.trim().isEmpty) &&
+                learnerCity != null &&
+                learnerCity.isNotEmpty) {
+              userCity = learnerCity;
+              hasSurveyData = true;
+            }
             userMinBudget = learnerProfile['min_budget'] as int?;
             userMaxBudget = learnerProfile['max_budget'] as int?;
+            userPreferredLocation = learnerProfile['preferred_location']
+                ?.toString()
+                .toLowerCase();
+            if (userPreferredLocation != null) hasSurveyData = true;
+            for (final subject
+                in (learnerProfile['subjects'] as List? ?? const [])) {
+              final normalized = subject.toString().trim().toLowerCase();
+              if (normalized.isNotEmpty) learnerSubjects.add(normalized);
+            }
+            if (learnerSubjects.isNotEmpty) hasSurveyData = true;
             if (userMinBudget != null || userMaxBudget != null) {
               hasSurveyData = true;
             }
@@ -90,34 +120,63 @@ class TutorMatchingService {
 
     final matches = tutors.map((tutor) {
       // Subjects / specializations from tutor
-      final subjects = (tutor['subjects'] as List?)
+      final subjects =
+          (tutor['subjects'] as List?)
               ?.map((s) => s.toString().toLowerCase())
               .toList() ??
           <String>[];
-      final specializations = (tutor['specializations'] as List?)
+      final specializations =
+          (tutor['specializations'] as List?)
               ?.map((s) => s.toString().toLowerCase())
               .toList() ??
           <String>[];
       final allSubjects = {...subjects, ...specializations};
 
-      final bool subjectMatch = subjectFilter == null || subjectFilter.isEmpty
+      final requestedSubjects = <String>{
+        if (subjectFilter != null && subjectFilter.isNotEmpty) subjectFilter,
+        if (subjectFilter == null || subjectFilter.isEmpty) ...learnerSubjects,
+      };
+      final bool subjectMatch = requestedSubjects.isEmpty
           ? allSubjects.isNotEmpty
-          : allSubjects.contains(subjectFilter);
+          : requestedSubjects.any(allSubjects.contains);
 
-      // Location match: city or quarter alignment with user
+      // Match tutor format first, then use city for in-person availability.
       final tutorCity = tutor['city']?.toString().toLowerCase();
       final tutorQuarter = tutor['quarter']?.toString().toLowerCase();
-      bool locationMatch = false;
-      if (userCity != null && userCity.isNotEmpty && tutorCity != null) {
-        locationMatch = tutorCity.toLowerCase() == userCity.toLowerCase();
+      final tutorModes = <String>{};
+      final rawModes = tutor['teaching_mode'];
+      if (rawModes is List) {
+        tutorModes.addAll(
+          rawModes.map((mode) => mode.toString().toLowerCase()),
+        );
+      } else if (rawModes is String && rawModes.trim().isNotEmpty) {
+        tutorModes.add(rawModes.toLowerCase());
       }
-      if (!locationMatch &&
+      final teachesOnline = tutorModes.any(
+        (mode) => mode.contains('online') || mode.contains('hybrid'),
+      );
+      final teachesOnsite = tutorModes.any(
+        (mode) =>
+            mode.contains('onsite') ||
+            mode.contains('in-person') ||
+            mode.contains('hybrid'),
+      );
+      bool cityMatch = false;
+      if (userCity != null && userCity.isNotEmpty && tutorCity != null) {
+        cityMatch = tutorCity.toLowerCase() == userCity.toLowerCase();
+      }
+      if (!cityMatch &&
           userQuarter != null &&
           userQuarter.isNotEmpty &&
           tutorQuarter != null) {
-        locationMatch =
-            tutorQuarter.toLowerCase() == userQuarter.toLowerCase();
+        cityMatch = tutorQuarter.toLowerCase() == userQuarter.toLowerCase();
       }
+      final locationMatch = switch (userPreferredLocation) {
+        'online' => teachesOnline,
+        'onsite' => teachesOnsite && cityMatch,
+        'online_or_onsite' => teachesOnline || (teachesOnsite && cityMatch),
+        _ => cityMatch,
+      };
 
       // Rating score (0–1 based on 0–5 stars)
       final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
@@ -184,7 +243,7 @@ class TutorMatchingService {
       final ratingB = (b.tutor['rating'] as num?)?.toDouble() ?? 0.0;
       final ratingDiff = ratingB.compareTo(ratingA);
       if (ratingDiff != 0) return ratingDiff;
-      
+
       // Secondary: Location match (if user has survey data)
       if (hasSurveyData) {
         final locationMatchA = a.matchScore.breakdown['location'] ?? 0.0;
@@ -192,7 +251,7 @@ class TutorMatchingService {
         final locationDiff = locationMatchB.compareTo(locationMatchA);
         if (locationDiff != 0) return locationDiff;
       }
-      
+
       // Tertiary: Price range match (if user has budget)
       if (hasSurveyData && (userMinBudget != null || userMaxBudget != null)) {
         final priceMatchA = a.matchScore.breakdown['priceMatch'] ?? 0.0;
@@ -200,7 +259,7 @@ class TutorMatchingService {
         final priceDiff = priceMatchB.compareTo(priceMatchA);
         if (priceDiff != 0) return priceDiff;
       }
-      
+
       // Quaternary: Gender (female priority) - TODO: Implement when gender field is available
       // For now, return 0 (no change in order)
       // When gender is available:
@@ -208,7 +267,7 @@ class TutorMatchingService {
       // final genderB = b.tutor['gender']?.toString().toLowerCase();
       // if (genderA == 'female' && genderB != 'female') return -1;
       // if (genderA != 'female' && genderB == 'female') return 1;
-      
+
       return 0;
     });
 

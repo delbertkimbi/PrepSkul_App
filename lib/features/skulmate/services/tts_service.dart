@@ -40,7 +40,10 @@ class TTSService {
       await _flutterTts!.setSpeechRate(_speechRate);
       await _flutterTts!.setVolume(_ttsVolume);
       await _flutterTts!.setPitch(1.0);
-      await _preferNeuralVoice();
+      // Browser voices can arrive asynchronously and may not exist until the
+      // speech API is first unlocked by a user gesture. Keep initialization
+      // fast on web and let the platform pick the requested locale.
+      if (!kIsWeb) await _preferNeuralVoice();
 
       // Set completion handler (used by speakAndWait)
       _flutterTts!.setCompletionHandler(() {
@@ -230,6 +233,7 @@ class TTSService {
 
     try {
       final lang = languageCode == 'fr' ? 'fr-FR' : 'en-US';
+      if (lang == _currentLanguage) return;
       await _flutterTts!.setLanguage(lang);
       _currentLanguage = lang;
       LogService.debug('[TTS] Language changed to: $_currentLanguage');

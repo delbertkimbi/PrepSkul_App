@@ -109,7 +109,7 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
   double _gazeTimer = 1.5;
 
   /// Time until the next keep-alive hop (site SVG is 0.9s).
-  double _hopWait = 0.45;
+  double _hopWait = 2.8;
 
   @override
   void initState() {
@@ -167,7 +167,8 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
     _last = now;
     if (dt <= 0) return;
 
-    _breath += dt * 1.5;
+    // One slow shared rhythm keeps the body, arms, and antenna coordinated.
+    _breath += dt * 0.82;
     _reaction = (_reaction - dt * 1.6).clamp(0.0, 1.0);
     _impact = (_impact - dt * 4.5).clamp(0.0, 1.0);
 
@@ -175,8 +176,8 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
 
     // Body: a spring back to rest. The initial velocity from _trigger is what
     // makes it dip and then launch.
-    const k = 210.0;
-    const damping = 13.0;
+    const k = 90.0;
+    const damping = 17.0;
     _bodyV += (-k * _bodyY - damping * _bodyV) * dt;
     _bodyY += _bodyV * dt;
 
@@ -219,7 +220,7 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
       _hopWait -= dt;
       if (_hopWait <= 0 && _bodyY.abs() < 3 && _bodyV.abs() < 10) {
         _bodyV = widget.mood == Mood.thinking ? 16 : 30;
-        _hopWait = 0.9;
+        _hopWait = 3.8;
       }
     }
 
@@ -234,7 +235,7 @@ class _MateState extends State<Mate> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final float = sin(_breath) * 1.8;
+    final float = sin(_breath) * 1.15;
 
     // Squash and stretch, driven by actual vertical velocity: stretched while
     // travelling, squashed at the moment of landing.
@@ -422,7 +423,11 @@ class _MatePainter extends CustomPainter {
     );
 
     canvas.drawCircle(tip, 5.6, Paint()..color = _yellow);
-    canvas.drawCircle(tip, 2.4, Paint()..color = _yellow.withValues(alpha: 0.55));
+    canvas.drawCircle(
+      tip,
+      2.4,
+      Paint()..color = _yellow.withValues(alpha: 0.55),
+    );
     canvas.drawCircle(
       tip,
       5.6,
@@ -441,21 +446,21 @@ class _MatePainter extends CustomPainter {
     final lift = _elated
         ? 1.0
         : thumb
-            ? 0.35
-            : talking
-                ? 0.42
-                : waving
-                    ? 0.2
-                    : pointing
-                        ? 0.15
-                        : 0.0;
-    final idleWave = _elated
-        ? sin(breath * 6) * 3
+        ? 0.35
         : talking
-            ? sin(breath * 3.2) * 2.2
-            : mood == Mood.idle
-                ? sin(breath * 2.2) * 1.4
-                : 0.0;
+        ? 0.42
+        : waving
+        ? 0.2
+        : pointing
+        ? 0.15
+        : 0.0;
+    final idleWave = _elated
+        ? sin(breath * 1.9) * 2.4
+        : talking
+        ? sin(breath * 1.8) * 1.7
+        : mood == Mood.idle
+        ? sin(breath * 1.35) * 1.0
+        : 0.0;
 
     for (final side in [-1.0, 1.0]) {
       final thinkArm = mood == Mood.thinking && side < 0;
@@ -467,12 +472,15 @@ class _MatePainter extends CustomPainter {
       if (thinkArm) {
         hand = const Offset(42, 58);
       } else if (waveArm) {
-        hand = Offset(74 + sin(breath * 8) * 7, 22 + cos(breath * 8) * 4);
+        final wave = sin(breath * 2.0) * 2.2;
+        // Keep both hands outside the body's silhouette. Arms are painted
+        // behind the shell, so an endpoint over the body disappears entirely.
+        hand = Offset(50 + side * (43 + wave), 27 + cos(breath * 2.0) * 1.5);
       } else if (thumbArm) {
         hand = const Offset(22, 34);
       } else if (pointArm) {
         // Site SVG rotates this arm about -16deg on a 1.05s loop.
-        final jab = sin(breath * 4) * 6;
+        final jab = sin(breath * 1.7) * 3.5;
         hand = Offset(102 + jab, 38 - jab * 0.35);
       } else if (pointing && side < 0) {
         hand = const Offset(18, 46);
@@ -507,14 +515,14 @@ class _MatePainter extends CustomPainter {
         }
       } else if (thumbArm) {
         canvas.drawCircle(hand, 3.2, Paint()..color = _navy);
-        canvas.drawLine(Offset(hand.dx, hand.dy - 2), Offset(hand.dx, hand.dy - 9), outline);
-      } else if (pointArm) {
-        canvas.drawCircle(hand, 3.4, Paint()..color = _navy);
         canvas.drawLine(
-          hand,
-          Offset(hand.dx + 9, hand.dy - 5),
+          Offset(hand.dx, hand.dy - 2),
+          Offset(hand.dx, hand.dy - 9),
           outline,
         );
+      } else if (pointArm) {
+        canvas.drawCircle(hand, 3.4, Paint()..color = _navy);
+        canvas.drawLine(hand, Offset(hand.dx + 9, hand.dy - 5), outline);
       } else {
         canvas.drawCircle(hand, 2.6, Paint()..color = _navy);
       }
@@ -684,7 +692,10 @@ class _MatePainter extends CustomPainter {
       final r0 = 42 + reaction * 6;
       canvas.drawLine(
         Offset(50 + r0 * cos(a), 50 + r0 * sin(a)),
-        Offset(50 + (r0 + 9 * energy) * cos(a), 50 + (r0 + 9 * energy) * sin(a)),
+        Offset(
+          50 + (r0 + 9 * energy) * cos(a),
+          50 + (r0 + 9 * energy) * sin(a),
+        ),
         stroke,
       );
     }
@@ -703,7 +714,10 @@ class _MatePainter extends CustomPainter {
       final outer = -pi / 2 + i * 2 * pi / 5;
       final inner = outer + pi / 5;
       final po = Offset(c.dx + r * cos(outer), c.dy + r * sin(outer));
-      final pin = Offset(c.dx + r * 0.44 * cos(inner), c.dy + r * 0.44 * sin(inner));
+      final pin = Offset(
+        c.dx + r * 0.44 * cos(inner),
+        c.dy + r * 0.44 * sin(inner),
+      );
       if (i == 0) {
         path.moveTo(po.dx, po.dy);
       } else {
