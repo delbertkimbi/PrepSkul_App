@@ -336,7 +336,12 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   Mood get _mood {
     return switch (_step) {
       LearnerOnboardStep.welcome => Mood.wave,
-      LearnerOnboardStep.ready || LearnerOnboardStep.paywall => Mood.cheer,
+      LearnerOnboardStep.name || LearnerOnboardStep.who => Mood.wave,
+      LearnerOnboardStep.meet => Mood.happy,
+      LearnerOnboardStep.ready => Mood.cheer,
+      LearnerOnboardStep.paywall => Mood.encourage,
+      LearnerOnboardStep.country || LearnerOnboardStep.city || LearnerOnboardStep.mode => Mood.point,
+      LearnerOnboardStep.goal => Mood.thinking,
       LearnerOnboardStep.subject ||
       LearnerOnboardStep.level ||
       LearnerOnboardStep.exam => Mood.thinking,
@@ -377,7 +382,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                     );
                   },
                   child: KeyedSubtree(
-                    key: ValueKey(_step.name),
+                    key: ValueKey((_step == LearnerOnboardStep.welcome || _step == LearnerOnboardStep.ready || _step == LearnerOnboardStep.paywall) ? _step.name : 'questions'),
                     child: SingleChildScrollView(child: _page()),
                   ),
                 ),
@@ -421,6 +426,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     return OnboardAsk(
       title: title,
       mood: _mood,
+      speaking: _tts.speaking,
       listenLabel: _answers.voiceOut ? (_c.isFrench ? "Couper le son" : "Mute voice") : (_c.isFrench ? "Activer la voix" : "Unmute voice"),
       voiceEnabled: _answers.voiceOut,
       onListen: () => _toggleVoice(title, null),

@@ -416,6 +416,7 @@ class OnboardAsk extends StatefulWidget {
     required this.title,
     required this.mood,
     required this.child,
+    this.speaking,
     this.note,
     this.onListen,
     this.listenLabel = 'Listen',
@@ -424,6 +425,7 @@ class OnboardAsk extends StatefulWidget {
   final String title;
   final String? note;
   final Mood mood;
+  final ValueNotifier<bool>? speaking;
   final Widget child;
   final Future<void> Function()? onListen;
   final String listenLabel;
@@ -446,14 +448,22 @@ class _OnboardAskState extends State<OnboardAsk> {
 
   @override
   Widget build(BuildContext context) {
-    final mood = _typed ? widget.mood : Mood.talk;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            prepMate(mood: mood, size: 108),
+            if (widget.speaking != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: widget.speaking!,
+                builder: (context, speaking, _) => prepMate(
+                  mood: speaking && widget.voiceEnabled ? Mood.talk : widget.mood,
+                  size: 108,
+                ),
+              )
+            else
+              prepMate(mood: widget.mood, size: 108),
             const SizedBox(width: 10),
             Expanded(
               child: OnboardSpeech(

@@ -23,7 +23,8 @@ class SkulMateCompanionBanner extends StatefulWidget {
   });
 
   @override
-  State<SkulMateCompanionBanner> createState() => _SkulMateCompanionBannerState();
+  State<SkulMateCompanionBanner> createState() =>
+      _SkulMateCompanionBannerState();
 }
 
 class _SkulMateCompanionBannerState extends State<SkulMateCompanionBanner>
@@ -49,9 +50,9 @@ class _SkulMateCompanionBannerState extends State<SkulMateCompanionBanner>
   Widget build(BuildContext context) {
     final toneColors = _toneColors(widget.tone);
     final mascotState = switch (widget.tone) {
-      CompanionTone.success => SkulMateMascotState.celebration,
-      CompanionTone.warning => SkulMateMascotState.encouraging,
-      CompanionTone.tip => SkulMateMascotState.thinking,
+      CompanionTone.success => SkulMateMascotState.success,
+      CompanionTone.warning => SkulMateMascotState.tryAgain,
+      CompanionTone.tip => SkulMateMascotState.idea,
       CompanionTone.neutral => SkulMateMascotState.neutral,
     };
 
@@ -134,11 +135,7 @@ class _SkulMateCompanionBannerState extends State<SkulMateCompanionBanner>
   }
 
   List<Widget> _buildCelebrationSparkles() {
-    const positions = [
-      Offset(-4, -6),
-      Offset(28, -10),
-      Offset(34, 10),
-    ];
+    const positions = [Offset(-4, -6), Offset(28, -10), Offset(34, 10)];
     return List<Widget>.generate(positions.length, (index) {
       final base = positions[index];
       return AnimatedBuilder(

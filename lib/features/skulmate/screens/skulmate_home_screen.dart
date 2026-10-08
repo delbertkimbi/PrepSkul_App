@@ -53,6 +53,18 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   String? _retrySessionId;
   SkulMateIntakePayload? _failedPayload;
   bool _busy = false;
+  SkulMateMascotState? _reaction;
+  Timer? _reactionTimer;
+
+  void _reactToAnswer(bool correct) {
+    _reactionTimer?.cancel();
+    safeSetState(() => _reaction = correct
+        ? SkulMateMascotState.success
+        : SkulMateMascotState.tryAgain);
+    _reactionTimer = Timer(const Duration(milliseconds: 2200), () {
+      if (mounted) safeSetState(() => _reaction = null);
+    });
+  }
   bool _showTranscript = false;
   bool _attachOpen = false;
   bool _recording = false;
@@ -64,6 +76,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   @override
   void initState() {
     super.initState();
+    _voice.state.addListener(_onVoiceState);
     WidgetsBinding.instance.addObserver(this);
     SkulMateHomeRefreshBus.tick.addListener(_onRefresh);
     SkulMateTutorIntakeBus.pending.addListener(_onIntake);
@@ -78,6 +91,14 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     final context = await LearnerContextService.build(childId: widget.childId);
     if (!mounted || context == null) return;
     safeSetState(() => _learnerContext = context);
+  }
+
+  void _onVoiceState() {
+    if (mounted) {
+      safeSetState(() {
+      _recording = _voice.state.value == TutorVoiceState.recording;
+      });
+    }
   }
 
   String? get _learningTrackLabel {
@@ -142,6 +163,9 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
 
   @override
   void dispose() {
+    _voice.state.removeListener(_onVoiceState);
+    _reactionTimer?.cancel();
+    unawaited(_voice.endSession());
     SkulMateHomeRefreshBus.tick.removeListener(_onRefresh);
     SkulMateTutorIntakeBus.pending.removeListener(_onIntake);
     WidgetsBinding.instance.removeObserver(this);
@@ -409,17 +433,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
 
   Future<void> _speakThenListen(String text) async {
     _voice.voiceOut = _voiceOut;
-    if (_voiceOut) {
-      if (mounted) safeSetState(() => _recording = false);
-      await _voice.speakTutor(text);
-      if (mounted) {
-        safeSetState(
-          () => _recording =
-              !_voice.privacyMute &&
-              _voice.state.value == TutorVoiceState.recording,
-        );
-      }
-    }
+    if (mounted) safeSetState(() => _recording = false);
+    await _voice.speakTutor(text);
   }
 
   Future<void> _toggleMic() async {
@@ -515,15 +530,15 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                     ValueListenableBuilder<TutorVoiceState>(
                       valueListenable: _voice.state,
                       builder: (_, state, __) => SkulMateHeroMascot(
-                        state: switch (state) {
+                        state: _reaction ?? switch (state) {
                           TutorVoiceState.thinking =>
                             SkulMateMascotState.thinking,
                           TutorVoiceState.speaking =>
-                            SkulMateMascotState.encouraging,
+                            SkulMateMascotState.speaking,
                           TutorVoiceState.recording =>
-                            SkulMateMascotState.encouraging,
+                            SkulMateMascotState.listening,
                           TutorVoiceState.idle =>
-                            SkulMateMascotState.encouraging,
+                            SkulMateMascotState.neutral,
                         },
                       ),
                     ),
@@ -591,6 +606,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                           SkulMateInThreadSurface(
                             surface: turn.surface!,
                             onOutcome: (correct) async {
+                              _reactToAnswer(correct);
                               if (_sessionId == null) return;
                               await SkulMateTutorSessionService.recordOutcome(
                                 sessionId: _sessionId!,

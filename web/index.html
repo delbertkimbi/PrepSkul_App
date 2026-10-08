@@ -15,6 +15,8 @@
     the `--base-href` argument provided to `flutter build`.
   -->
   <base href="$FLUTTER_BASE_HREF">
+  <script type="module" src="assets/packages/model_viewer_plus/assets/model-viewer.min.js"></script>
+  <style>model-viewer { --progress-bar-height: 0px; --progress-bar-color: transparent; } model-viewer::part(default-progress-bar) { display: none; }</style>
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
@@ -303,13 +305,10 @@
     window.env = window.env || {};
     window.env.SUPABASE_URL_PROD = "https://cpzaxdfxbamdsshdgjyg.supabase.co";
     window.env.SUPABASE_ANON_KEY_PROD = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU";
-    window.env.SUPABASE_URL_DEV = "https://cpzaxdfxbamdsshdgjyg.supabase.co";
-    window.env.SUPABASE_ANON_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU";
-    window.env.FAPSHI_COLLECTION_API_USER_LIVE = "54652088-94b9-4642-8d04-fdab02beb71d";
-    window.env.FAPSHI_COLLECTION_API_KEY_LIVE = "FAK_9194147b613e1fc4ba03237bb6640241";
-    window.env.FAPSHI_SANDBOX_API_USER = "4a148e87-e185-437d-a641-b465e2bd8d17";
-    window.env.FAPSHI_SANDBOX_API_KEY = "FAK_TEST_0293bda0f3ef142be85b";
-    window.env.ENVIRONMENT = "development  # 'development' or 'production'";
+    window.env.ENVIRONMENT = "production";
+    window.env.API_BASE_URL_PROD = "https://www.prepskul.com/api";
+    window.env.SKULMATE_HTTP_API_BASE = "https://www.prepskul.com/api";
+    window.env.ENABLE_FAPSHI_PAYMENTS = "false";
     window.env.NEXT_PUBLIC_SUPABASE_URL = window.env.NEXT_PUBLIC_SUPABASE_URL || window.env.SUPABASE_URL_PROD || '';
     window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || window.env.SUPABASE_ANON_KEY_PROD || '';
 

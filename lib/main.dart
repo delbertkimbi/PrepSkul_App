@@ -134,14 +134,14 @@ void main() async {
       }
     }
 
-    // Load environment variables (if .env file exists)
+    // Load only the generated public client configuration.
     bool envLoaded = false;
     try {
-      await dotenv.load(fileName: ".env");
+      await dotenv.load(fileName: "assets/config/client.env");
       envLoaded = true;
-      LogService.success('✅ Environment variables loaded from .env');
+      LogService.success('Public client configuration loaded');
     } catch (e) {
-      LogService.error('❌ Failed to load .env file: $e');
+      LogService.error('Failed to load public client configuration: $e');
       LogService.warning(
         '⚠️ App will continue but Supabase may not initialize',
       );

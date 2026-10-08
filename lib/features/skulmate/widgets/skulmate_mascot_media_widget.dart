@@ -3,14 +3,42 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/widgets/alive_mate.dart';
 
-enum SkulMateMascotState { neutral, thinking, encouraging, celebration }
+enum SkulMateMascotState {
+  neutral,
+  thinking,
+  encouraging,
+  celebration,
+  speaking,
+  listening,
+  success,
+  tryAgain,
+  idea,
+  reading,
+  teaching,
+}
+
+MascotState? poseForMascotState(SkulMateMascotState state) => switch (state) {
+  SkulMateMascotState.neutral => MascotState.idle,
+  SkulMateMascotState.thinking => MascotState.thinking,
+  SkulMateMascotState.encouraging => MascotState.encourage,
+  SkulMateMascotState.celebration => MascotState.celebrate,
+  SkulMateMascotState.speaking => null,
+  SkulMateMascotState.listening => MascotState.listening,
+  SkulMateMascotState.success => MascotState.success,
+  SkulMateMascotState.tryAgain => MascotState.tryAgain,
+  SkulMateMascotState.idea => MascotState.idea,
+  SkulMateMascotState.reading => MascotState.reading,
+  SkulMateMascotState.teaching => MascotState.teaching,
+};
 
 Mood moodForMascotState(SkulMateMascotState state) {
   return switch (state) {
     SkulMateMascotState.neutral => Mood.idle,
     SkulMateMascotState.thinking => Mood.thinking,
-    SkulMateMascotState.encouraging => Mood.point,
+    SkulMateMascotState.encouraging => Mood.encourage,
     SkulMateMascotState.celebration => Mood.cheer,
+    SkulMateMascotState.speaking => Mood.talk,
+    _ => Mood.idle,
   };
 }
 
@@ -54,7 +82,11 @@ class SkulMateMascotMediaWidget extends StatelessWidget {
       width: boxWidth,
       height: boxHeight,
       child: Center(
-        child: AliveMate(mood: moodForMascotState(state), size: mateSize),
+        child: AliveMate(
+          mood: moodForMascotState(state),
+          state: poseForMascotState(state),
+          size: mateSize,
+        ),
       ),
     );
 

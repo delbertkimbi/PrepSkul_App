@@ -107,6 +107,9 @@ dependencies:
   genui: ^0.9.2
   json_schema_builder: ^0.1.5
   phosphoricons_flutter: ^1.0.0
+  model_viewer_plus: ^1.10.0
+  web: ^1.1.1
+  webview_flutter: ^4.14.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -126,6 +129,8 @@ flutter:
     - assets/shaders/paper.frag
 
   assets:
+    - assets/mascot/
+    - assets/3d/
     # Baloo 2 and Nunito, bundled rather than fetched.
     #
     # google_fonts downloads a typeface from fonts.gstatic.com the first time a
@@ -140,6 +145,7 @@ flutter:
     # anything else resolves to the nearest bundled one.
     - assets/fonts/google/
     - lib/data/
+    - assets/images/mate_3d/
     - assets/images/
     - assets/data/
     - assets/audio/
@@ -183,7 +189,7 @@ flutter:
     - assets/onboard/art/tile-medal.webp
     - assets/onboard/art/tile-pencil.webp
     - assets/fonts/
-    - .env  # Root .env file (bundled for web, used for all platforms)
+    - assets/config/client.env # Generated public configuration; never bundle root .env
 
   fonts:
     - family: Poppins

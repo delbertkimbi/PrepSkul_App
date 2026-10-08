@@ -9,9 +9,8 @@
  * Run this BEFORE `flutter build web`. Set env vars in your shell or CI (e.g. Vercel):
  *   - SUPABASE_URL_PROD / NEXT_PUBLIC_SUPABASE_URL
  *   - SUPABASE_ANON_KEY_PROD / NEXT_PUBLIC_SUPABASE_ANON_KEY
- *   - FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE (production payments)
- *   - FAPSHI_SANDBOX_API_USER, FAPSHI_SANDBOX_API_KEY (sandbox payments)
- *   - ENVIRONMENT (optional, default 'production')
+ * Generates a production review configuration. Payments stay unavailable until
+ * payment operations have moved to an authenticated server endpoint.
  *
  * The Flutter app reads these via window.env in app_config (web only).
  */
@@ -43,6 +42,8 @@ if (fs.existsSync(dotenvPath)) {
       (value.startsWith("'") && value.endsWith("'"))
     ) {
       value = value.slice(1, -1);
+    } else {
+      value = value.replace(/\s+#.*$/, '').trim();
     }
 
     // Don't overwrite values already set in the environment
@@ -52,17 +53,32 @@ if (fs.existsSync(dotenvPath)) {
   });
 }
 
+// Only public client configuration belongs in a downloadable application.
 const envVars = {
   SUPABASE_URL_PROD: process.env.SUPABASE_URL_PROD || process.env.NEXT_PUBLIC_SUPABASE_URL,
   SUPABASE_ANON_KEY_PROD: process.env.SUPABASE_ANON_KEY_PROD || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  SUPABASE_URL_DEV: process.env.SUPABASE_URL_DEV || process.env.NEXT_PUBLIC_SUPABASE_URL,
-  SUPABASE_ANON_KEY_DEV: process.env.SUPABASE_ANON_KEY_DEV || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  FAPSHI_COLLECTION_API_USER_LIVE: process.env.FAPSHI_COLLECTION_API_USER_LIVE,
-  FAPSHI_COLLECTION_API_KEY_LIVE: process.env.FAPSHI_COLLECTION_API_KEY_LIVE,
-  FAPSHI_SANDBOX_API_USER: process.env.FAPSHI_SANDBOX_API_USER,
-  FAPSHI_SANDBOX_API_KEY: process.env.FAPSHI_SANDBOX_API_KEY,
-  ENVIRONMENT: process.env.ENVIRONMENT || 'production',
+  ENVIRONMENT: 'production',
+  API_BASE_URL_PROD: 'https://www.prepskul.com/api',
+  SKULMATE_HTTP_API_BASE: 'https://www.prepskul.com/api',
+  ENABLE_FAPSHI_PAYMENTS: 'false',
 };
+if (!envVars.SUPABASE_URL_PROD || !envVars.SUPABASE_ANON_KEY_PROD) {
+  throw new Error('Missing public Supabase production configuration');
+}
+const publicKey = envVars.SUPABASE_ANON_KEY_PROD;
+if (!publicKey.startsWith('sb_publishable_')) {
+  let role;
+  try {
+    role = JSON.parse(Buffer.from(publicKey.split('.')[1], 'base64url').toString()).role;
+  } catch (_) {
+    throw new Error('Supabase client key must be an anon JWT or publishable key');
+  }
+  if (role !== 'anon') throw new Error('Refusing to bundle a non-anon Supabase key');
+}
+const clientPath = path.join(__dirname, '../assets/config/client.env');
+fs.mkdirSync(path.dirname(clientPath), { recursive: true });
+fs.writeFileSync(clientPath, Object.entries(envVars).map(([k,v]) => `${k}=${v}`).join('\n') + '\n');
+
 
 let indexContent = fs.readFileSync(indexPath, 'utf8');
 

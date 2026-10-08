@@ -14,7 +14,12 @@ import '../utils/payment_provider_helper.dart';
 
 class FapshiService {
   // Base URLs - Uses AppConfig
-  static String get _baseUrl => AppConfig.fapshiBaseUrl;
+  static String get _baseUrl {
+    if (!AppConfig.enableFapshiPayments) {
+      throw Exception('Payments are unavailable in this review build.');
+    }
+    return AppConfig.fapshiBaseUrl;
+  }
 
   /// Public accessor so UI layers can know if we are running against live environment
   static bool get isProduction => AppConfig.isProd;
