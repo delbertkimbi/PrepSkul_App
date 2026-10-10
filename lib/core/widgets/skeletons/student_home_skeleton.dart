@@ -3,6 +3,7 @@ import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/status_bar_utils.dart';
 import '../../../core/utils/responsive_helper.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class StudentHomeSkeleton extends StatelessWidget {
   const StudentHomeSkeleton({super.key});
@@ -11,12 +12,12 @@ class StudentHomeSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: Colors.grey[50],
+        backgroundColor: OnboardPalette.cream,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
           elevation: 0,
-          surfaceTintColor: Colors.white,
+          surfaceTintColor: OnboardPalette.cream,
           title: Shimmer.fromColors(
             baseColor: AppTheme.neutral200,
             highlightColor: Colors.white,

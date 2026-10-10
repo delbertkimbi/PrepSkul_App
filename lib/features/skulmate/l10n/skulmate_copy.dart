@@ -24,8 +24,125 @@ class SkulMateCopy {
   }
 
   String get heroQuestion => isFrench
-      ? 'Qu\'est-ce qu\'on révise aujourd\'hui ?'
-      : 'What shall we revise today?';
+      ? 'Qu’est-ce que tu veux comprendre ?'
+      : 'What would you like to figure out?';
+
+  String get tutorStartTitle =>
+      isFrench ? 'Qu’est-ce qui te bloque ?' : 'What feels tricky?';
+
+  String get tutorStartBody => isFrench
+      ? 'Pose une question, ajoute tes notes ou fais un petit exercice. Mate te guide pas à pas.'
+      : 'Ask a question, add your notes, or try a quick practice. Mate will guide you step by step.';
+
+  String get tutorContextTitle =>
+      isFrench ? 'Ton parcours guide Mate' : 'Your learning guides Mate';
+
+  String get tutorContextEmpty => isFrench
+      ? 'Ajoute ta classe et tes matières dans ton profil pour personnaliser les exemples.'
+      : 'Add your class and subjects to your profile so Mate can tailor examples.';
+
+  String get tutorContextReady => isFrench
+      ? 'Mate adapte ses exemples à ton parcours.'
+      : 'Mate uses this to adapt examples and practice.';
+
+  String get tutorStartChoices =>
+      isFrench ? 'On commence par quoi ?' : 'Choose a place to start';
+
+  String get tutorActionExplainTitle =>
+      isFrench ? 'Comprendre un sujet' : 'Understand a topic';
+
+  String get tutorActionExplainBody =>
+      isFrench ? 'Une explication simple, étape par étape' : 'A simple explanation, one step at a time';
+
+  String get tutorActionQuestionTitle =>
+      isFrench ? 'Résoudre une question' : 'Work through a question';
+
+  String get tutorActionQuestionBody =>
+      isFrench ? 'On avance ensemble, sans sauter d’étape' : 'Work it out together, without skipping steps';
+
+  String get tutorActionPracticeTitle =>
+      isFrench ? 'Faire un petit exercice' : 'Try a quick practice';
+
+  String get tutorActionPracticeBody =>
+      isFrench ? 'Vérifie ce que tu as retenu' : 'Check what you remember';
+
+  String get tutorActionMaterial =>
+      isFrench ? 'Ajouter mes notes ou une photo' : 'Add notes or a photo';
+
+  String get tutorStarterExplain =>
+      isFrench ? 'Comprendre un sujet' : 'Understand a topic';
+
+  String get tutorStarterHomework =>
+      isFrench ? 'Travailler une question' : 'Work through a question';
+
+  String get tutorStarterQuiz =>
+      isFrench ? 'M’entraîner' : 'Try a practice question';
+
+  String get tutorLearningTrack =>
+      isFrench ? 'Ton parcours' : 'Your learning track';
+
+  String get tutorExplainAnotherWay =>
+      isFrench ? 'Explique autrement' : 'Explain another way';
+
+  String get tutorCheckUnderstanding =>
+      isFrench ? 'Vérifier si j’ai compris' : 'Check my understanding';
+
+  String get tutorRetry => isFrench ? 'Réessayer' : 'Try again';
+
+  String get tutorPauseListening =>
+      isFrench ? 'Mettre le micro en pause' : 'Pause listening';
+
+  String get tutorResumeListening =>
+      isFrench ? 'Reprendre le micro' : 'Resume listening';
+
+  String get tutorInterruptMate =>
+      isFrench ? 'Interrompre Mate' : 'Interrupt Mate';
+
+  String get tutorConnectionError => isFrench
+      ? 'La connexion a coupé. Ta question est toujours là.'
+      : 'The connection paused. Your question is still here.';
+
+  String get tutorSessionError => isFrench
+      ? 'Je n’ai pas pu ouvrir cette séance. Réessaie.'
+      : 'I couldn’t open that lesson. Try again.';
+
+  String get tutorMaterialError => isFrench
+      ? 'Je n’ai pas pu lire ce document. Réessaie.'
+      : 'I couldn’t read that page. Try again.';
+
+  String get tutorComposerHint => isFrench
+      ? 'Parle. J’écoute déjà.'
+      : 'Just talk. I’m already listening.';
+
+  String get tutorEmptyPrompt => isFrench
+      ? 'Le tableau est à toi. Parle, j’écoute sans bouton. Écris si tu préfères.'
+      : 'This board is yours. Talk, I am listening without a button. Type if you prefer.';
+
+  String get tutorHoldToTalk => isFrench ? 'Écoute' : 'Listening';
+
+  String get tutorListening =>
+      isFrench ? 'Je t’écoute.' : 'I’m listening.';
+
+  String get tutorModeListen => isFrench ? 'Écouter' : 'Listen';
+
+  String get tutorModeSilent => isFrench ? 'Silence' : 'Silent';
+
+  String get tutorModeType => isFrench ? 'Écrire' : 'Type';
+
+  String get tutorThinking =>
+      isFrench ? 'Je prépare la suite…' : 'Working on the next move…';
+
+  String get tutorListenHint => isFrench
+      ? 'Parle. Touche l’orbite seulement pour pauser le micro.'
+      : 'Just talk. Tap the orb only to pause the mic.';
+
+  String get tutorMuteMate => isFrench ? 'Couper la voix' : 'Mute Mate';
+
+  String get tutorMateReads => isFrench ? 'Mate lit' : 'Mate reads';
+
+  String get tutorEscalateLive => isFrench
+      ? 'Trouver ou demander un tuteur PrepSkul.'
+      : 'Find or request a PrepSkul tutor.';
 
   String get intentPlaceholder =>
       isFrench ? 'Je veux réviser…' : 'I want to revise…';
@@ -458,8 +575,8 @@ class SkulMateCopy {
       isFrench ? 'Coller des notes' : 'Paste notes';
 
   String get pasteNotesSubtitle => isFrench
-      ? 'Colle ton texte ici. SkulMate le transformera en jeux de révision.'
-      : 'Drop your notes here. SkulMate will turn them into revision games.';
+      ? 'Colle ton texte ici. Mate le transformera en jeux de révision.'
+      : 'Drop your notes here. Mate will turn them into revision games.';
 
   String get pasteTitleOptional =>
       isFrench ? 'Titre (optionnel)' : 'Title (optional)';
@@ -502,8 +619,10 @@ class SkulMateCopy {
   String get searchHint => isFrench ? 'Rechercher' : 'Search';
 
   String get historyEmpty => isFrench
-      ? 'Aucun jeu pour le moment. Importe des notes pour commencer.'
-      : 'No games yet. Import notes to get started.';
+      ? 'Aucun fil pour le moment. Envoie tes notes ou dis ce que tu révises.'
+      : 'No threads yet. Send notes or tell me what you are revising.';
+
+  String get newThread => isFrench ? 'Nouveau fil' : 'New thread';
 
   String get startRecording =>
       isFrench ? 'Commencer l\'enregistrement' : 'Start recording';
@@ -726,61 +845,36 @@ class SkulMateCopy {
       isFrench ? 'Bientôt disponible' : 'Coming soon';
 
   String get welcomeSheetTitle =>
-      isFrench ? 'Bienvenue sur SkulMate' : 'Welcome to SkulMate';
+      isFrench ? 'Salut. Je suis Mate.' : 'Hey. I’m Mate.';
 
   String welcomeHeadline({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'Aidez votre enfant à transformer ses notes en jeux de révision'
-          : 'Help your child turn notes into revision games';
-    }
     return isFrench
-        ? 'Transforme tes notes en jeux de révision'
-        : 'Turn your notes into revision games';
+        ? 'Un tuteur qui apprend avec toi, dans le fil'
+        : 'A tutor that learns with you, in the thread';
   }
 
   String welcomeBenefitNotes({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'Importez ses notes, documents ou photos pour générer quiz et cartes.'
-          : 'Import their notes, documents, or photos to generate quizzes and flashcards.';
-    }
     return isFrench
-        ? 'Importe tes notes, documents ou photos pour générer des quiz et cartes.'
-        : 'Import notes, documents, or photos to generate quizzes and flashcards.';
+        ? 'Envoie tes notes, photos ou cours. Le tuteur enseigne et te teste dans la conversation.'
+        : 'Send notes, photos, or a class. The tutor teaches and checks you in the conversation.';
   }
 
   String welcomeBenefitResume({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'Reprenez là où il/elle s\'est arrêté(e). La progression est sauvegardée.'
-          : 'Pick up where they left off. Progress is saved automatically.';
-    }
     return isFrench
         ? 'Reprends là où tu t\'es arrêté. Ta progression est sauvegardée.'
         : 'Resume where you left off. Your progress is saved automatically.';
   }
 
   String welcomeBenefitLeaderboard({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'Suivez l\'XP et le classement de votre enfant avec ses amis.'
-          : 'Track their XP and leaderboard progress with friends.';
-    }
     return isFrench
         ? 'Gagne de l\'XP et grimpe au classement avec tes amis.'
         : 'Earn XP and climb the leaderboard with friends.';
   }
 
   String welcomeAiLine({bool isParent = false}) {
-    if (isParent) {
-      return isFrench
-          ? 'L\'IA crée des quiz, cartes et jeux d\'association à partir de leur contenu.'
-          : 'AI builds quizzes, flashcards, and matching games from their content.';
-    }
     return isFrench
-        ? 'L\'IA crée des quiz, cartes et jeux d\'association à partir de ton contenu.'
-        : 'AI builds quizzes, flashcards, and matching games from your content.';
+        ? 'Chaque réponse change la suite. Tu es l\'élève — que tu sois inscrit comme learner ou parent.'
+        : 'Every check changes the next move. You are the student — whether you signed up as a learner or a parent.';
   }
 
   String get welcomeCta =>

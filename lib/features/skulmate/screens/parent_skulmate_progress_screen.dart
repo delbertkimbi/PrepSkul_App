@@ -10,6 +10,7 @@ import 'package:prepskul/features/discovery/screens/find_tutors_screen.dart';
 
 import '../services/active_tutor_service.dart';
 import '../services/parent_progress_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Parent view: streak, minutes, weak topics, rough exam readiness (C4).
 class ParentSkulMateProgressScreen extends StatefulWidget {
@@ -76,22 +77,9 @@ class _ParentSkulMateProgressScreenState
     final snapshot = _snapshot ?? ParentProgressSnapshot.empty(french: _isFrench);
 
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          _isFrench ? 'Progression SkulMate' : 'SkulMate progress',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: _isFrench ? 'Progression SkulMate' : 'SkulMate progress',
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

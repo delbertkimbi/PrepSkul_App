@@ -1,15 +1,150 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Service for handling tutor requests (custom tutors not on platform)
+/// Authenticated tutor requests. The Next.js API owns identity; Supabase is a
+/// fallback only when that API is unreachable.
 class TutorRequestService {
   static final _supabase = SupabaseService.client;
+  static String get _base => AppConfig.skulMateHttpApiBase;
+
+  static Future<http.Response> _api(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, String>? query,
+  }) async {
+    final token = _supabase.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('User not authenticated');
+    }
+    var uri = Uri.parse('$_base$path');
+    if (query != null && query.isNotEmpty) {
+      uri = uri.replace(queryParameters: query);
+    }
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+    switch (method) {
+      case 'GET':
+        return http.get(uri, headers: headers);
+      case 'POST':
+        return http.post(uri, headers: headers, body: jsonEncode(body ?? {}));
+      case 'PATCH':
+        return http.patch(uri, headers: headers, body: jsonEncode(body ?? {}));
+      case 'DELETE':
+        return http.delete(uri, headers: headers);
+      default:
+        throw Exception('Unsupported $method');
+    }
+  }
+
+  static bool _shouldFallback(Object error, int? status) {
+    if (status != null && status >= 500) return true;
+    final text = error.toString().toLowerCase();
+    return text.contains('socket') ||
+        text.contains('timed out') ||
+        text.contains('failed host') ||
+        text.contains('connection');
+  }
 
   /// Create a new tutor request
   static Future<String> createRequest({
+    required List<String> subjects,
+    required String educationLevel,
+    String? specificRequirements,
+    required String teachingMode,
+    required int budgetMin,
+    required int budgetMax,
+    String? tutorGender,
+    String? tutorQualification,
+    required List<String> preferredDays,
+    required String preferredTime,
+    required String location,
+    String? locationDescription,
+    required String urgency,
+    String? additionalNotes,
+  }) async {
+    final payload = {
+      'subjects': subjects,
+      'educationLevel': educationLevel,
+      'specificRequirements': specificRequirements,
+      'teachingMode': teachingMode,
+      'budgetMin': budgetMin,
+      'budgetMax': budgetMax,
+      'tutorGender': tutorGender,
+      'tutorQualification': tutorQualification,
+      'preferredDays': preferredDays,
+      'preferredTime': preferredTime,
+      'location': location,
+      'locationDescription': locationDescription,
+      'urgency': urgency,
+      'additionalNotes': additionalNotes,
+    };
+    try {
+      final response = await _api('POST', '/tutor-requests', body: payload);
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final request = json['request'] as Map<String, dynamic>?;
+        final id = request?['id'] as String?;
+        if (id == null || id.isEmpty) {
+          throw Exception('Failed to create tutor request');
+        }
+        return id;
+      }
+      if (response.statusCode >= 400 && response.statusCode < 500) {
+        throw Exception(json['error'] ?? 'Failed to create tutor request');
+      }
+      if (response.statusCode >= 500) {
+        LogService.warning('tutor-requests API ${response.statusCode}, using direct insert');
+        return _createRequestDirect(
+          subjects: subjects,
+          educationLevel: educationLevel,
+          specificRequirements: specificRequirements,
+          teachingMode: teachingMode,
+          budgetMin: budgetMin,
+          budgetMax: budgetMax,
+          tutorGender: tutorGender,
+          tutorQualification: tutorQualification,
+          preferredDays: preferredDays,
+          preferredTime: preferredTime,
+          location: location,
+          locationDescription: locationDescription,
+          urgency: urgency,
+          additionalNotes: additionalNotes,
+        );
+      }
+      throw Exception('tutor-requests API ${response.statusCode}');
+    } catch (e) {
+      if (!_shouldFallback(e, null)) rethrow;
+      LogService.warning('tutor-requests API unreachable, using direct insert');
+      return _createRequestDirect(
+        subjects: subjects,
+        educationLevel: educationLevel,
+        specificRequirements: specificRequirements,
+        teachingMode: teachingMode,
+        budgetMin: budgetMin,
+        budgetMax: budgetMax,
+        tutorGender: tutorGender,
+        tutorQualification: tutorQualification,
+        preferredDays: preferredDays,
+        preferredTime: preferredTime,
+        location: location,
+        locationDescription: locationDescription,
+        urgency: urgency,
+        additionalNotes: additionalNotes,
+      );
+    }
+  }
+
+  static Future<String> _createRequestDirect({
     required List<String> subjects,
     required String educationLevel,
     String? specificRequirements,
@@ -127,6 +262,36 @@ class TutorRequestService {
     String? status,
   }) async {
     try {
+      final response = await _api(
+        'GET',
+        '/tutor-requests',
+        query: {
+          if (status != null && status != 'all') 'status': status,
+        },
+      );
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final rows = json['requests'] as List<dynamic>? ?? [];
+        return rows
+            .whereType<Map>()
+            .map((e) => TutorRequest.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      if (response.statusCode >= 400 && response.statusCode < 500) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        throw Exception(json['error'] ?? 'Failed to fetch tutor requests');
+      }
+    } catch (e) {
+      if (!_shouldFallback(e, null)) rethrow;
+      LogService.warning('tutor-requests list API unreachable, using direct read');
+    }
+    return _getUserRequestsDirect(status: status);
+  }
+
+  static Future<List<TutorRequest>> _getUserRequestsDirect({
+    String? status,
+  }) async {
+    try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
 
@@ -153,10 +318,37 @@ class TutorRequestService {
   /// Get single tutor request by ID
   static Future<TutorRequest> getRequestById(String requestId) async {
     try {
+      final response = await _api('GET', '/tutor-requests/$requestId');
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final row = json['request'] as Map<String, dynamic>?;
+        if (row == null) throw Exception('Tutor request not found');
+        return TutorRequest.fromJson(row);
+      }
+      if (response.statusCode == 404) {
+        throw Exception('Tutor request not found: $requestId');
+      }
+      if (response.statusCode >= 400 && response.statusCode < 500) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        throw Exception(json['error'] ?? 'Failed to fetch tutor request');
+      }
+    } catch (e) {
+      if (e.toString().contains('not found')) rethrow;
+      if (!_shouldFallback(e, null)) rethrow;
+      LogService.warning('tutor-requests get API unreachable, using direct read');
+    }
+    return _getRequestByIdDirect(requestId);
+  }
+
+  static Future<TutorRequest> _getRequestByIdDirect(String requestId) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
       final response = await _supabase
           .from('tutor_requests')
           .select()
           .eq('id', requestId)
+          .eq('requester_id', userId)
           .maybeSingle();
 
       if (response == null) {
@@ -205,6 +397,23 @@ class TutorRequestService {
   /// Cancel a tutor request
   static Future<void> cancelRequest(String requestId) async {
     try {
+      final response = await _api(
+        'PATCH',
+        '/tutor-requests/$requestId',
+        body: {'status': 'closed'},
+      );
+      if (response.statusCode == 200) return;
+      if (response.statusCode >= 400 && response.statusCode < 500) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        throw Exception(json['error'] ?? 'Failed to cancel tutor request');
+      }
+    } catch (e) {
+      if (!_shouldFallback(e, null)) rethrow;
+      LogService.warning('tutor-requests cancel API unreachable, using direct update');
+    }
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
       await _supabase
           .from('tutor_requests')
           .update({
@@ -212,7 +421,8 @@ class TutorRequestService {
             'admin_notes': 'Cancelled by user',
             'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('id', requestId);
+          .eq('id', requestId)
+          .eq('requester_id', userId);
     } catch (e) {
       LogService.error('Error cancelling tutor request: $e');
       throw Exception('Failed to cancel tutor request: $e');
@@ -321,6 +531,17 @@ class TutorRequestService {
 
   /// Delete a tutor request (user can delete their own request)
   static Future<void> deleteRequest(String requestId) async {
+    try {
+      final response = await _api('DELETE', '/tutor-requests/$requestId');
+      if (response.statusCode == 200) return;
+      if (response.statusCode >= 400 && response.statusCode < 500) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        throw Exception(json['error'] ?? 'Failed to delete tutor request');
+      }
+    } catch (e) {
+      if (!_shouldFallback(e, null)) rethrow;
+      LogService.warning('tutor-requests delete API unreachable, using direct delete');
+    }
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');

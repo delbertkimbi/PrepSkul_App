@@ -6,6 +6,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/services/session_effectiveness_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class TutorEffectivenessDashboard extends StatefulWidget {
   const TutorEffectivenessDashboard({Key? key}) : super(key: key);
@@ -61,19 +62,9 @@ class _TutorEffectivenessDashboardState extends State<TutorEffectivenessDashboar
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Text(
-          'Effectiveness Dashboard',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: AppTheme.primaryColor,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Effectiveness Dashboard',
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

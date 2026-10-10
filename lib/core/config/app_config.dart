@@ -299,41 +299,13 @@ class AppConfig {
         : 'https://sandbox.fapshi.com';
   }
   
-  /// Fapshi API User (Collection)
-  static String get fapshiApiUser {
-    if (isProd) {
-      return _safeEnv('FAPSHI_COLLECTION_API_USER_LIVE', '');
-    } else {
-      return _safeEnv('FAPSHI_SANDBOX_API_USER', '');
-    }
-  }
+
   
-  /// Fapshi API Key (Collection)
-  static String get fapshiApiKey {
-    if (isProd) {
-      return _safeEnv('FAPSHI_COLLECTION_API_KEY_LIVE', '');
-    } else {
-      return _safeEnv('FAPSHI_SANDBOX_API_KEY', '');
-    }
-  }
+
   
-  /// Fapshi Disbursement API User
-  static String get fapshiDisburseApiUser {
-    if (isProd) {
-      return _safeEnv('FAPSHI_DISBURSE_API_USER_LIVE', '');
-    } else {
-      return _safeEnv('FAPSHI_SANDBOX_API_USER', ''); // Same for sandbox
-    }
-  }
+
   
-  /// Fapshi Disbursement API Key
-  static String get fapshiDisburseApiKey {
-    if (isProd) {
-      return _safeEnv('FAPSHI_DISBURSE_API_KEY_LIVE', '');
-    } else {
-      return _safeEnv('FAPSHI_SANDBOX_API_KEY', ''); // Same for sandbox
-    }
-  }
+
   
   // ============================================
   // Supabase Configuration
@@ -357,14 +329,7 @@ class AppConfig {
     }
   }
   
-  /// Supabase Service Role Key
-  static String get supabaseServiceRoleKey {
-    if (isProd) {
-      return _safeEnv('SUPABASE_SERVICE_ROLE_KEY_PROD', '');
-    } else {
-      return _safeEnv('SUPABASE_SERVICE_ROLE_KEY_DEV', '');
-    }
-  }
+
   
   // ============================================
   // Firebase Configuration
@@ -375,10 +340,7 @@ class AppConfig {
     return _safeEnv('FIREBASE_PROJECT_ID', '');
   }
   
-  /// Firebase Service Account Key (JSON string)
-  static String get firebaseServiceAccountKey {
-    return _safeEnv('FIREBASE_SERVICE_ACCOUNT_KEY', '');
-  }
+
   
   // ============================================
   // Google Calendar Configuration
@@ -393,14 +355,7 @@ class AppConfig {
     }
   }
   
-  /// Google Calendar OAuth Client Secret
-  static String get googleCalendarClientSecret {
-    if (isProd) {
-      return _safeEnv('GOOGLE_CALENDAR_CLIENT_SECRET_PROD', '');
-    } else {
-      return _safeEnv('GOOGLE_CALENDAR_CLIENT_SECRET_DEV', '');
-    }
-  }
+
   
   /// Google OAuth Redirect URI
   static String get googleOAuthRedirectUri {
@@ -424,14 +379,7 @@ class AppConfig {
     }
   }
   
-  /// Fathom OAuth Client Secret
-  static String get fathomClientSecret {
-    if (isProd) {
-      return _safeEnv('FATHOM_CLIENT_SECRET_PROD', '');
-    } else {
-      return _safeEnv('FATHOM_CLIENT_SECRET_DEV', '');
-    }
-  }
+
   
   /// Fathom Redirect URI
   static String get fathomRedirectUri {
@@ -442,23 +390,13 @@ class AppConfig {
     }
   }
   
-  /// Fathom Webhook Secret
-  static String get fathomWebhookSecret {
-    if (isProd) {
-      return _safeEnv('FATHOM_WEBHOOK_SECRET_PROD', '');
-    } else {
-      return _safeEnv('FATHOM_WEBHOOK_SECRET_DEV', '');
-    }
-  }
+
   
   // ============================================
   // Email Service (Resend)
   // ============================================
   
-  /// Resend API Key
-  static String get resendApiKey {
-    return _safeEnv('RESEND_API_KEY', '');
-  }
+
   
   /// Resend From Email
   static String get resendFromEmail {

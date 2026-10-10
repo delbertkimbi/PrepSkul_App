@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class TutorStudentsScreen extends StatefulWidget {
   const TutorStudentsScreen({Key? key}) : super(key: key);
@@ -83,18 +84,10 @@ class _TutorStudentsScreenState extends State<TutorStudentsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        automaticallyImplyLeading: false, // No back button in bottom nav
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'My Students',
-          style: GoogleFonts.poppins(
-            color: AppTheme.textDark,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'My Students',
+        automaticallyImplyLeading: false,
       ),
       body: _isLoading
           ? Center(

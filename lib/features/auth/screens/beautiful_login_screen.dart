@@ -15,6 +15,7 @@ import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/models/phone_country.dart';
 import 'package:prepskul/core/widgets/phone_country_code_picker.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class BeautifulLoginScreen extends StatefulWidget {
   final String? initialPhone;
@@ -88,62 +89,20 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       body: Stack(
         children: [
           // Curved gradient hero header
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 190,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 22.0, 24.0, 18.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 10),
-                      Center(
-                        child: Text(
-                          t.authLogin,
-                          style: GoogleFonts.poppins(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      // Subtitle
-                      Center(
-                        child: Text(
-                          t.authLoginSubtitle,
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                AuthPaperHeader(
+                  title: t.authLogin,
+                  subtitle: t.authLoginSubtitle,
                 ),
 
                 // Form content - below the wave
@@ -153,7 +112,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 48),
+                        const SizedBox(height: 12),
                         // Form
                         Form(
                           key: _formKey,
@@ -163,11 +122,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                               // Phone Number Field
                               Text(
                                 t.authPhoneNumber,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 12),
                               Row(
@@ -188,52 +143,8 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                             _selectedCountry,
                                             value ?? '',
                                           ),
-                                      decoration: InputDecoration(
-                                        hintText: t.authPhoneHint,
-                                        hintStyle: GoogleFonts.poppins(
-                                          color: AppTheme.textLight,
-                                          fontSize: 14,
-                                        ),
-                                        filled: true,
-                                        fillColor: AppTheme.softCard,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: const BorderSide(
-                                            color: AppTheme.softBorder,
-                                            width: 1,
-                                          ),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: const BorderSide(
-                                            color: AppTheme.softBorder,
-                                            width: 1,
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: const BorderSide(
-                                            color: AppTheme.primaryColor,
-                                            width: 2,
-                                          ),
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 20,
-                                              vertical: 16,
-                                            ),
-                                      ),
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppTheme.textDark,
-                                      ),
+                                      decoration: paperFieldDecoration(hintText: t.authPhoneHint),
+                                      style: onboardFont(size: 14, weight: FontWeight.w800),
                                     ),
                                   ),
                                 ],
@@ -244,69 +155,28 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                               // Password Field
                               Text(
                                 t.authPassword,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 12),
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
-                                decoration: InputDecoration(
+                                decoration: paperFieldDecoration(
                                   hintText: t.authPasswordHint,
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
                                     ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                  suffixIcon: GestureDetector(
-                                    onTap: () {
+                                    onPressed: () {
                                       safeSetState(() {
                                         _obscurePassword = !_obscurePassword;
                                       });
                                     },
-                                    child: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: AppTheme.textMedium,
-                                      size: 20,
-                                    ),
                                   ),
                                 ),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
 
                               const SizedBox(height: 16),
@@ -331,43 +201,13 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 12),
 
                               // Login Button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 56,
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? () {} : _handleLogin,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryColor,
-                                    foregroundColor: Colors.white,
-                                    disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
-                                    disabledForegroundColor: Colors.white, // Keep white text when disabled
-                                    elevation: 2,
-                                    shadowColor: AppTheme.primaryColor
-                                        .withOpacity(0.3),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(24),
-                                    ),
-                                  ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2.5,
-                                          ),
-                                        )
-                                      : Text(
-                                          t.authLoginButton,
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                ),
+                              OnboardPrimaryButton(
+                                label: t.authLoginButton,
+                                busy: _isLoading,
+                                onTap: _handleLogin,
                               ),
 
                               const SizedBox(height: 32),
@@ -428,7 +268,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 12),
                             ],
                           ),
                         ),
@@ -618,34 +458,3 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
   }
 }
 
-// Custom wave clipper – shallow curve so subtitle stays visible above wave
-class WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    var path = Path();
-    path.lineTo(0, size.height - 28);
-    var controlPoint1 = Offset(size.width * 0.25, size.height - 14);
-    var endPoint1 = Offset(size.width * 0.5, size.height - 20);
-    path.quadraticBezierTo(
-      controlPoint1.dx,
-      controlPoint1.dy,
-      endPoint1.dx,
-      endPoint1.dy,
-    );
-    var controlPoint2 = Offset(size.width * 0.75, size.height - 28);
-    var endPoint2 = Offset(size.width, size.height - 20);
-    path.quadraticBezierTo(
-      controlPoint2.dx,
-      controlPoint2.dy,
-      endPoint2.dx,
-      endPoint2.dy,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}

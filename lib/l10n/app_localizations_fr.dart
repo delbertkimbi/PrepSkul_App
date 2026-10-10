@@ -15,22 +15,22 @@ class AppLocalizationsFr extends AppLocalizations {
   String get tagline => 'Guider chaque apprenant vers son plein potentiel';
 
   @override
-  String get onboardingLearnTitle => 'Apprends à ton rythme';
+  String get onboardingLearnTitle => 'Parle. Je t’écoute déjà.';
 
   @override
-  String get onboardingLearnSubtitle => 'Des cours personnalisés adaptés à ton style d\'apprentissage et à ton emploi du temps.';
+  String get onboardingLearnSubtitle => 'Pas de bouton micro. Coupe-moi quand tu veux. Tape si le téléphone est partagé.';
 
   @override
-  String get onboardingAchieveTitle => 'Atteins tes objectifs';
+  String get onboardingAchieveTitle => 'Tu veux quelqu’un à la table ?';
 
   @override
-  String get onboardingAchieveSubtitle => 'Des élèves en difficulté aux apprenants confiants – ton potentiel est illimité.';
+  String get onboardingAchieveSubtitle => 'Trouve un tuteur, ou demandes-en un. En ligne ou à domicile.';
 
   @override
-  String get onboardingConnectTitle => 'Connecte-toi aux meilleurs tuteurs';
+  String get onboardingConnectTitle => 'Moi c’est Mate. J’enseigne à voix haute.';
 
   @override
-  String get onboardingConnectSubtitle => 'Réserve des tuteurs experts pour des sessions en ligne ou en présentiel à tout moment.';
+  String get onboardingConnectSubtitle => 'Depuis ton système scolaire. BEPC, Bac, GCE, ou ce que tu m’apportes.';
 
   @override
   String get buttonNext => 'Suivant';
@@ -40,6 +40,9 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get buttonGetStarted => 'Commencer';
+
+  @override
+  String get onboardingCta => 'C’est parti';
 
   @override
   String get languageSettingsTitle => 'Langue';
@@ -66,10 +69,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get navHome => 'Accueil';
 
   @override
-  String get navFindTutors => 'Trouver des tuteurs';
+  String get navFindTutors => 'Trouver';
 
   @override
-  String get navSkulMate => 'SkulMate';
+  String get navSkulMate => 'Mate';
 
   @override
   String get navRequests => 'Demandes';
@@ -600,16 +603,16 @@ class AppLocalizationsFr extends AppLocalizations {
   String get authFieldRequired => 'Ce champ est obligatoire';
 
   @override
-  String get authWelcomeBack => 'Bon retour';
+  String get authWelcomeBack => 'Hey. On te reconnecte.';
 
   @override
-  String get authJoinPrepSkul => 'Rejoindre PrepSkul';
+  String get authJoinPrepSkul => 'Commence avec Mate.';
 
   @override
-  String get authSignInToContinue => 'Connectez-vous pour continuer';
+  String get authSignInToContinue => 'Connecte-toi à ton espace élève.';
 
   @override
-  String get authCreateAccount => 'Créez un compte pour commencer';
+  String get authCreateAccount => 'Les parents sont des élèves aussi.';
 
   @override
   String get authContinueWithGoogle => 'Continuer avec Google';

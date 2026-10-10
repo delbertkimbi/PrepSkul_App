@@ -18,6 +18,7 @@ import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
 import 'package:prepskul/features/discovery/widgets/tutor_card.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
@@ -465,7 +466,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       return _buildBookingRequestDetail(context, widget.request!);
     } else {
       return Scaffold(
-        appBar: AppBar(title: Text('Request Details')),
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(title: 'Request Details'),
         body: Center(child: Text('No request data available')),
       );
     }
@@ -478,22 +480,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     _hasCheckedExpired = false;
     
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Trial Session Details',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Trial Session Details',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(12),
@@ -1911,23 +1900,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     final statusIcon = _getCustomRequestStatusIcon(status);
 
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Custom Request',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        centerTitle: false,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Custom Request',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -2721,22 +2696,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     final statusColor = _getStatusColor(status);
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Request Details',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Request Details',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

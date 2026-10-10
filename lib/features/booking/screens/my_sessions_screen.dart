@@ -9,6 +9,7 @@ import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import '../../../core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import '../../../core/config/live_session_test_config.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
@@ -2698,6 +2699,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
     return Scaffold(
+      backgroundColor: OnboardPalette.cream,
       appBar: AppBar(
         leading: Builder(
           builder: (context) {
@@ -2705,7 +2707,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             if (Navigator.of(context).canPop()) {
               return IconButton(
                 icon: Icon(PhosphorIcons.arrowLeft),
-                color: Colors.white,
+                color: AppTheme.primaryColor,
                 onPressed: () {
                   // Simply pop - don't trigger any auth checks
                   Navigator.of(context).pop();
@@ -2715,7 +2717,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               // Can't pop — replace with the correct main shell (never wipe auth stack).
               return IconButton(
                 icon: Icon(PhosphorIcons.arrowLeft),
-                color: Colors.white,
+                color: AppTheme.primaryColor,
                 onPressed: () {
                   Navigator.of(context).pushReplacementNamed(_mainNavRoute);
                 },
@@ -2726,18 +2728,16 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         automaticallyImplyLeading: false,
         title: Text(
           t.mySessionsTitle,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-            color: Colors.white,
-          ),
+          style: onboardDisplay(size: 22),
         ),
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
+        foregroundColor: AppTheme.primaryColor,
+        surfaceTintColor: OnboardPalette.cream,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
+            color: AppTheme.primaryColor,
             tooltip: 'Attendance History',
             onPressed: () {
               Navigator.push(
@@ -2751,10 +2751,10 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          indicatorColor: AppTheme.primaryColor,
+          labelColor: AppTheme.primaryColor,
+          unselectedLabelColor: AppTheme.textMedium,
+          labelStyle: onboardFont(size: 14),
           tabs: [
             Tab(text: 'Upcoming (${_upcomingSessions.length})'),
             Tab(text: 'Past (${_pastSessions.length})'),

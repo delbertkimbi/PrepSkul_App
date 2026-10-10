@@ -5,6 +5,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:intl/intl.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Beautiful session booking screen with time slot selection
 /// Based on tutor's availability
@@ -128,30 +129,21 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
     final hourlyRate = (widget.tutor['hourly_rate'] ?? 5000) as num;
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        titleWidget: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               _selectedDuration == '25 min' ? '25 min lesson' : '50 min lesson',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
-              ),
+              style: onboardDisplay(size: 18),
             ),
             Text(
               'To discuss your level and learning plan',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppTheme.textLight,
+              style: onboardFont(
+                size: 12,
+                weight: FontWeight.w700,
+                color: AppTheme.textMedium,
               ),
             ),
           ],

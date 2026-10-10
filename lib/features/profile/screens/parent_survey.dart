@@ -14,6 +14,7 @@ import 'dart:convert';
 import '../../tutor/screens/instruction_screen.dart';
 import '../../../core/widgets/confetti_celebration.dart';
 import '../../../core/widgets/onboarding_location_fields.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class ParentSurvey extends StatefulWidget {
   const ParentSurvey({Key? key}) : super(key: key);
@@ -511,19 +512,10 @@ class _ParentSurveyState extends State<ParentSurvey> {
         return await _showExitDialog(context);
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          backgroundColor: AppTheme.primaryColor,
-          elevation: 0,
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(
           automaticallyImplyLeading: false,
-          title: Text(
-            'Parent Survey',
-            style: GoogleFonts.poppins(
-              fontSize: 21,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.neutral50,
-            ),
-          ),
+          title: 'Parent Survey',
           centerTitle: true,
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(20),
@@ -536,10 +528,10 @@ class _ParentSurveyState extends State<ParentSurvey> {
                     children: [
                       Text(
                         '${((_currentStep + 1) / _steps.length * 100).round()}% Complete',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: AppTheme.neutral100.withOpacity(0.5),
+                        style: onboardFont(
+                          size: 14,
+                          weight: FontWeight.w700,
+                          color: AppTheme.primaryColor,
                         ),
                       ),
                       Row(

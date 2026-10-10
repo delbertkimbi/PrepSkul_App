@@ -31,6 +31,7 @@ import 'package:prepskul/features/booking/widgets/collapsible_session_details.da
 import 'package:prepskul/features/booking/models/upcoming_session_item.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Session Detail Screen
 ///
@@ -577,26 +578,17 @@ class SessionDetailScreen extends StatelessWidget {
           counterpartyAvatarUrl: tutorAvatarUrl,
           isOnline: location == 'online',
           child: Scaffold(
-          backgroundColor: Colors.white,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
+          backgroundColor: OnboardPalette.cream,
+          appBar: paperAppBar(
             leading: IconButton(
-              icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.textDark),
+              icon: Icon(PhosphorIcons.arrowLeft, color: AppTheme.primaryColor),
               onPressed: () => Navigator.pop(context),
             ),
-            title: Text(
-              location == 'onsite' && isGenuinelyLive
-                  ? 'Live session'
-                  : (location == 'onsite' && (status == 'completed' || status == 'evaluated')
-                      ? 'Session complete'
-                      : 'Session details'),
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-                fontSize: 18,
-                color: AppTheme.textDark,
-              ),
-            ),
+            title: location == 'onsite' && isGenuinelyLive
+                ? 'Live session'
+                : (location == 'onsite' && (status == 'completed' || status == 'evaluated')
+                    ? 'Session complete'
+                    : 'Session details'),
           ),
           body: Column(
               children: [

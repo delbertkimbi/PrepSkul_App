@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "stateMachine": "SkulMateMascot",
+  "riveExportAvailable": false,
+  "states": [
+    {
+      "id": 0,
+      "name": "idle",
+      "asset": "idle.webp"
+    },
+    {
+      "id": 1,
+      "name": "happy",
+      "asset": "happy.webp"
+    },
+    {
+      "id": 2,
+      "name": "wave",
+      "asset": "wave.webp"
+    },
+    {
+      "id": 3,
+      "name": "thumbs_up",
+      "asset": "thumbs_up.webp"
+    },
+    {
+      "id": 4,
+      "name": "thinking",
+      "asset": "thinking.webp"
+    },
+    {
+      "id": 5,
+      "name": "confused",
+      "asset": "confused.webp"
+    },
+    {
+      "id": 6,
+      "name": "idea",
+      "asset": "idea.webp"
+    },
+    {
+      "id": 7,
+      "name": "studying",
+      "asset": "studying.webp"
+    },
+    {
+      "id": 8,
+      "name": "reading",
+      "asset": "reading.webp"
+    },
+    {
+      "id": 9,
+      "name": "celebrate",
+      "asset": "celebrate.webp"
+    },
+    {
+      "id": 10,
+      "name": "success",
+      "asset": "success.webp"
+    },
+    {
+      "id": 11,
+      "name": "try_again",
+      "asset": "try_again.webp"
+    },
+    {
+      "id": 12,
+      "name": "encourage",
+      "asset": "encourage.webp"
+    },
+    {
+      "id": 13,
+      "name": "sad",
+      "asset": "sad.webp"
+    },
+    {
+      "id": 14,
+      "name": "sleeping",
+      "asset": "sleeping.webp"
+    },
+    {
+      "id": 15,
+      "name": "running",
+      "asset": "running.webp"
+    },
+    {
+      "id": 16,
+      "name": "pointing",
+      "asset": "pointing.webp"
+    },
+    {
+      "id": 17,
+      "name": "teaching",
+      "asset": "teaching.webp"
+    },
+    {
+      "id": 18,
+      "name": "graduation",
+      "asset": "graduation.webp"
+    },
+    {
+      "id": 19,
+      "name": "calm",
+      "asset": "calm.webp"
+    }
+  ]
+}

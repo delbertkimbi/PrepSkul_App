@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
@@ -548,17 +549,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final t = AppLocalizations.of(context)!;
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: AppTheme.softBackground,
+        backgroundColor: OnboardPalette.cream,
         appBar: AppBar(
           automaticallyImplyLeading: false, // No back button in bottom nav
-          backgroundColor: AppTheme.primaryColor, // Deep blue
+          backgroundColor: OnboardPalette.cream,
+          surfaceTintColor: OnboardPalette.cream,
           elevation: 0,
           title: Text(
             t.profileTitle,
-            style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
+            style: onboardDisplay(size: 22),
           ),
         ),
       body: _isLoading
@@ -570,10 +569,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
                 children: [
-                  // Hero Section with Deep Blue Background extending to AppBar
+                  // Paper profile hero
                   Container(
                     width: double.infinity,
-                    color: AppTheme.primaryColor, // Deep blue
+                    color: OnboardPalette.cream,
                     child: Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -602,7 +601,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: Colors.white.withOpacity(0.3),
+                                        color: AppTheme.primaryColor,
                                         width: 2,
                                       ),
                                       boxShadow: [
@@ -615,9 +614,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                     child: CircleAvatar(
                                       radius: 36,
-                                      backgroundColor: Colors.white.withOpacity(
-                                        0.2,
-                                      ),
+                                      backgroundColor: AppTheme.skyBlueLight,
                                       backgroundImage:
                                           _profilePhotoUrl != null &&
                                               _profilePhotoUrl!.isNotEmpty
@@ -629,9 +626,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           ? Icon(
                                               PhosphorIcons.user,
                                               size: 32,
-                                              color: Colors.white.withOpacity(
-                                                0.9,
-                                              ),
+                                              color: AppTheme.primaryColor,
                                             )
                                           : null,
                                     ),
@@ -672,11 +667,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             // Name (Full name) - Less bold
                             Text(
                               _userInfo?['fullName']?.toString() ?? 'User',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                                letterSpacing: -0.3,
+                              style: onboardDisplay(
+                                size: 18,
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -687,20 +679,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(18),
                                 border: Border.all(
-                                  color: Colors.white.withOpacity(0.3),
-                                  width: 1.5,
+                                  color: AppTheme.primaryColor,
+                                  width: 2,
                                 ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x381E3A8A),
+                                    offset: Offset(0, 3),
+                                    blurRadius: 0,
+                                  ),
+                                ],
                               ),
                               child: Text(
                                 widget.userType.toUpperCase(),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                  letterSpacing: 1.2,
+                                style: onboardFont(
+                                  size: 10,
+                                  weight: FontWeight.w800,
                                 ),
                               ),
                             ),

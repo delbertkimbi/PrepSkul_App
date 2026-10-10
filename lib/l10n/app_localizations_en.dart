@@ -15,22 +15,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tagline => 'Guiding Every Learner to their full potential';
 
   @override
-  String get onboardingLearnTitle => 'Learn at Your Pace';
+  String get onboardingLearnTitle => 'Talk. I’m already listening.';
 
   @override
-  String get onboardingLearnSubtitle => 'Personalized lessons that adapt to your learning style and schedule.';
+  String get onboardingLearnSubtitle => 'No mic button. Interrupt anytime. Type if the phone is shared.';
 
   @override
-  String get onboardingAchieveTitle => 'Achieve Your Goals';
+  String get onboardingAchieveTitle => 'Need a person at the table?';
 
   @override
-  String get onboardingAchieveSubtitle => 'From struggling students to confident achievers - your potential is limitless.';
+  String get onboardingAchieveSubtitle => 'Find a tutor, or request one. Live online, or onsite.';
 
   @override
-  String get onboardingConnectTitle => 'Connect with Top Tutors';
+  String get onboardingConnectTitle => 'I’m Mate. I teach out loud.';
 
   @override
-  String get onboardingConnectSubtitle => 'Book expert tutors for online or in-person sessions anytime.';
+  String get onboardingConnectSubtitle => 'From your school system. BEPC, Bac, GCE, or what you bring me.';
 
   @override
   String get buttonNext => 'Next';
@@ -40,6 +40,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get buttonGetStarted => 'Get Started';
+
+  @override
+  String get onboardingCta => 'Let’s go';
 
   @override
   String get languageSettingsTitle => 'Language';
@@ -66,10 +69,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navHome => 'Home';
 
   @override
-  String get navFindTutors => 'Find Tutors';
+  String get navFindTutors => 'Find';
 
   @override
-  String get navSkulMate => 'SkulMate';
+  String get navSkulMate => 'Mate';
 
   @override
   String get navRequests => 'Requests';
@@ -600,16 +603,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authFieldRequired => 'This field is required';
 
   @override
-  String get authWelcomeBack => 'Welcome Back';
+  String get authWelcomeBack => 'Hey. Let’s get you in.';
 
   @override
-  String get authJoinPrepSkul => 'Join PrepSkul';
+  String get authJoinPrepSkul => 'Start with Mate.';
 
   @override
-  String get authSignInToContinue => 'Sign in to continue';
+  String get authSignInToContinue => 'Sign in to your student space.';
 
   @override
-  String get authCreateAccount => 'Create an account to get started';
+  String get authCreateAccount => 'Parents count as students too.';
 
   @override
   String get authContinueWithGoogle => 'Continue with Google';

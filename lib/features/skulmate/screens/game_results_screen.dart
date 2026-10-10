@@ -174,7 +174,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'SkulMate team would love your quick feedback.',
+                              'PrepSkul would love your quick feedback.',
                               style: GoogleFonts.poppins(
                                 fontSize: 12,
                                 color: AppTheme.textMedium,
@@ -186,7 +186,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'How was your first SkulMate game experience?',
+                      'How was your first Mate game experience?',
                       style: GoogleFonts.poppins(fontSize: 13),
                     ),
                     const SizedBox(height: 10),

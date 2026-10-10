@@ -1,3 +1,4 @@
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +13,7 @@ import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
 import 'email_confirmation_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 // Email validation regex
 final _emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
@@ -34,62 +36,37 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _restoreLearnerName();
+  }
+
+  Future<void> _restoreLearnerName() async {
+    final draft = await LearnerOnboardingPersist.loadDraft();
+    if (!mounted || draft == null || _nameController.text.isNotEmpty) return;
+    // A parent's account name is distinct from their child's learning name.
+    if (draft.accountRole != 'parent') {
+      setState(() => _nameController.text = draft.name);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved wave background at top
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 180,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content inside the wave
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 10.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Text(
-                          'Sign up',
-                          style: GoogleFonts.poppins(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: Text(
-                          'Create your account with email',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const AuthPaperHeader(
+                  title: 'Sign up',
+                  subtitle: 'Start with Mate.',
                 ),
 
                 // Form content
@@ -99,7 +76,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 45),
+                        const SizedBox(height: 12),
                         Form(
                           key: _formKey,
                           child: Column(
@@ -108,11 +85,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                               // Full Name Field
                               Text(
                                 'Full Name',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -126,51 +99,14 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
-                                  hintText: 'Enter your name',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                ),
+                                decoration: paperFieldDecoration(hintText: 'Enter your name'),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 12),
 
                               // Email Field
                               Text(
                                 'Email Address',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -185,51 +121,14 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
-                                  hintText: 'your.email@example.com',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                ),
+                                decoration: paperFieldDecoration(hintText: 'your.email@example.com'),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 12),
 
                               // Password Field
                               Text(
                                 'Password',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -244,12 +143,8 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
+                                decoration: paperFieldDecoration(
                                   hintText: 'Enter your password',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
@@ -262,45 +157,14 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                       });
                                     },
                                   ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 12),
 
                               // Confirm Password Field
                               Text(
                                 'Confirm Password',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -315,12 +179,8 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
+                                decoration: paperFieldDecoration(
                                   hintText: 'Confirm your password',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscureConfirmPassword
@@ -334,75 +194,15 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                       });
                                     },
                                   ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 12),
 
                               // Signup Button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 56,
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? () {} : _handleSignup,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryColor,
-                                    foregroundColor: Colors.white,
-                                    disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
-                                    disabledForegroundColor: Colors.white, // Keep white text when disabled
-                                    elevation: 2,
-                                    shadowColor: AppTheme.primaryColor
-                                        .withOpacity(0.3),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(28),
-                                    ),
-                                  ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2.5,
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  Colors.white,
-                                                ),
-                                          ),
-                                        )
-                                      : Text(
-                                          'Create Account',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                ),
+                              OnboardPrimaryButton(
+                                label: 'Create Account',
+                                busy: _isLoading,
+                                onTap: _handleSignup,
                               ),
                               const SizedBox(height: 32),
 
@@ -642,29 +442,3 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   }
 }
 
-// Reuse WaveClipper from beautiful_signup_screen
-class WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height * 0.85);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      size.height,
-      size.width * 0.5,
-      size.height * 0.85,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      size.height * 0.7,
-      size.width,
-      size.height * 0.85,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}

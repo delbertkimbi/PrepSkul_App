@@ -4,6 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
 import 'package:prepskul/features/payment/screens/identity_verification_flow_screen.dart';
 import 'package:prepskul/features/payment/services/payment_gate_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Resolves KYC gate then shows checkout or verification wizard (for deep links).
 class PaymentRouteLoader extends StatefulWidget {
@@ -39,7 +40,7 @@ class _PaymentRouteLoaderState extends State<PaymentRouteLoader> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return Scaffold(
-            backgroundColor: AppTheme.softBackground,
+            backgroundColor: OnboardPalette.cream,
             body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -48,7 +49,11 @@ class _PaymentRouteLoaderState extends State<PaymentRouteLoader> {
                   const SizedBox(height: 16),
                   Text(
                     'Loading payment…',
-                    style: GoogleFonts.poppins(color: AppTheme.textMedium),
+                    style: onboardFont(
+                      size: 15,
+                      weight: FontWeight.w700,
+                      color: AppTheme.textMedium,
+                    ),
                   ),
                 ],
               ),
@@ -58,7 +63,8 @@ class _PaymentRouteLoaderState extends State<PaymentRouteLoader> {
 
         if (snapshot.hasError) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Payment')),
+            backgroundColor: OnboardPalette.cream,
+            appBar: paperAppBar(title: 'Payment'),
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),

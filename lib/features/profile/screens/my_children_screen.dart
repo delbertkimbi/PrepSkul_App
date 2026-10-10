@@ -8,6 +8,7 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'add_child_profile_screen.dart';
 
 import '../../skulmate/screens/parent_skulmate_progress_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// "My children" screen for parents: list, add, edit, delete linked learners (parent_learners).
 class MyChildrenScreen extends StatefulWidget {
@@ -111,18 +112,9 @@ class _MyChildrenScreenState extends State<MyChildrenScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'My children',
-          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'My children',
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

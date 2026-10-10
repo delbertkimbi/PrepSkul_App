@@ -24,6 +24,7 @@ import 'package:prepskul/features/payment/services/payment_gate_service.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/core/utils/tutor_display_name_utils.dart';
 import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:prepskul/core/services/mobile_analytics_ingest_service.dart';
 
 /// Booking Payment Screen
@@ -891,17 +892,14 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: Colors.grey.shade50,
+        backgroundColor: OnboardPalette.cream,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: OnboardPalette.cream,
+          surfaceTintColor: OnboardPalette.cream,
           elevation: 0,
           title: Text(
             'Complete Payment',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
+            style: onboardDisplay(size: 20),
           ),
         ),
         body: const Center(child: CircularProgressIndicator()),
@@ -910,17 +908,14 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
     if (_paymentRequest == null) {
       return Scaffold(
-        backgroundColor: Colors.grey.shade50,
+        backgroundColor: OnboardPalette.cream,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: OnboardPalette.cream,
+          surfaceTintColor: OnboardPalette.cream,
           elevation: 0,
           title: Text(
             'Payment',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
+            style: onboardDisplay(size: 20),
           ),
         ),
         body: Center(
@@ -958,22 +953,18 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     final tutorName = metadata?['tutor_name'] as String? ?? 'Tutor';
 
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: OnboardPalette.cream,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
         elevation: 0,
-        surfaceTintColor: Colors.transparent,
+        surfaceTintColor: OnboardPalette.cream,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppTheme.textDark),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           'Complete Payment',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
+          style: onboardDisplay(size: 20),
         ),
       ),
       body: _currentStep == 2

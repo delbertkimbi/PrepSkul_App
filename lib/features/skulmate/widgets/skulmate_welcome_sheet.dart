@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-
+import 'package:prepskul/core/widgets/alive_mate.dart';
 import '../l10n/skulmate_copy.dart';
 import '../services/skulmate_onboarding_prefs.dart';
 import '../services/skulmate_welcome_service.dart';
 import 'skulmate_surface_styles.dart';
 import 'skulmate_typography.dart';
 
-/// First-visit intro when the learner opens the SkulMate tab.
+/// First-visit intro when a student (learner or parent signup) opens SkulMate.
 class SkulMateWelcomeSheet {
   SkulMateWelcomeSheet._();
 
@@ -18,16 +18,13 @@ class SkulMateWelcomeSheet {
     await show(context);
   }
 
-  static Future<void> show(
-    BuildContext context, {
-    bool isParent = false,
-  }) async {
+  static Future<void> show(BuildContext context) async {
     if (!context.mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _WelcomeBody(isParent: isParent),
+      builder: (ctx) => const _WelcomeBody(),
     );
     await SkulMateOnboardingPrefs.markWelcomeSeen();
     await SkulMateWelcomeService.markSeen();
@@ -35,9 +32,7 @@ class SkulMateWelcomeSheet {
 }
 
 class _WelcomeBody extends StatelessWidget {
-  final bool isParent;
-
-  const _WelcomeBody({this.isParent = false});
+  const _WelcomeBody();
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +71,13 @@ class _WelcomeBody extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 18),
+              Center(
+                child: AliveMate(
+                  mood: Mood.cheer,
+                  size: 112,
+                ),
+              ),
+              const SizedBox(height: 12),
               Text(
                 copy.welcomeSheetTitle,
                 textAlign: TextAlign.center,

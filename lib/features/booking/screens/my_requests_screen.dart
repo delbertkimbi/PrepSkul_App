@@ -34,6 +34,7 @@ import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import '../utils/session_date_utils.dart';
 
 class MyRequestsScreen extends StatefulWidget {
@@ -908,24 +909,21 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final showFAB = _selectedFilter == 'custom';
 
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: OnboardPalette.cream,
       appBar: AppBar(
         automaticallyImplyLeading: false, // No back button in bottom nav
-        backgroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
+        surfaceTintColor: OnboardPalette.cream,
         elevation: 0,
         title: Text(
           t.myRequestsTitle,
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
+          style: onboardDisplay(size: 22),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(56),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            color: Colors.white,
+            color: OnboardPalette.cream,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -1434,16 +1432,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(17),
-        gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
-            ? LinearGradient(
-                colors: [
-                  AppTheme.primaryColor.withOpacity(0.03),
-                  Colors.transparent,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-            : null,
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -2082,16 +2070,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(19),
-        gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
-            ? LinearGradient(
-                colors: [
-                  Colors.green.withOpacity(0.03),
-                  Colors.transparent,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-            : null,
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),

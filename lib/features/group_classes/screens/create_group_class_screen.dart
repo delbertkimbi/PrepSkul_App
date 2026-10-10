@@ -9,6 +9,7 @@ import 'package:prepskul/core/services/storage_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/group_classes/models/group_class_listing.dart';
 import 'package:prepskul/features/group_classes/services/group_class_api_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CreateGroupClassScreen extends StatefulWidget {
@@ -424,17 +425,9 @@ class _CreateGroupClassScreenState extends State<CreateGroupClassScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        title: Text(
-          'Create Group Class',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.black87),
-        ),
-        iconTheme: const IconThemeData(color: Colors.black87),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Create Group Class',
       ),
       body: SafeArea(
         child: Column(

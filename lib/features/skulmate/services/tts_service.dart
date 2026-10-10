@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, ValueNotifier;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -15,6 +15,7 @@ class TTSService {
   FlutterTts? _flutterTts;
   bool _isInitialized = false;
   bool _isEnabled = true;
+  final ValueNotifier<bool> speaking = ValueNotifier(false);
   String _currentLanguage = 'en';
   Completer<void>? _speakCompleter;
   double _ttsVolume = 1.0;
@@ -31,7 +32,7 @@ class TTSService {
       final prefs = await SharedPreferences.getInstance();
       _ttsVolume = prefs.getDouble('game_tts_volume') ?? 1.0;
       _flutterTts = FlutterTts();
-      
+
       // Set language based on user preference
       final userLanguage = LanguageService.languageCode;
       _currentLanguage = userLanguage == 'fr' ? 'fr-FR' : 'en-US';
@@ -40,9 +41,15 @@ class TTSService {
       await _flutterTts!.setSpeechRate(_speechRate);
       await _flutterTts!.setVolume(_ttsVolume);
       await _flutterTts!.setPitch(1.0);
-      
+      // Prefer a clear male voice in the requested language. Browser voice
+      // lists can arrive late, so refresh that selection before speaking too.
+      await _preferNeuralVoice();
+
+      _flutterTts!.setStartHandler(() => speaking.value = true);
+      _flutterTts!.setContinueHandler(() => speaking.value = true);
       // Set completion handler (used by speakAndWait)
       _flutterTts!.setCompletionHandler(() {
+        speaking.value = false;
         LogService.debug('[TTS] Speech completed');
         _activeSpeakText = null;
         _speakCompleter?.complete();
@@ -57,28 +64,75 @@ class TTSService {
         );
       });
       _flutterTts!.setCancelHandler(() {
+        speaking.value = false;
         _activeSpeakText = null;
         _speakCompleter?.complete();
         _speakCompleter = null;
         unawaited(GameSoundService().resumeBgmIfNeeded());
       });
       _flutterTts!.setPauseHandler(() {
+        speaking.value = false;
         _speakCompleter?.complete();
         _speakCompleter = null;
         unawaited(GameSoundService().resumeBgmIfNeeded());
       });
       _flutterTts!.setErrorHandler((_) {
+        speaking.value = false;
         _speakCompleter?.complete();
         _speakCompleter = null;
         unawaited(GameSoundService().resumeBgmIfNeeded());
       });
-      
+
       _isInitialized = true;
       LogService.success('[TTS] Initialized with language: $_currentLanguage');
     } catch (e) {
       LogService.error('[TTS] Error initializing: $e');
       _isInitialized = false;
     }
+  }
+
+  Future<void> _preferNeuralVoice() async {
+    try {
+      final raw = await _flutterTts!.getVoices;
+      if (raw is! List) return;
+      final want = _currentLanguage.split('-').first.toLowerCase();
+      Map<dynamic, dynamic>? picked;
+      var bestScore = -100;
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final name = '${item['name'] ?? ''}'.toLowerCase();
+        final loc = '${item['locale'] ?? ''}'.toLowerCase();
+        if (!loc.startsWith(want)) continue;
+        final gender = '${item['gender'] ?? ''}'.toLowerCase();
+        var score = gender == 'male'
+            ? 12
+            : gender == 'female'
+            ? -12
+            : 0;
+        if (RegExp(
+          r'daniel|thomas|henri|ryan|guy|jason|aaron|evan',
+        ).hasMatch(name)) {
+          score += 10;
+        }
+        if (RegExp(r'neural|natural|premium|enhanced').hasMatch(name)) {
+          score += 2;
+        }
+        if (RegExp(
+          r'samantha|karen|moira|victoria|amelie|amélie',
+        ).hasMatch(name)) {
+          score -= 10;
+        }
+        if (score > bestScore) {
+          picked = item;
+          bestScore = score;
+        }
+      }
+      if (picked == null || picked['name'] == null) return;
+      await _flutterTts!.setVoice({
+        'name': '${picked['name']}',
+        'locale': '${picked['locale'] ?? _currentLanguage}',
+      });
+    } catch (_) {}
   }
 
   /// Ensure TTS is ready (call init if needed)
@@ -94,6 +148,8 @@ class TTSService {
     if (!_isEnabled || text.isEmpty) return;
     if (!_isInitialized) await ensureInitialized();
     if (!_isInitialized) return;
+
+    if (kIsWeb) await _preferNeuralVoice();
 
     try {
       if (!interrupt && _activeSpeakText == text) return;
@@ -135,29 +191,45 @@ class TTSService {
     if (!_isEnabled || text.isEmpty) return;
     if (!_isInitialized) await ensureInitialized();
     if (!_isInitialized) return;
+    if (kIsWeb) await _preferNeuralVoice();
 
-    _speakCompleter = Completer<void>();
+    await stop();
+    final completer = Completer<void>();
+    _speakCompleter = completer;
+    _activeSpeakText = text;
     try {
-      await stop();
       await _flutterTts!.speak(text);
-      final t = timeout ?? Duration(
-        milliseconds: (text.length * 80).clamp(2000, 15000),
+      final t =
+          timeout ??
+          Duration(milliseconds: (text.length * 80).clamp(2000, 15000));
+      await completer.future.timeout(
+        t,
+        onTimeout: () {
+          if (identical(_speakCompleter, completer)) {
+            _speakCompleter = null;
+          }
+        },
       );
-      await _speakCompleter!.future.timeout(t, onTimeout: () {
-        _speakCompleter = null;
-      });
     } catch (e) {
-      _speakCompleter = null;
+      if (identical(_speakCompleter, completer)) {
+        _speakCompleter = null;
+      }
       if (e is TimeoutException) {
         LogService.debug('[TTS] speakAndWait timed out');
       } else {
         LogService.error('[TTS] Error speaking: $e');
       }
+    } finally {
+      if (identical(_speakCompleter, completer)) {
+        _speakCompleter = null;
+      }
+      if (_activeSpeakText == text) _activeSpeakText = null;
     }
   }
 
   /// Stop current speech
   Future<void> stop() async {
+    speaking.value = false;
     if (!_isInitialized) return;
 
     try {
@@ -190,8 +262,10 @@ class TTSService {
 
     try {
       final lang = languageCode == 'fr' ? 'fr-FR' : 'en-US';
+      if (lang == _currentLanguage) return;
       await _flutterTts!.setLanguage(lang);
       _currentLanguage = lang;
+      await _preferNeuralVoice();
       LogService.debug('[TTS] Language changed to: $_currentLanguage');
     } catch (e) {
       LogService.error('[TTS] Error setting language: $e');
@@ -255,6 +329,3 @@ class TTSService {
     }
   }
 }
-
-
-

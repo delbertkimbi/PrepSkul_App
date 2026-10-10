@@ -9,6 +9,7 @@ import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// TutorRequestDetailScreen
 ///
@@ -379,12 +380,10 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     final isPending = status == 'pending';
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
           onPressed: () {
             // Check if we can pop, if not, navigate to tutor requests screen
             if (Navigator.of(context).canPop()) {
@@ -398,14 +397,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
             }
           },
         ),
-        title: Text(
-          'Request Details',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
+        title: 'Request Details',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

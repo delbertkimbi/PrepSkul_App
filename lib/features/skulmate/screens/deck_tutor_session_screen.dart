@@ -17,6 +17,7 @@ import '../widgets/skulmate_study_audio_controls.dart';
 import '../widgets/skulmate_surface_styles.dart';
 import '../widgets/tutor_chat_bubble.dart';
 import '../widgets/tutor_speech_highlight_text.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 enum _TutorPhase { explanation, quiz }
 
@@ -391,9 +392,11 @@ class _DeckTutorSessionScreenState extends State<DeckTutorSessionScreen> {
   Widget build(BuildContext context) {
     if (_cards.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(
+          title: 'Deck',
           leading: IconButton(
-            icon: const Icon(Icons.close_rounded),
+            icon: const Icon(Icons.close_rounded, color: AppTheme.primaryColor),
             onPressed: () => Navigator.pop(context),
           ),
         ),

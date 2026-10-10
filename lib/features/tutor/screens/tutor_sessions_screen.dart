@@ -24,6 +24,7 @@ import '../../../core/widgets/empty_state_widget.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/services/error_handler_service.dart';
 import '../widgets/tutor_dashboard_layout.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import '../../../core/feedback/app_feedback.dart';
 import '../../../features/sessions/services/meet_service.dart';
 import '../../../features/sessions/screens/agora_prejoin_screen.dart';
@@ -763,26 +764,17 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: false, // No back button in bottom nav
-        title: Text(
-          'Sessions',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Sessions',
+        automaticallyImplyLeading: false,
       ),
       body: Column(
         children: [
           // Filter Chips (like notification screen)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: Colors.white,
+            color: OnboardPalette.cream,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(

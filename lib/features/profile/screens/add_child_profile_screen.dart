@@ -9,6 +9,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/data/survey_config.dart';
 import 'dart:convert';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class SurveyStep {
   final String title;
@@ -283,12 +284,10 @@ class _AddChildProfileScreenState extends State<AddChildProfileScreen> {
         return true;
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+            icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
             onPressed: () {
               if (_currentStep > 0) {
                 _previousStep();
@@ -297,14 +296,7 @@ class _AddChildProfileScreenState extends State<AddChildProfileScreen> {
               }
             },
           ),
-          title: Text(
-            widget.existingChild != null ? 'Edit Child Profile' : 'Add Child Profile',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
-          ),
+          title: widget.existingChild != null ? 'Edit Child Profile' : 'Add Child Profile',
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(1),
             child: Column(

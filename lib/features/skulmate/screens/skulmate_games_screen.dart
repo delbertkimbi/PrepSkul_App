@@ -14,7 +14,7 @@ import '../utils/skulmate_game_router.dart';
 import '../widgets/game_card.dart';
 import '../widgets/skulmate_loading_skeletons.dart';
 import '../widgets/skulmate_surface_styles.dart';
-import '../widgets/skulmate_typography.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Saved games list — connected to SkulMate home (back button, no legacy tabs).
 class SkulMateGamesScreen extends StatefulWidget {
@@ -206,17 +206,9 @@ class _SkulMateGamesScreenState extends State<SkulMateGamesScreen> {
     final games = _filteredGames;
 
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        backgroundColor: AppTheme.softBackground,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(copy.myGames, style: SkulMateTypography.sectionTitle()),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: copy.myGames,
       ),
       body: RefreshIndicator(
         onRefresh: () => _loadGames(refresh: true),

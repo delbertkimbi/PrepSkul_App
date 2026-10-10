@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/discovery/utils/schedule_time_utils.dart';
 import 'package:prepskul/features/discovery/widgets/tutor_schedule_day_section.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Full tutor availability — vertical day sections with readable time chips.
 class TutorScheduleScreen extends StatelessWidget {
@@ -29,17 +30,10 @@ class TutorScheduleScreen extends StatelessWidget {
         availability ?? tutor['combined_availability'] as Map<String, dynamic>?;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Available Schedule',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.white,
-        foregroundColor: AppTheme.textDark,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Available Schedule',
       ),
-      backgroundColor: AppTheme.softBackground,
       body: schedule == null || schedule.isEmpty
           ? _buildEmptyState()
           : _buildScheduleList(schedule),

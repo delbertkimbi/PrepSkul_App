@@ -13,6 +13,7 @@ import '../services/lesson_plan_service.dart';
 import '../utils/deck_navigation.dart';
 import '../widgets/deck_study_launcher_sheet.dart';
 import '../widgets/skulmate_surface_styles.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Turn-by-turn Path screen (Phase D1).
 class SkulMatePathOverviewScreen extends StatefulWidget {
@@ -279,11 +280,9 @@ class _SkulMatePathOverviewScreenState extends State<SkulMatePathOverviewScreen>
     final copy = SkulMateCopy.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          copy.modeLabel(SkulMateIntentMode.path),
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: copy.modeLabel(SkulMateIntentMode.path),
       ),
       body: _buildBody(copy),
     );

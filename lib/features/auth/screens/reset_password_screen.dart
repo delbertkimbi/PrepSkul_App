@@ -9,6 +9,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   final String phone;
@@ -116,62 +117,21 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: OnboardPalette.cream,
         resizeToAvoidBottomInset: true,
         body: Stack(
           children: [
             // Wave header (same structure as Forgot Password / Login)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: ClipPath(
-                clipper: _ResetPasswordWaveClipper(),
-                child: Container(
-                  height: 205,
-                  decoration: const BoxDecoration(
-                    gradient: AppTheme.headerGradient,
-                  ),
-                ),
-              ),
-            ),
-            SafeArea(
+                        SafeArea(
               child: Column(
                 children: [
-                  // Header inside wave
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 8),
-                        Center(
-                          child: Text(
-                            t.authResetPasswordTitle,
-                            style: GoogleFonts.poppins(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Center(
-                          child: Text(
-                            (widget.isEmailRecovery || widget.setNewPasswordOnly)
-                                ? t.authResetPasswordSubtitleEmail
-                                : t.authResetPasswordSubtitlePhone(widget.phone),
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white.withOpacity(0.95),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
-                    ),
+                  AuthPaperHeader(
+                    title: t.authResetPasswordTitle,
+                    subtitle: (widget.isEmailRecovery || widget.setNewPasswordOnly)
+                        ? t.authResetPasswordSubtitleEmail
+                        : t.authResetPasswordSubtitlePhone(widget.phone),
                   ),
                   // Form below wave (white area, same pattern as Forgot Password)
                   Expanded(
@@ -182,16 +142,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const SizedBox(height: 40),
+                            const SizedBox(height: 12),
                             // OTP field only when combined flow (legacy; phone now uses separate OTP screen)
                             if (!widget.isEmailRecovery && !widget.setNewPasswordOnly) ...[
                               Text(
                                 t.authOTPCode,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 12),
                               TextFormField(
@@ -216,11 +172,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             // New Password
                             Text(
                               t.authNewPassword,
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: AppTheme.textDark,
-                              ),
+                              style: onboardFont(size: 14, weight: FontWeight.w800),
                             ),
                             const SizedBox(height: 12),
                             TextFormField(
@@ -247,11 +199,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             // Confirm Password
                             Text(
                               'Confirm Password',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: AppTheme.textDark,
-                              ),
+                              style: onboardFont(size: 14, weight: FontWeight.w800),
                             ),
                             const SizedBox(height: 12),
                             TextFormField(
@@ -274,41 +222,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                 return null;
                               },
                             ),
-                            const SizedBox(height: 40),
+                            const SizedBox(height: 12),
                             // Primary button (same style as Forgot Password / Login)
-                            SizedBox(
-                              width: double.infinity,
-                              height: 56,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _handleResetPassword,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.primaryColor,
-                                  foregroundColor: Colors.white,
-                                  disabledBackgroundColor: AppTheme.primaryColor,
-                                  disabledForegroundColor: Colors.white,
-                                  elevation: 0,
-                                  shadowColor: Colors.transparent,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                ),
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        height: 24,
-                                        width: 24,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                        ),
-                                      )
-                                    : Text(
-                                        t.authResetPasswordButton,
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                              ),
+                            OnboardPrimaryButton(
+                              label: t.authResetPasswordButton,
+                              busy: _isLoading,
+                              onTap: _handleResetPassword,
                             ),
                             const SizedBox(height: 24),
                             Center(
@@ -324,7 +243,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 40),
+                            const SizedBox(height: 12),
                           ],
                         ),
                       ),
@@ -344,27 +263,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     bool obscure = false,
     VoidCallback? onToggle,
   }) {
-    return InputDecoration(
+    return paperFieldDecoration(
       hintText: hint,
-      hintStyle: GoogleFonts.poppins(
-        color: AppTheme.textLight,
-        fontSize: 14,
-      ),
-      filled: true,
-      fillColor: AppTheme.softCard,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
-        borderSide: BorderSide(color: AppTheme.softBorder, width: 1),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
-        borderSide: BorderSide(color: AppTheme.softBorder, width: 1),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       suffixIcon: onToggle != null
           ? IconButton(
               icon: Icon(
@@ -387,28 +287,3 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   }
 }
 
-class _ResetPasswordWaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height - 28);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      size.height - 14,
-      size.width * 0.5,
-      size.height - 20,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      size.height - 28,
-      size.width,
-      size.height - 20,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}

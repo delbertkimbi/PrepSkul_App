@@ -1,5 +1,18 @@
 # PrepSkul product documentation
 
+## October 8 planning draft
+
+These documents bring the current app, personal learning routes, map exploration,
+Mate, voice and human support into one proposed direction. They extend earlier
+plans; navigation and rollout decisions still require prototype validation.
+
+| Document | Purpose |
+|----------|---------|
+| [Learning experience plan](LEARNING_EXPERIENCE_PLAN.md) | Learner journeys, map behaviour, personalisation, voice, local/global scope and pilot |
+| [Engineering and delivery](ENGINEERING_AND_DELIVERY.md) | Existing-code audit, contracts, retrieval, bounded agents, release gates and backlog |
+| [Research register](RESEARCH.md) | Primary sources, conclusions and outstanding research |
+| [Firebase review release](../RELEASE_FIREBASE_REVIEW.md) | Safe build procedure and current release limitations |
+
 ## SkulMate adaptive learning
 
 | Document | Purpose |

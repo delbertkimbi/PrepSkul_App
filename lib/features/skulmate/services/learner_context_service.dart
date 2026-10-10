@@ -1,9 +1,11 @@
 import 'package:prepskul/core/localization/language_service.dart';
+import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 
-/// Builds learner context for generation — curriculum is background-only.
+/// Builds learner context for the tutor compiler.
+/// Learners and parents are both students in SkulMate.
 class LearnerContextService {
   /// Always set; API must never block off-syllabus content (e.g. YouTube ML).
   static const enrichmentModeBackground = 'background';
@@ -13,20 +15,28 @@ class LearnerContextService {
       final user = SupabaseService.client.auth.currentUser;
       if (user == null) return null;
 
+      final role = await AuthService.getUserRole();
+      final accountRole = role == 'parent' ? 'parent' : 'learner';
+
       final context = <String, dynamic>{
         'enrichmentMode': enrichmentModeBackground,
         'language': LanguageService.languageCode,
+        'accountRole': accountRole,
       };
 
-      final survey = await SurveyRepository.getParentSurvey(user.id);
+      final survey = accountRole == 'parent'
+          ? await SurveyRepository.getParentSurvey(user.id)
+          : await SurveyRepository.getStudentSurvey(user.id);
       if (survey != null) {
         const keys = [
           'student_grade',
           'class_level',
           'curriculum',
+          'school_system',
           'exam',
           'exam_type',
           'target_exam',
+          'exam_when',
           'subjects',
           'subject_preferences',
           'learning_goals',
@@ -35,6 +45,11 @@ class LearnerContextService {
           'preferred_language',
           'language_preference',
           'student_age_group',
+          'country',
+          'city',
+          'pace',
+          'channel',
+          'interests',
         ];
         for (final key in keys) {
           final value = survey[key];
@@ -45,6 +60,7 @@ class LearnerContextService {
       }
 
       if (childId != null && childId.isNotEmpty) {
+        // Optional linked-profile notes only. The signed-in parent is still the student.
         context['childId'] = childId;
         final userId = user.id;
         try {

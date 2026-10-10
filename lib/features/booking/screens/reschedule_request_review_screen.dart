@@ -6,6 +6,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/booking/services/session_reschedule_service.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class RescheduleRequestReviewScreen extends StatefulWidget {
   final String rescheduleRequestId;
@@ -168,22 +169,9 @@ class _RescheduleRequestReviewScreenState extends State<RescheduleRequestReviewS
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Review Reschedule Request',
-          style: GoogleFonts.poppins(
-            color: AppTheme.textDark,
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-          ),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Review Reschedule Request',
       ),
       body: _isLoading && _request == null
           ? const Center(child: CircularProgressIndicator())

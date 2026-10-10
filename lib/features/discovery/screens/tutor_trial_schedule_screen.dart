@@ -6,6 +6,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
 import 'package:prepskul/features/booking/services/availability_service.dart';
 import 'package:prepskul/features/discovery/utils/schedule_time_utils.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Preply-style trial schedule picker — 30 min slots, then straight into booking.
 class TutorTrialScheduleScreen extends StatefulWidget {
@@ -166,16 +167,9 @@ class _TutorTrialScheduleScreenState extends State<TutorTrialScheduleScreen> {
   Widget build(BuildContext context) {
     if (_availableDates.isEmpty) {
       return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          surfaceTintColor: Colors.white,
-          foregroundColor: AppTheme.primaryColor,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
-            onPressed: () => Navigator.pop(context),
-          ),
+        backgroundColor: OnboardPalette.cream,
+        appBar: paperAppBar(
+          title: 'Trial schedule',
         ),
         body: Center(
           child: Padding(
@@ -201,16 +195,9 @@ class _TutorTrialScheduleScreenState extends State<TutorTrialScheduleScreen> {
     final selectedIsToday = ScheduleTimeUtils.isToday(_selectedDate);
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.white,
-        foregroundColor: AppTheme.primaryColor,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
-          onPressed: () => Navigator.pop(context),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: '30 min trial',
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

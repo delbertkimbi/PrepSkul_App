@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 480" fill="none">
+<title>SkulMate editable egg-shaped character master</title>
+<defs>
+<radialGradient id="bodyPaint" cx=".32" cy=".25" r=".8"><stop stop-color="#539BFF"/><stop offset=".55" stop-color="#2475DF"/><stop offset="1" stop-color="#1353AE"/></radialGradient>
+<radialGradient id="bellyPaint" cx=".35" cy=".2" r=".9"><stop stop-color="#26CAEF"/><stop offset="1" stop-color="#0EA5E9"/></radialGradient>
+<radialGradient id="bulbPaint" cx=".3" cy=".25" r=".8"><stop stop-color="#FFF0A1"/><stop offset=".35" stop-color="#FFD348"/><stop offset="1" stop-color="#EAA000"/></radialGradient>
+</defs>
+<g id="Mascot">
+<g id="LeftLeg"><ellipse cx="153" cy="426" rx="38" ry="20" fill="#1B2C4F"/></g>
+<g id="RightLeg"><ellipse cx="245" cy="426" rx="38" ry="20" fill="#1B2C4F"/></g>
+<g id="Antenna"><path d="M200 96L206 47" stroke="#1B2C4F" stroke-width="14" stroke-linecap="round"/><g id="Bulb"><circle cx="209" cy="36" r="23" fill="url(#bulbPaint)"/></g></g>
+<g id="LeftArm"><path d="M96 272Q63 302 77 336" stroke="#1B2C4F" stroke-width="24" stroke-linecap="round"/><ellipse cx="79" cy="338" rx="17" ry="21" fill="#1B2C4F"/></g>
+<g id="RightArm"><path d="M304 272Q337 302 323 336" stroke="#1B2C4F" stroke-width="24" stroke-linecap="round"/><ellipse cx="321" cy="338" rx="17" ry="21" fill="#1B2C4F"/></g>
+<g id="Body"><path d="M200 88C139 88 84 182 80 286C76 378 130 423 200 423C270 423 324 378 320 286C316 182 261 88 200 88Z" fill="url(#bodyPaint)"/><ellipse cx="200" cy="348" rx="88" ry="66" fill="url(#bellyPaint)"/></g>
+<g id="Face">
+<g id="LeftEyebrow"><path d="M129 168Q150 155 171 167" stroke="#1B2C4F" stroke-width="7" stroke-linecap="round"/></g>
+<g id="RightEyebrow"><path d="M229 167Q250 155 271 168" stroke="#1B2C4F" stroke-width="7" stroke-linecap="round"/></g>
+<g id="LeftEye"><ellipse cx="151" cy="222" rx="37" ry="46" fill="white"/><g id="LeftPupil"><ellipse cx="157" cy="230" rx="21" ry="28" fill="#1B2C4F"/><circle cx="149" cy="216" r="8" fill="white"/></g></g>
+<g id="RightEye"><ellipse cx="249" cy="222" rx="37" ry="46" fill="white"/><g id="RightPupil"><ellipse cx="243" cy="230" rx="21" ry="28" fill="#1B2C4F"/><circle cx="235" cy="216" r="8" fill="white"/></g></g>
+<g id="Mouth"><path d="M179 290Q200 309 221 290" stroke="#1B2C4F" stroke-width="8" stroke-linecap="round"/></g>
+</g></g></svg>

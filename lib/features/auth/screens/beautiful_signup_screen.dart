@@ -1,3 +1,4 @@
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -15,6 +16,7 @@ import 'package:prepskul/core/models/phone_country.dart';
 import 'package:prepskul/core/widgets/phone_country_code_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class BeautifulSignupScreen extends StatefulWidget {
   const BeautifulSignupScreen({Key? key}) : super(key: key);
@@ -35,65 +37,38 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
   PhoneCountry _selectedCountry = PhoneCountry.cameroon;
 
   @override
+  void initState() {
+    super.initState();
+    _restoreLearnerName();
+  }
+
+  Future<void> _restoreLearnerName() async {
+    final draft = await LearnerOnboardingPersist.loadDraft();
+    if (!mounted || draft == null || _nameController.text.isNotEmpty) return;
+    // A parent's account name is distinct from their child's learning name.
+    if (draft.accountRole != 'parent') {
+      setState(() => _nameController.text = draft.name);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved gradient hero header
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 190,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 22.0, 24.0, 18.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 10),
-                      Center(
-                        child: Text(
-                          t.authSignUpTitle,
-                          style: GoogleFonts.poppins(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      // Subtitle
-                      Center(
-                        child: Text(
-                          'Join us to start your learning journey',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                AuthPaperHeader(
+                  title: t.authSignUpTitle,
+                  subtitle: 'Parents count as students too.',
                 ),
 
                 // Form content - below the wave
@@ -103,7 +78,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 48),
+                        const SizedBox(height: 12),
                         // Form
                         Form(
                           key: _formKey,
@@ -113,11 +88,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                               // Full Name Field
                               Text(
                                 t.authFullName,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -131,45 +102,8 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
-                                  hintText: t.authFullNameHint,
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                ),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                decoration: paperFieldDecoration(hintText: t.authFullNameHint),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
 
                               const SizedBox(height: 15),
@@ -177,11 +111,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                               // Phone Number Field
                               Text(
                                 'Phone Number',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               Row(
@@ -202,52 +132,8 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                             _selectedCountry,
                                             value ?? '',
                                           ),
-                                      decoration: InputDecoration(
-                                        hintText: t.authPhoneHint,
-                                        hintStyle: GoogleFonts.poppins(
-                                          color: AppTheme.textLight,
-                                          fontSize: 14,
-                                        ),
-                                        filled: true,
-                                        fillColor: AppTheme.softCard,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: const BorderSide(
-                                            color: AppTheme.softBorder,
-                                            width: 1,
-                                          ),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: const BorderSide(
-                                            color: AppTheme.softBorder,
-                                            width: 1,
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: const BorderSide(
-                                            color: AppTheme.primaryColor,
-                                            width: 2,
-                                          ),
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 20,
-                                              vertical: 16,
-                                            ),
-                                      ),
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppTheme.textDark,
-                                      ),
+                                      decoration: paperFieldDecoration(hintText: t.authPhoneHint),
+                                      style: onboardFont(size: 14, weight: FontWeight.w800),
                                     ),
                                   ),
                                 ],
@@ -258,11 +144,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                               // Password Field
                               Text(
                                 t.authPassword,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -277,59 +159,22 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
+                                decoration: paperFieldDecoration(
                                   hintText: t.authPasswordHint,
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
                                     ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                  suffixIcon: GestureDetector(
-                                    onTap: () {
+                                    onPressed: () {
                                       safeSetState(() {
                                         _obscurePassword = !_obscurePassword;
                                       });
                                     },
-                                    child: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: AppTheme.textMedium,
-                                      size: 20,
-                                    ),
                                   ),
                                 ),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
 
                               const SizedBox(height: 15),
@@ -337,11 +182,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                               // Confirm Password Field
                               Text(
                                 'Confirm password',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 5),
                               TextFormField(
@@ -356,99 +197,32 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                   }
                                   return null;
                                 },
-                                decoration: InputDecoration(
+                                decoration: paperFieldDecoration(
                                   hintText: 'Confirm Password',
-                                  hintStyle: GoogleFonts.poppins(
-                                    color: AppTheme.textLight,
-                                    fontSize: 14,
-                                  ),
-                                  filled: true,
-                                  fillColor: AppTheme.softCard,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscureConfirmPassword
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
                                     ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.softBorder,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    borderSide: const BorderSide(
-                                      color: AppTheme.primaryColor,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 16,
-                                  ),
-                                  suffixIcon: GestureDetector(
-                                    onTap: () {
+                                    onPressed: () {
                                       safeSetState(() {
                                         _obscureConfirmPassword =
                                             !_obscureConfirmPassword;
                                       });
                                     },
-                                    child: Icon(
-                                      _obscureConfirmPassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                      color: AppTheme.textMedium,
-                                      size: 20,
-                                    ),
                                   ),
                                 ),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
 
                               const SizedBox(height: 27),
 
                               // Sign Up Button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 56,
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? () {} : _handleSignup,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryColor,
-                                    foregroundColor: Colors.white,
-                                    disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
-                                    disabledForegroundColor: Colors.white, // Keep white text when disabled
-                                    elevation: 2,
-                                    shadowColor: AppTheme.primaryColor
-                                        .withOpacity(0.3),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(22),
-                                    ),
-                                  ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2.5,
-                                          ),
-                                        )
-                                      : Text(
-                                          'Sign up',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                ),
+                              OnboardPrimaryButton(
+                                label: 'Sign up',
+                                busy: _isLoading,
+                                onTap: _handleSignup,
                               ),
 
                               const SizedBox(height: 32),
@@ -663,43 +437,3 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
   }
 }
 
-// Custom wave clipper for the header - Clean and professional
-class WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    var path = Path();
-
-    // Start from top-left corner
-    path.lineTo(0, size.height - 50); // Straight down left side
-
-    // Create smooth, gentle wave curve
-    var controlPoint1 = Offset(size.width * 0.25, size.height - 30);
-    var endPoint1 = Offset(size.width * 0.5, size.height - 40);
-
-    path.quadraticBezierTo(
-      controlPoint1.dx,
-      controlPoint1.dy,
-      endPoint1.dx,
-      endPoint1.dy,
-    );
-
-    var controlPoint2 = Offset(size.width * 0.75, size.height - 50);
-    var endPoint2 = Offset(size.width, size.height - 40);
-
-    path.quadraticBezierTo(
-      controlPoint2.dx,
-      controlPoint2.dy,
-      endPoint2.dx,
-      endPoint2.dy,
-    );
-
-    // Complete the path
-    path.lineTo(size.width, 0);
-    path.close();
-
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}

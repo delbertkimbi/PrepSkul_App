@@ -5,6 +5,7 @@ import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({Key? key}) : super(key: key);
@@ -73,62 +74,20 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       body: Stack(
         children: [
           // Curved wave background at top
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 200,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content inside the wave
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 29.0, 24.0, 30.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 15),
-                      Center(
-                        child: Text(
-                          t.authForgotPasswordTitle,
-                          style: GoogleFonts.poppins(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      // Subtitle
-                      Center(
-                        child: Text(
-                          t.authForgotPasswordSubtitle,
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                AuthPaperHeader(
+                  title: t.authForgotPasswordTitle,
+                  subtitle: t.authForgotPasswordSubtitle,
                 ),
 
                 // Form content - below the wave
@@ -138,7 +97,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 12),
                         // Form
                         Form(
                           key: _formKey,
@@ -148,11 +107,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                               // Phone Number Field
                               Text(
                                 'Phone Number',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.textDark,
-                                ),
+                                style: onboardFont(size: 14, weight: FontWeight.w800),
                               ),
                               const SizedBox(height: 12),
                               Row(
@@ -172,11 +127,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                     child: Center(
                                       child: Text(
                                         '+237',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                          color: AppTheme.textDark,
-                                        ),
+                                        style: onboardFont(size: 14, weight: FontWeight.w800),
                                       ),
                                     ),
                                   ),
@@ -186,52 +137,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                     child: TextFormField(
                                       controller: _phoneController,
                                       keyboardType: TextInputType.phone,
-                                      decoration: InputDecoration(
-                                        hintText: '6 53 30 19 97',
-                                        hintStyle: GoogleFonts.poppins(
-                                          color: AppTheme.textLight,
-                                          fontSize: 14,
-                                        ),
-                                        filled: true,
-                                        fillColor: AppTheme.softCard,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: AppTheme.softBorder,
-                                            width: 1,
-                                          ),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: AppTheme.softBorder,
-                                            width: 1,
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          borderSide: const BorderSide(
-                                            color: AppTheme.primaryColor,
-                                            width: 1.5,
-                                          ),
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 20,
-                                              vertical: 18,
-                                            ),
-                                      ),
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppTheme.textDark,
-                                      ),
+                                      decoration: paperFieldDecoration(hintText: '6 53 30 19 97'),
+                                      style: onboardFont(size: 14, weight: FontWeight.w800),
                                       validator: (value) {
                                         if (value == null || value.isEmpty) {
                                           return t.authEnterPhoneNumber;
@@ -246,45 +153,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 ],
                               ),
 
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 12),
 
                               // Send OTP Button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 56,
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? () {} : _handleSendOTP,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryColor,
-                                    foregroundColor: Colors.white,
-                                    disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
-                                    disabledForegroundColor: Colors.white, // Keep white text when disabled
-                                    elevation: 0,
-                                    shadowColor: Colors.transparent,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                  ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          height: 24,
-                                          width: 24,
-                                          child: CircularProgressIndicator(
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  Colors.white,
-                                                ),
-                                            strokeWidth: 2.5,
-                                          ),
-                                        )
-                                      : Text(
-                                          'Send OTP',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                ),
+                              OnboardPrimaryButton(
+                                label: 'Send OTP',
+                                busy: _isLoading,
+                                onTap: _handleSendOTP,
                               ),
 
                               const SizedBox(height: 16),
@@ -328,7 +203,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 12),
                             ],
                           ),
                         ),
@@ -352,29 +227,3 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 }
 
-/// Custom clipper for wave shape
-class WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    var path = Path();
-    path.lineTo(0, size.height * 0.7);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      size.height * 0.85,
-      size.width * 0.5,
-      size.height * 0.85,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      size.height * 0.85,
-      size.width,
-      size.height * 0.7,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/group_classes/models/group_class_listing.dart';
 import 'package:prepskul/features/group_classes/services/group_class_api_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 class GroupClassesDiscoveryScreen extends StatefulWidget {
   const GroupClassesDiscoveryScreen({super.key});
@@ -144,16 +144,9 @@ class _GroupClassesDiscoveryScreenState extends State<GroupClassesDiscoveryScree
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        iconTheme: const IconThemeData(color: Colors.black87),
-        title: Text(
-          'Group Classes',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.black87),
-        ),
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Group Classes',
       ),
       body: RefreshIndicator(
         onRefresh: _load,

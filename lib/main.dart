@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -7,9 +9,11 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/localization/language_notifier.dart';
-import 'package:prepskul/features/onboarding/screens/simple_onboarding_screen.dart';
-import 'package:prepskul/features/profile/screens/student_survey.dart';
-import 'package:prepskul/features/profile/screens/parent_survey.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_screen.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_answers.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
+import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/features/profile/screens/survey_intro_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_login_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_signup_screen.dart';
@@ -50,6 +54,7 @@ import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_games_screen.dart';
 import 'package:prepskul/features/skulmate/screens/leaderboard_screen.dart';
+import 'package:prepskul/features/primar/presentation/skulmate_shell.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/features/group_classes/services/group_class_api_service.dart';
@@ -67,6 +72,7 @@ import 'package:prepskul/features/payment/services/payment_local_reminder_servic
 import 'package:prepskul/core/services/startup_schema_service.dart';
 import 'package:prepskul/core/services/app_presence_service.dart';
 import 'package:prepskul/features/sessions/services/agora_service.dart';
+import 'package:prepskul/core/services/web_onboarding_handoff.dart';
 
 /// Set by password reset deep link handler before exchangeCodeForSession.
 /// Auth listener skips handleEmailConfirmation when true (recovery sign-in must go to reset-password screen).
@@ -129,14 +135,14 @@ void main() async {
       }
     }
 
-    // Load environment variables (if .env file exists)
+    // Load only the generated public client configuration.
     bool envLoaded = false;
     try {
-      await dotenv.load(fileName: ".env");
+      await dotenv.load(fileName: "assets/config/client.env");
       envLoaded = true;
-      LogService.success('✅ Environment variables loaded from .env');
+      LogService.success('Public client configuration loaded');
     } catch (e) {
-      LogService.error('❌ Failed to load .env file: $e');
+      LogService.error('Failed to load public client configuration: $e');
       LogService.warning(
         '⚠️ App will continue but Supabase may not initialize',
       );
@@ -242,8 +248,7 @@ void main() async {
 Future<void> _initializePushNotifications() async {
   try {
     await PushNotificationService().initialize(
-      
-            onNotificationTap: (message) {
+      onNotificationTap: (message) {
         // Handle notification tap navigation (deep links).
         // This is critical for message notifications: user expects to land in the DM.
         try {
@@ -452,8 +457,7 @@ Future<void> handleEmailConfirmation() async {
   // Get user role from profile or stored data (empty → role selection).
   final userRoleRaw = existingProfile?['user_type']?.toString().trim() ?? '';
   final storedRoleTrimmed = storedRole?.trim() ?? '';
-  final userRole =
-      userRoleRaw.isNotEmpty ? userRoleRaw : storedRoleTrimmed;
+  final userRole = userRoleRaw.isNotEmpty ? userRoleRaw : storedRoleTrimmed;
   final hasCompletedSurvey = existingProfile?['survey_completed'] ?? false;
 
   // Get name with proper priority - avoid 'User' or 'Student' defaults
@@ -519,7 +523,9 @@ Future<void> handleEmailConfirmation() async {
   final navService = NavigationService();
   if (navService.isReady) {
     if (userRole.isEmpty) {
-      LogService.info('[EMAIL_CONFIRM] No role yet — routing to role selection');
+      LogService.info(
+        '[EMAIL_CONFIRM] No role yet — routing to role selection',
+      );
       await navService.navigateToRoute('/role-selection', clearStack: true);
       return;
     }
@@ -536,6 +542,27 @@ Future<void> handleEmailConfirmation() async {
       clearStack: true,
     );
   }
+}
+
+Widget _mateUnavailableScaffold() {
+  return Scaffold(
+    backgroundColor: OnboardPalette.cream,
+    appBar: paperAppBar(title: 'Mate'),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Mate is currently unavailable. Please check back later.',
+          textAlign: TextAlign.center,
+          style: onboardFont(
+            size: 16,
+            weight: FontWeight.w700,
+            color: AppTheme.textMedium,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class PrepSkulApp extends StatefulWidget {
@@ -659,7 +686,9 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             merged.putIfAbsent(e.key, () => e.value);
           }
         } catch (e) {
-          LogService.debug('🔗 [DEEP_LINK] Unable to parse fragment params: $e');
+          LogService.debug(
+            '🔗 [DEEP_LINK] Unable to parse fragment params: $e',
+          );
         }
       }
     }
@@ -705,6 +734,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
       if (m == null) return null;
       return Uri.decodeQueryComponent(m.group(1)!);
     }
+
     code ??= _extractParamFromRaw('code');
     type ??= _extractParamFromRaw('type');
     provider ??= _extractParamFromRaw('provider');
@@ -872,10 +902,16 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
     // Handle optional group class join deep links: /join/class/{token}
     if (path.startsWith('/join/class/')) {
       if (!AppConfig.enableGroupClasses) {
-        LogService.debug('🔗 [DEEP_LINK] Group classes disabled by feature flag');
+        LogService.debug(
+          '🔗 [DEEP_LINK] Group classes disabled by feature flag',
+        );
         return;
       }
-      final token = path.replaceFirst('/join/class/', '').trim().split('/').first;
+      final token = path
+          .replaceFirst('/join/class/', '')
+          .trim()
+          .split('/')
+          .first;
       if (token.isEmpty) return;
 
       final navService = NavigationService();
@@ -1397,23 +1433,31 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
         // Handle all routes with fade transition to prevent white screen
         switch (settings.name) {
           case '/onboarding':
-            return _createFadeRoute(() => const SimpleOnboardingScreen());
+            return _createFadeRoute(
+              () => const LearnerOnboardingScreen(beforeAuth: true),
+            );
           case '/role-selection':
             return _createFadeRoute(() => const RoleSelectionScreen());
           case '/auth-method-selection':
-            return _createFadeRoute(() => const AuthMethodSelectionScreen());
-          case '/login':
-          case '/beautiful-login': {
-            final loginArgs = settings.arguments as Map<String, dynamic>?;
+            final args = settings.arguments as Map<String, dynamic>?;
             return _createFadeRoute(
-              () => BeautifulLoginScreen(
-                initialPhone: loginArgs?['phone'] as String?,
-                initialCountryIso: loginArgs?['countryIso'] as String?,
-                accountCreatedMessage:
-                    loginArgs?['accountCreatedMessage'] as String?,
+              () => AuthMethodSelectionScreen(
+                isLogin: args?['isLogin'] as bool? ?? true,
               ),
             );
-          }
+          case '/login':
+          case '/beautiful-login':
+            {
+              final loginArgs = settings.arguments as Map<String, dynamic>?;
+              return _createFadeRoute(
+                () => BeautifulLoginScreen(
+                  initialPhone: loginArgs?['phone'] as String?,
+                  initialCountryIso: loginArgs?['countryIso'] as String?,
+                  accountCreatedMessage:
+                      loginArgs?['accountCreatedMessage'] as String?,
+                ),
+              );
+            }
           case '/beautiful-signup':
             return _createFadeRoute(() => const BeautifulSignupScreen());
           case '/email-signup':
@@ -1443,40 +1487,15 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             );
           case '/skulmate':
             if (AppConfig.enableSkulMate) {
-              return _createFadeRoute(
-                () => MainNavigation(
-                  userRole: 'student',
-                  initialTab: 2,
-                ),
-              );
+              return _createFadeRoute(() => const SkulMateShell());
             } else {
-              return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
-                  body: const Center(
-                    child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
-              );
+              return _createFadeRoute(() => _mateUnavailableScaffold());
             }
           case '/skulmate/upload':
             if (AppConfig.enableSkulMate) {
-              return _createFadeRoute(
-                () => const SkulMateGamesScreen(),
-              );
+              return _createFadeRoute(() => const SkulMateGamesScreen());
             } else {
-              return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
-                  body: const Center(
-                    child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
-              );
+              return _createFadeRoute(() => _mateUnavailableScaffold());
             }
           case '/skulmate/library':
             // SkulMate controlled by AppConfig feature flag
@@ -1488,49 +1507,24 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
                 ),
               );
             } else {
-              return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
-                  body: const Center(
-                    child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
-              );
+              return _createFadeRoute(() => _mateUnavailableScaffold());
             }
           case '/skulmate/leaderboard':
             if (AppConfig.enableSkulMate) {
               return _createFadeRoute(() => const LeaderboardScreen());
             } else {
-              return _createFadeRoute(
-                () => Scaffold(
-                  appBar: AppBar(title: const Text('SkulMate')),
-                  body: const Center(
-                    child: Text(
-                      'SkulMate is currently unavailable. Please check back later.',
-                    ),
-                  ),
-                ),
-              );
+              return _createFadeRoute(() => _mateUnavailableScaffold());
             }
         }
 
         if (settings.name != null &&
             settings.name!.startsWith('/skulmate/game/')) {
           if (!AppConfig.enableSkulMate) {
-            return _createFadeRoute(
-              () => Scaffold(
-                appBar: AppBar(title: const Text('SkulMate')),
-                body: const Center(
-                  child: Text(
-                    'SkulMate is currently unavailable. Please check back later.',
-                  ),
-                ),
-              ),
-            );
+            return _createFadeRoute(() => _mateUnavailableScaffold());
           }
-          final gameId = settings.name!.replaceFirst('/skulmate/game/', '').trim();
+          final gameId = settings.name!
+              .replaceFirst('/skulmate/game/', '')
+              .trim();
           return _createFadeRoute(
             () => SkulMateGamesScreen(
               initialGameId: gameId.isEmpty ? null : gameId,
@@ -1581,16 +1575,18 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             );
           }
 
-          // Use surveys for students and parents
-          // Note: NavigationService handles showing intro screen first if needed
-          if (userRole == 'learner' || userRole == 'student') {
-            return _createFadeRoute(() => const StudentSurvey());
-          } else if (userRole == 'parent') {
-            return _createFadeRoute(() => const ParentSurvey());
+          // Mate-first tutor onboarding for learners and parents.
+          if (userRole == 'learner' ||
+              userRole == 'student' ||
+              userRole == 'parent') {
+            return _createFadeRoute(
+              () => LearnerOnboardingScreen(userRole: userRole),
+            );
           }
 
-          // Fallback to student survey
-          return _createFadeRoute(() => const StudentSurvey());
+          return _createFadeRoute(
+            () => const LearnerOnboardingScreen(userRole: 'student'),
+          );
         }
         if (settings.name == '/survey-intro') {
           final args = settings.arguments as Map<String, dynamic>?;
@@ -1704,13 +1700,15 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Scaffold(
-                      appBar: AppBar(title: const Text('Loading Tutor...')),
+                      backgroundColor: OnboardPalette.cream,
+                      appBar: paperAppBar(title: 'Loading tutor'),
                       body: const Center(child: CircularProgressIndicator()),
                     );
                   }
                   if (snapshot.hasError || snapshot.data == null) {
                     return Scaffold(
-                      appBar: AppBar(title: const Text('Tutor Not Found')),
+                      backgroundColor: OnboardPalette.cream,
+                      appBar: paperAppBar(title: 'Tutor not found'),
                       body: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -1807,7 +1805,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         uri.queryParameters['error_code'] != null;
     final path = uri.path.toLowerCase();
     final isEmailLoginPath = path.contains('email-login');
-    final isAuthType = type == 'signup' || type == 'email' || type == 'recovery';
+    final isAuthType =
+        type == 'signup' || type == 'email' || type == 'recovery';
     return (code != null && isAuthType) || hasAuthError || isEmailLoginPath;
   }
 
@@ -1892,6 +1891,30 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     if (_isNavigating || _navigationComplete) return;
     _isNavigating = true;
 
+    if (kIsWeb) {
+      try {
+        final handoff = await consumeWebOnboardingHandoff();
+        if (handoff != null && handoff.isNotEmpty) {
+          final decoded = utf8.decode(
+            base64Url.decode(base64Url.normalize(handoff)),
+          );
+          final answers = LearnerOnboardingAnswers.fromJson(
+            jsonDecode(decoded) as Map<String, dynamic>,
+          );
+          // Keep the full draft on this app origin until signup, then save it
+          // through the normal learner/parent profile repository.
+          await LearnerOnboardingPersist.saveDraft(answers, step: 999);
+          LogService.info(
+            '[INIT_LOAD] Imported website learner onboarding draft',
+          );
+        }
+      } catch (e) {
+        LogService.warning(
+          '[INIT_LOAD] Could not import website onboarding draft: $e',
+        );
+      }
+    }
+
     // If app was opened via tutor link, store pending tutor BEFORE determining route
     // so we land on tutor detail after auth with no transitional UI.
     try {
@@ -1930,12 +1953,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         }
       }
       final appLinks = AppLinks();
-      final initialUri = await appLinks
-          .getInitialLink()
-          .timeout(
-            const Duration(seconds: 2),
-            onTimeout: () => null,
-          );
+      final initialUri = await appLinks.getInitialLink().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
       if (initialUri != null) {
         final path = initialUri.path;
         if (path.startsWith('/tutor/') &&
@@ -2065,9 +2086,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           try {
             NavigationResult result;
             try {
-              result = await navService
-                  .determineInitialRoute()
-                  .timeout(const Duration(seconds: 12));
+              result = await navService.determineInitialRoute().timeout(
+                const Duration(seconds: 12),
+              );
             } on TimeoutException {
               LogService.warning(
                 '[INIT_LOAD] determineInitialRoute timed out — using emergency prefs route',
@@ -2284,10 +2305,13 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
       // Map route names to widgets directly
       switch (routeName) {
         case '/onboarding':
-          page = const SimpleOnboardingScreen();
+          page = const LearnerOnboardingScreen(beforeAuth: true);
           break;
         case '/auth-method-selection':
-          page = const AuthMethodSelectionScreen();
+          final args = arguments as Map<String, dynamic>?;
+          page = AuthMethodSelectionScreen(
+            isLogin: args?['isLogin'] as bool? ?? true,
+          );
           break;
         case '/tutor-nav':
           final args = arguments as Map<String, dynamic>?;
@@ -2315,10 +2339,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           final userRole = args?['userRole'] ?? 'student';
           if (userRole == 'tutor') {
             page = const TutorOnboardingScreen(basicInfo: {});
-          } else if (userRole == 'parent') {
-            page = const ParentSurvey();
           } else {
-            page = const StudentSurvey();
+            page = LearnerOnboardingScreen(userRole: userRole);
           }
           break;
         case '/tutor-onboarding':
@@ -2760,7 +2782,7 @@ class _SplashScreenState extends State<SplashScreen> {
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       body: SafeArea(
         child: Stack(
           children: [
@@ -2844,25 +2866,7 @@ class _SplashContentState extends State<_SplashContent>
                 child: Hero(
                   tag: 'prepskul-logo',
                   transitionOnUserGestures: false,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    // Use local asset for both web and mobile to avoid network delays
-                    // This ensures instant loading and no black screen during transition
-                    child: Image.asset(
-                      'assets/images/app_logo(blue).png',
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        // Fallback if image fails to load
-                        return const Icon(
-                          Icons.school,
-                          size: 120,
-                          color: AppTheme.primaryColor,
-                        );
-                      },
-                    ),
-                  ),
+                  child: prepMate(mood: Mood.wave, size: 120),
                 ),
               ),
             );
@@ -2874,15 +2878,7 @@ class _SplashContentState extends State<_SplashContent>
         // App name with fade animation
         FadeTransition(
           opacity: _fadeAnimation,
-          child: Text(
-            'PrepSkul',
-            style: GoogleFonts.poppins(
-              color: AppTheme.textDark,
-              fontSize: 36,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
-          ),
+          child: Text('PrepSkul', style: onboardDisplay(size: 32)),
         ),
 
         const SizedBox(height: 12),

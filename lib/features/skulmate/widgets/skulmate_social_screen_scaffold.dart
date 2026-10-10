@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 import 'skulmate_surface_styles.dart';
 
 /// Shared chrome for SkulMate social screens (no back chevron — system gesture exit).
@@ -23,7 +23,7 @@ class SkulMateSocialScreenScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: OnboardPalette.cream,
       floatingActionButton: floatingActionButton,
       body: SafeArea(
         child: Column(
@@ -36,12 +36,7 @@ class SkulMateSocialScreenScaffold extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textDark,
-                        letterSpacing: -0.3,
-                      ),
+                      style: onboardDisplay(size: 22),
                     ),
                   ),
                   if (trailing != null) trailing!,
@@ -112,9 +107,9 @@ class SkulMateSegmentedToggle extends StatelessWidget {
                     children: [
                       Text(
                         labels[index],
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                        style: onboardFont(
+                          size: 13,
+                          weight: FontWeight.w800,
                           color: selected
                               ? AppTheme.primaryColor
                               : AppTheme.textMedium,
@@ -135,9 +130,9 @@ class SkulMateSegmentedToggle extends StatelessWidget {
                           ),
                           child: Text(
                             '$badge',
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
+                            style: onboardFont(
+                              size: 10,
+                              weight: FontWeight.w800,
                               color: Colors.white,
                             ),
                           ),

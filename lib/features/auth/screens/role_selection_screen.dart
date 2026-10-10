@@ -9,6 +9,8 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/profile_bootstrap_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
@@ -24,7 +26,20 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _redirectReturningUserIfNeeded();
+    _initializeRoleSelection();
+  }
+
+  Future<void> _initializeRoleSelection() async {
+    final draft = await LearnerOnboardingPersist.loadDraft();
+    if (!mounted) return;
+    if (draft != null && SupabaseService.isAuthenticated) {
+      safeSetState(() {
+        _selectedRole = draft.accountRole == 'parent' ? 'parent' : 'student';
+      });
+      await _handleContinue();
+      return;
+    }
+    await _redirectReturningUserIfNeeded();
   }
 
   /// Returning users can land here after an offline nav glitch — send them back.
@@ -55,60 +70,20 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StatusBarUtils.withDarkStatusBar(
+    return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: OnboardPalette.cream,
       body: Stack(
         children: [
           // Curved wave background at top
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 200,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
-                ),
-              ),
-            ),
-          ),
-
+          
           // Main content
           SafeArea(
             child: Column(
               children: [
-                // Header content inside the wave
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Text(
-                          'Who are you?',
-                          style: GoogleFonts.poppins(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: Text(
-                          'Select your role to continue',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const AuthPaperHeader(
+                  title: 'Who are you?',
+                  subtitle: 'Parents count as students too.',
                 ),
 
                 // Content below wave
@@ -117,11 +92,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: Column(
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 12),
                         
                         _buildRoleCard(
                           title: 'Student',
-                          description: 'I want to learn and find tutors.',
+                          description: 'I want Mate to tutor me, and a person when I ask.',
                           icon: Icons.school_outlined,
                           value: 'student',
                         ),
@@ -129,7 +104,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         
                         _buildRoleCard(
                           title: 'Parent',
-                          description: 'I want to find tutors for my child.',
+                          description: 'I’m studying too. Mate tutors me, and I can request a person.',
                           icon: Icons.family_restroom_outlined,
                           value: 'parent',
                         ),
@@ -142,43 +117,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                           value: 'tutor',
                         ),
 
-                        const SizedBox(height: 40),
+                        const SizedBox(height: 12),
 
                         // Continue Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton(
-                            onPressed: _selectedRole == null || _isLoading 
-                                ? null 
-                                : _handleContinue,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryColor,
-                              foregroundColor: Colors.white,
-                              elevation: 2,
-                              shadowColor: AppTheme.primaryColor.withOpacity(0.3),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(28),
-                              ),
-                              disabledBackgroundColor: AppTheme.softBorder,
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Text(
-                                    'Continue',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                          ),
+                        OnboardPrimaryButton(
+                          label: 'Continue',
+                          enabled: _selectedRole != null,
+                          busy: _isLoading,
+                          onTap: _handleContinue,
                         ),
                         const SizedBox(height: 24),
                       ],
@@ -206,22 +152,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       onTap: () => safeSetState(() => _selectedRole = value),
       child: Container(
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor.withOpacity(0.05) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: [
-            if (!isSelected)
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-          ],
-        ),
+        decoration: OnboardPalette.card(selected: isSelected),
         child: Row(
           children: [
             Container(
@@ -243,18 +174,18 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 children: [
                   Text(
                     title,
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
+                    style: onboardFont(
+                      size: 16,
+                      weight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     description,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: AppTheme.textLight,
+                    style: onboardFont(
+                      size: 13,
+                      weight: FontWeight.w700,
+                      color: AppTheme.textMedium,
                     ),
                   ),
                 ],
@@ -310,14 +241,18 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         final navService = NavigationService();
         if (navService.isReady) {
           if (_selectedRole == 'tutor') {
+            await LearnerOnboardingPersist.clearDraft();
             await navService.navigateToRoute(
               '/tutor-onboarding-choice',
               replace: true,
             );
           } else {
+            final hasPreAuthAnswers =
+                await LearnerOnboardingPersist.loadDraft() != null;
+            if (!mounted) return;
             await navService.navigateToRoute(
-              '/survey-intro',
-              arguments: {'userType': _selectedRole},
+              hasPreAuthAnswers ? '/profile-setup' : '/survey-intro',
+              arguments: {'userRole': _selectedRole, 'userType': _selectedRole},
               replace: true,
             );
           }
@@ -346,32 +281,3 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     }
   }
 }
-
-class WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height * 0.85);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      size.height,
-      size.width * 0.5,
-      size.height * 0.85,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      size.height * 0.7,
-      size.width,
-      size.height * 0.85,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}
-
-
-

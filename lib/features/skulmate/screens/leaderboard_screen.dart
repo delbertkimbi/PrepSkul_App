@@ -423,7 +423,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
         const SizedBox(width: 10),
         Text(
-          'SkulMate',
+          'PrepSkul',
           style: GoogleFonts.poppins(
             fontSize: 22,
             fontWeight: FontWeight.w800,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/booking/services/session_lifecycle_service.dart';
+import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.dart';
 
 /// Collects tutor session summary after ending a live onsite session.
 class OnsiteSessionWrapUpScreen extends StatefulWidget {
@@ -83,15 +84,9 @@ class _OnsiteSessionWrapUpScreenState extends State<OnsiteSessionWrapUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        title: Text(
-          'Session wrap-up',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.textDark,
-        elevation: 0,
+      backgroundColor: OnboardPalette.cream,
+      appBar: paperAppBar(
+        title: 'Session wrap-up',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -101,35 +96,30 @@ class _OnsiteSessionWrapUpScreenState extends State<OnsiteSessionWrapUpScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-                borderRadius: BorderRadius.circular(16),
-              ),
+              decoration: OnboardPalette.paperCard,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Great session with ${widget.studentName.split(' ').first}!',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
+                    style: onboardDisplay(size: 18),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     widget.subject,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: Colors.white.withValues(alpha: 0.85),
+                    style: onboardFont(
+                      size: 13,
+                      weight: FontWeight.w700,
+                      color: AppTheme.textMedium,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Help the family see what happened today.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.75),
+                    style: onboardFont(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      color: AppTheme.textMedium,
                     ),
                   ),
                 ],
