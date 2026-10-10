@@ -54,6 +54,7 @@ import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_games_screen.dart';
 import 'package:prepskul/features/skulmate/screens/leaderboard_screen.dart';
+import 'package:prepskul/features/primar/presentation/skulmate_shell.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/features/group_classes/services/group_class_api_service.dart';
@@ -1486,9 +1487,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
             );
           case '/skulmate':
             if (AppConfig.enableSkulMate) {
-              return _createFadeRoute(
-                () => MainNavigation(userRole: 'student', initialTab: 2),
-              );
+              return _createFadeRoute(() => const SkulMateShell());
             } else {
               return _createFadeRoute(() => _mateUnavailableScaffold());
             }
