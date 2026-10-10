@@ -24,6 +24,9 @@ class LocalVideoPIP extends StatefulWidget {
   /// When true, show speaking indicator (green border + badge).
   final bool isSpeaking;
 
+  /// Tap mute badge on the live camera tile.
+  final VoidCallback? onToggleAudio;
+
   /// Solo waiting: top-left control enlarges self-view on the main stage (Meet-style).
   final VoidCallback? onExpandSelfView;
   final VoidCallback? onTap;
@@ -54,6 +57,7 @@ class LocalVideoPIP extends StatefulWidget {
     this.selfAvatarUrl,
     this.selfInitials,
     this.isSpeaking = false,
+    this.onToggleAudio,
     this.onExpandSelfView,
     this.onTap,
     this.allowDrag = true,
@@ -453,18 +457,24 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.6),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              widget.isAudioEnabled ? Icons.mic : Icons.mic_off,
-                              size: 12,
-                              color: widget.isAudioEnabled
-                                  ? Colors.white
-                                  : Colors.red,
+                          Material(
+                            color: Colors.black.withOpacity(0.6),
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: widget.onToggleAudio,
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: Icon(
+                                  widget.isAudioEnabled
+                                      ? Icons.mic
+                                      : Icons.mic_off,
+                                  size: 12,
+                                  color: widget.isAudioEnabled
+                                      ? Colors.white
+                                      : Colors.red,
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 4),

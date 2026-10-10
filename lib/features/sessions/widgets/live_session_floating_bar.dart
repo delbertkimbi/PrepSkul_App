@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:agora_rtc_engine/agora_rtc_engine.dart' as agora_rtc_engine;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,10 +10,17 @@ import 'package:prepskul/features/booking/screens/session_detail_screen.dart';
 import 'package:prepskul/features/booking/utils/session_live_utils.dart';
 import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
+import 'package:prepskul/features/sessions/services/agora_service.dart';
 import 'package:prepskul/features/sessions/services/live_session_overlay_controller.dart';
+import 'package:prepskul/features/sessions/utils/floating_pip_drag.dart';
+import 'package:prepskul/features/sessions/widgets/agora_video_view.dart'
+    as agora_widget;
 import 'package:prepskul/features/tutor/screens/tutor_session_detail_full_screen.dart';
 
-/// Draggable square PiP shown while a session is in progress (hidden on live detail).
+/// Draggable live PiP shown while a session is in progress (hidden on live detail).
+///
+/// When the Agora channel is still joined (minimized call), shows a live video
+/// tile with mute/unmute. Otherwise shows the session avatar chip.
 class LiveSessionFloatingBarOverlay extends StatefulWidget {
   const LiveSessionFloatingBarOverlay({super.key});
 
@@ -23,25 +31,57 @@ class LiveSessionFloatingBarOverlay extends StatefulWidget {
 
 class _LiveSessionFloatingBarOverlayState
     extends State<LiveSessionFloatingBarOverlay> {
-  static const _pipSize = 88.0;
+  static const _chipSize = 88.0;
+  static const _videoWidth = 112.0;
+  static const _videoHeight = 148.0;
   static const _gapAboveNavBar = 3.0;
   static const _rightPadding = 16.0;
 
   final _controller = LiveSessionOverlayController.instance;
+  final _agora = AgoraService();
   Timer? _tick;
+  StreamSubscription<int>? _joinedSub;
+  StreamSubscription<int>? _leftSub;
+  StreamSubscription<Map<String, dynamic>>? _remoteVideoMutedSub;
   Offset _dragOffset = Offset.zero;
   bool _didDrag = false;
+  bool _muteBusy = false;
+  final Set<int> _remoteVideoOffUids = <int>{};
   String? _trackedSessionId;
+
+  bool get _inCall => _agora.isInChannel && _agora.engine != null;
+
+  double get _pipW => _inCall ? _videoWidth : _chipSize;
+  double get _pipH => _inCall ? _videoHeight : _chipSize;
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onControllerChanged);
+    _joinedSub = _agora.userJoinedStream.listen((uid) {
+      _remoteVideoOffUids.remove(uid);
+      if (mounted) setState(() {});
+    });
+    _leftSub = _agora.userLeftStream.listen((uid) {
+      _remoteVideoOffUids.remove(uid);
+      if (mounted) setState(() {});
+    });
+    _remoteVideoMutedSub = _agora.remoteVideoMutedStream.listen((event) {
+      final uid = event['uid'] as int?;
+      if (uid == null) return;
+      if (event['muted'] == true) {
+        _remoteVideoOffUids.add(uid);
+      } else {
+        _remoteVideoOffUids.remove(uid);
+      }
+      if (mounted) setState(() {});
+    });
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final session = _controller.session;
       if (session != null &&
-          !SessionLiveUtils.isSessionGenuinelyLive(session)) {
+          !SessionLiveUtils.isSessionGenuinelyLive(session) &&
+          !_inCall) {
         _controller.clear();
         return;
       }
@@ -53,6 +93,9 @@ class _LiveSessionFloatingBarOverlayState
   @override
   void dispose() {
     _tick?.cancel();
+    _joinedSub?.cancel();
+    _leftSub?.cancel();
+    _remoteVideoMutedSub?.cancel();
     _controller.removeListener(_onControllerChanged);
     super.dispose();
   }
@@ -69,10 +112,8 @@ class _LiveSessionFloatingBarOverlayState
     });
   }
 
-  /// Default anchor: right-padded, sitting 3px above the bottom tab bar.
   double _anchorBottom(BuildContext context) {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
-    // Icon row + label row on a fixed [BottomNavigationBar].
     const navBarHeight = kBottomNavigationBarHeight + 32.0;
     return safeBottom + navBarHeight + _gapAboveNavBar;
   }
@@ -80,12 +121,23 @@ class _LiveSessionFloatingBarOverlayState
   void _clampDragOffset(BuildContext context, double anchorBottom) {
     final size = MediaQuery.sizeOf(context);
     final topPad = MediaQuery.paddingOf(context).top;
-    final maxUp = size.height - anchorBottom - _pipSize - topPad - 8;
-    final maxLeft = size.width - _rightPadding - _pipSize - 8;
-    _dragOffset = Offset(
-      _dragOffset.dx.clamp(-maxLeft, _rightPadding - 8),
-      _dragOffset.dy.clamp(-maxUp, 0),
+    final maxUp = size.height - anchorBottom - _pipH - topPad - 8;
+    final maxLeft = size.width - _rightPadding - _pipW - 8;
+    _dragOffset = FloatingPipDrag.clamp(
+      offset: _dragOffset,
+      maxUp: maxUp,
+      maxLeft: maxLeft,
     );
+  }
+
+  Future<void> _toggleMute() async {
+    if (!_inCall || _muteBusy) return;
+    setState(() => _muteBusy = true);
+    try {
+      await _agora.toggleAudio();
+    } finally {
+      if (mounted) setState(() => _muteBusy = false);
+    }
   }
 
   void _openLiveSession() {
@@ -98,6 +150,25 @@ class _LiveSessionFloatingBarOverlayState
 
     final sessionId = session['id']?.toString() ?? '';
     final location = (session['location'] as String? ?? 'online').toLowerCase();
+
+    // Already in the Agora channel (minimized) — return to the classroom.
+    if (_inCall && sessionId.isNotEmpty) {
+      _controller.setRouteSuppressed(true);
+      nav.push(
+        MaterialPageRoute(
+          settings: RouteSettings(name: '/live-session-$sessionId'),
+          builder: (_) => AgoraVideoSessionScreen(
+            sessionId: sessionId,
+            userRole: role == 'tutor' ? 'tutor' : 'learner',
+            resumeExistingChannel: true,
+            initialCameraEnabled: _agora.isVideoEnabled(),
+            initialMicEnabled: _agora.isAudioEnabled(),
+          ),
+        ),
+      );
+      return;
+    }
+
     if (role == 'tutor' && location == 'online' && sessionId.isNotEmpty) {
       nav
           .push<Map<String, dynamic>>(
@@ -181,7 +252,8 @@ class _LiveSessionFloatingBarOverlayState
                 imageUrl: url,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => _initialFallback(fallbackName, size),
-                errorWidget: (_, __, ___) => _initialFallback(fallbackName, size),
+                errorWidget: (_, __, ___) =>
+                    _initialFallback(fallbackName, size),
               )
             : _initialFallback(fallbackName, size),
       ),
@@ -231,7 +303,8 @@ class _LiveSessionFloatingBarOverlayState
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white54),
               ),
-              child: const Icon(Icons.videocam_rounded, size: 12, color: Colors.white),
+              child: const Icon(Icons.videocam_rounded,
+                  size: 12, color: Colors.white),
             ),
           ),
         ],
@@ -269,6 +342,194 @@ class _LiveSessionFloatingBarOverlayState
     );
   }
 
+  Widget _buildLiveVideoTile() {
+    final engine = _agora.engine!;
+    final remoteUid = _agora.primaryRemoteUid;
+    final connection = _agora.currentConnection;
+    final localUid = _agora.currentUID;
+    final micOn = _agora.isAudioEnabled();
+
+    Widget video;
+    if (remoteUid != null &&
+        connection != null &&
+        !_remoteVideoOffUids.contains(remoteUid)) {
+      video = agora_widget.AgoraVideoViewWidget(
+        engine: engine,
+        uid: remoteUid,
+        isLocal: false,
+        connection: connection,
+      );
+    } else if (remoteUid == null &&
+        localUid != null &&
+        _agora.isVideoEnabled()) {
+      video = agora_widget.AgoraVideoViewWidget(
+        engine: engine,
+        uid: localUid,
+        isLocal: true,
+        sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera,
+      );
+    } else {
+      video = ColoredBox(
+        color: AppTheme.primaryDark,
+        child: Center(
+          child: _avatarCircle(
+            url: _controller.counterpartyAvatarUrl,
+            fallbackName: _controller.counterpartyName ?? 'Session',
+            size: 56,
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: video,
+        ),
+        Positioned(
+          top: 6,
+          left: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.accentGreen.withValues(alpha: 0.6),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  'LIVE',
+                  style: GoogleFonts.poppins(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          left: 6,
+          bottom: 6,
+          child: Material(
+            color: Colors.black.withValues(alpha: 0.55),
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _muteBusy ? null : _toggleMute,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(
+                  micOn ? Icons.mic : Icons.mic_off,
+                  size: 18,
+                  color: micOn ? Colors.white : Colors.redAccent,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          right: 6,
+          bottom: 6,
+          child: Material(
+            color: Colors.black.withValues(alpha: 0.55),
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _openLiveSession,
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.open_in_full, size: 16, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChipTile(Duration elapsed) {
+    return Stack(
+      children: [
+        Center(child: _buildAvatars()),
+        Positioned(
+          top: 6,
+          left: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.accentGreen.withValues(alpha: 0.6),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  'LIVE',
+                  style: GoogleFonts.poppins(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 6,
+          child: Text(
+            _formatElapsed(elapsed),
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.92),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_controller.isActive) return const SizedBox.shrink();
@@ -278,6 +539,7 @@ class _LiveSessionFloatingBarOverlayState
         ? DateTime.now().difference(startedAt)
         : Duration.zero;
     final anchorBottom = _anchorBottom(context);
+    final inCall = _inCall;
 
     return Positioned(
       right: _rightPadding - _dragOffset.dx,
@@ -286,7 +548,8 @@ class _LiveSessionFloatingBarOverlayState
         onPanUpdate: (details) {
           setState(() {
             _didDrag = true;
-            _dragOffset -= details.delta;
+            _dragOffset =
+                FloatingPipDrag.applyPanDelta(_dragOffset, details.delta);
             _clampDragOffset(context, anchorBottom);
           });
         },
@@ -304,17 +567,20 @@ class _LiveSessionFloatingBarOverlayState
           shadowColor: AppTheme.primaryColor.withValues(alpha: 0.45),
           borderRadius: BorderRadius.circular(16),
           child: Container(
-            width: _pipSize,
-            height: _pipSize,
+            width: _pipW,
+            height: _pipH,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.primaryDark,
-                  AppTheme.primaryColor,
-                ],
-              ),
+              gradient: inCall
+                  ? null
+                  : LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppTheme.primaryDark,
+                        AppTheme.primaryColor,
+                      ],
+                    ),
+              color: inCall ? Colors.black : null,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
               boxShadow: [
@@ -325,65 +591,7 @@ class _LiveSessionFloatingBarOverlayState
                 ),
               ],
             ),
-            child: Stack(
-              children: [
-                Center(child: _buildAvatars()),
-                Positioned(
-                  top: 6,
-                  left: 6,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: AppTheme.accentGreen,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.accentGreen.withValues(alpha: 0.6),
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          'LIVE',
-                          style: GoogleFonts.poppins(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 6,
-                  child: Text(
-                    _formatElapsed(elapsed),
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.92),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            child: inCall ? _buildLiveVideoTile() : _buildChipTile(elapsed),
           ),
         ),
       ),

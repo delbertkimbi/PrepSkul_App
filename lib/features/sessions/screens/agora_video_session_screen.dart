@@ -40,6 +40,7 @@ import 'package:prepskul/features/sessions/services/agora_recording_service.dart
 import 'package:prepskul/features/sessions/services/session_timer_service.dart';
 import 'package:prepskul/features/sessions/services/call_pip_controller.dart';
 import 'package:prepskul/features/sessions/services/session_heartbeat_service.dart';
+import 'package:prepskul/features/sessions/services/live_session_overlay_controller.dart';
 import 'package:prepskul/features/sessions/services/workspace_realtime_sync.dart';
 import 'package:prepskul/features/sessions/services/qoe_telemetry_service.dart';
 import 'package:prepskul/features/sessions/domain/workspace_sync_state.dart';
@@ -187,6 +188,8 @@ class AgoraVideoSessionScreen extends StatefulWidget {
   final String userRole; // 'tutor' or 'learner'
   final bool initialCameraEnabled; // Initial camera state from pre-join
   final bool initialMicEnabled; // Initial mic state from pre-join
+  /// Re-open the classroom without leaving/rejoining an active Agora channel.
+  final bool resumeExistingChannel;
 
   const AgoraVideoSessionScreen({
     Key? key,
@@ -194,6 +197,7 @@ class AgoraVideoSessionScreen extends StatefulWidget {
     required this.userRole,
     this.initialCameraEnabled = false, // Default to OFF
     this.initialMicEnabled = false, // Default to OFF
+    this.resumeExistingChannel = false,
   }) : super(key: key);
 
   @override
@@ -371,6 +375,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
   bool _soloPipDragHintShown = false;
   bool _isTearingDownUi = false;
   bool _explicitCallCleanupDone = false;
+  /// When true, dispose keeps the Agora channel alive for the app-level PiP.
+  bool _preserveChannelOnDispose = false;
   static const Duration _kConnectivityOfflineDebounce = Duration(
     milliseconds: 900,
   );
@@ -831,6 +837,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     );
     WidgetsBinding.instance.addObserver(this);
     CallPipController().attachToLifecycle();
+    LiveSessionOverlayController.instance.setRouteSuppressed(true);
     _initializeSession();
     _setupListeners();
     _setupTimer();
@@ -843,8 +850,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     // Safety net: if route was popped without going through _endCall (e.g. error nav), try to leave and release.
     // On web, defer two frames: ripping platform-view / WebRTC DOM while the engine view is still composing
     // triggers `EngineFlutterView.render` after dispose (flutter engine window.dart assert spam).
-    if (_explicitCallCleanupDone) {
-      // Already cleaned up via explicit end-call flow.
+    if (_explicitCallCleanupDone || _preserveChannelOnDispose) {
+      // Already cleaned up via explicit end-call, or minimized to app PiP.
     } else if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -2552,6 +2559,30 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       LogService.info(
         '[SESSION] 🎥 Initializing - Session ID: ${widget.sessionId}, User Role: ${widget.userRole}',
       );
+
+      // Minimized PiP re-open: stay on the existing channel.
+      if (widget.resumeExistingChannel && _agoraService.isInChannel) {
+        final user = _supabase.auth.currentUser;
+        if (user != null) {
+          _loadProfileData(user.id);
+          _beginWorkspaceRealtimeWarmup(user.id);
+          unawaited(_startSessionHeartbeat(user.id));
+        }
+        safeSetState(() {
+          _sessionState = AgoraSessionState.connected;
+          _isVideoEnabled = _agoraService.isVideoEnabled();
+          _isAudioEnabled = _agoraService.isAudioEnabled();
+          _localVideoReady = true;
+          _errorMessage = null;
+          final remote = _agoraService.primaryRemoteUid;
+          if (remote != null) {
+            _remoteUID = remote;
+            _participants[remote] = ParticipantState(uid: remote);
+          }
+        });
+        return;
+      }
+
       // Web: avoid nuking a warm pre-join preview engine (full reset costs seconds).
       // Always reset if already in channel or caller forces (e.g. error retry).
       if (kIsWeb) {
@@ -4484,6 +4515,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
 
     _isTearingDownUi = true;
 
+    // Leaving is terminal for this call, unlike minimizing it to the global PiP.
+    // Clear the app-level overlay before returning to the underlying screen so
+    // the still-cached session row cannot resurrect a stale PiP tile.
+    LiveSessionOverlayController.instance.clear();
+
     // Full-screen "Leaving..." overlay – fully opaque so no profile or "Waiting for..." shows behind
     if (mounted) {
       showDialog(
@@ -4662,6 +4698,17 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     }
   }
 
+  /// Shrink the classroom to the global live PiP without leaving Agora.
+  Future<void> _minimizeToPip() async {
+    if (_isEndingCall || _isTearingDownUi) return;
+    _preserveChannelOnDispose = true;
+    LiveSessionOverlayController.instance.setRouteSuppressed(false);
+    if (!mounted) return;
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
   /// Show error message
   void _showError(String message) {
     if (!mounted || _isTearingDownUi) return;
@@ -4675,7 +4722,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     return StatusBarUtils.withDarkStatusBar(
       WillPopScope(
         onWillPop: () async {
-          await _endCall();
+          await _minimizeToPip();
           return false;
         },
         child: Scaffold(

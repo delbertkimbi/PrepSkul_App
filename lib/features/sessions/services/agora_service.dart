@@ -585,6 +585,24 @@ class AgoraService {
   int? get currentUID => _currentUID;
   RtcConnection? get currentConnection => _currentConnection;
 
+  /// Remote peers currently in the channel (for app-level PiP preview).
+  Set<int> get remoteParticipantUids =>
+      Set<int>.unmodifiable(_remoteParticipantUids);
+
+  /// Best remote uid for a compact PiP tile.
+  int? get primaryRemoteUid {
+    if (_lastActiveRemoteUid != null &&
+        _remoteParticipantUids.contains(_lastActiveRemoteUid)) {
+      return _lastActiveRemoteUid;
+    }
+    if (_spotlightRemoteUid != null &&
+        _remoteParticipantUids.contains(_spotlightRemoteUid)) {
+      return _spotlightRemoteUid;
+    }
+    if (_remoteParticipantUids.isEmpty) return null;
+    return _remoteParticipantUids.first;
+  }
+
   /// Latest uplink (TX) sample from `onNetworkQuality` when `remoteUid == 0`.
   QualityType? get lastObservedUplinkQuality => _lastObservedTxQuality;
 
