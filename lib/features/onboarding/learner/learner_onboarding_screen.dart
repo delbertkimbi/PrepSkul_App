@@ -25,6 +25,7 @@ enum LearnerOnboardStep {
   goal,
   exam,
   examWhen,
+  tutor,
   mode,
   channel,
   pace,
@@ -155,8 +156,13 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       steps.add(LearnerOnboardStep.exam);
       steps.add(LearnerOnboardStep.examWhen);
     }
-    steps.add(LearnerOnboardStep.mode);
-    if (_answers.tutorModeId == 'in-person' || _answers.tutorModeId == 'flexible') {
+    steps.add(LearnerOnboardStep.tutor);
+    if (_answers.wantsTutor == true) {
+      steps.add(LearnerOnboardStep.mode);
+    }
+    if (_answers.wantsTutor == true &&
+        (_answers.tutorModeId == 'in-person' ||
+            _answers.tutorModeId == 'flexible')) {
       steps.add(LearnerOnboardStep.city);
     }
     steps.addAll(const [
@@ -175,18 +181,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     return '';
   }
 
-  List<RegionOption> get _availableSubjects {
-    final primary = _selectedEducationLevel == 'Primary School';
-    final upper = _selectedEducationLevel == 'High School';
-    if (primary) {
-      return [
-        ..._system.subjects.where((s) => {'maths', 'french', 'english'}.contains(s.id)),
-        const RegionOption(id: 'science', label: Bilingual(en: 'Discovering science', fr: 'Découverte des sciences')),
-        const RegionOption(id: 'other', label: Bilingual(en: 'Something else', fr: 'Autre chose')),
-      ];
-    }
-    return _system.subjects.where((s) => upper || s.id != 'philo').toList();
-  }
+  List<RegionOption> get _availableSubjects =>
+      subjectOptionsFor(_pack, _system, _answers.levelId);
 
   String get _chosenSubject {
     for (final item in _availableSubjects) {
@@ -272,6 +268,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           (_answers.subjectId != 'other' ||
               (_answers.subjectOther?.trim().isNotEmpty ?? false)),
     LearnerOnboardStep.goal => _answers.learningGoalId != null,
+    LearnerOnboardStep.tutor => _answers.wantsTutor != null,
     LearnerOnboardStep.mode => _answers.tutorModeId != null,
     _ => true,
   };
@@ -340,7 +337,10 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       LearnerOnboardStep.meet => Mood.happy,
       LearnerOnboardStep.ready => Mood.cheer,
       LearnerOnboardStep.paywall => Mood.encourage,
-      LearnerOnboardStep.country || LearnerOnboardStep.city || LearnerOnboardStep.mode => Mood.point,
+      LearnerOnboardStep.country ||
+      LearnerOnboardStep.city ||
+      LearnerOnboardStep.mode ||
+      LearnerOnboardStep.tutor => Mood.point,
       LearnerOnboardStep.goal => Mood.thinking,
       LearnerOnboardStep.subject ||
       LearnerOnboardStep.level ||
@@ -356,48 +356,62 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     return Scaffold(
       backgroundColor: OnboardPalette.cream,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_index == 0)
-                const SizedBox(height: 12)
-              else
-                OnboardTopBar(progress: progress, onBack: _back),
-              const SizedBox(height: 8),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) {
-                    final offset = Tween<Offset>(
-                      begin: Offset(_forward ? 0.08 : -0.08, 0),
-                      end: Offset.zero,
-                    ).animate(animation);
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(position: offset, child: child),
-                    );
-                  },
-                  child: KeyedSubtree(
-                    key: ValueKey((_step == LearnerOnboardStep.welcome || _step == LearnerOnboardStep.ready || _step == LearnerOnboardStep.paywall) ? _step.name : 'questions'),
-                    child: SingleChildScrollView(child: _page()),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_index == 0)
+                    const SizedBox(height: 12)
+                  else
+                    OnboardTopBar(progress: progress, onBack: _back),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 280),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) {
+                        final offset = Tween<Offset>(
+                          begin: Offset(_forward ? 0.08 : -0.08, 0),
+                          end: Offset.zero,
+                        ).animate(animation);
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: offset,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: KeyedSubtree(
+                        key: ValueKey(
+                          (_step == LearnerOnboardStep.welcome ||
+                                  _step == LearnerOnboardStep.ready ||
+                                  _step == LearnerOnboardStep.paywall)
+                              ? _step.name
+                              : 'questions',
+                        ),
+                        child: SingleChildScrollView(child: _page()),
+                      ),
+                    ),
                   ),
-                ),
+                  if (_index > 0 && _step != LearnerOnboardStep.paywall) ...[
+                    const SizedBox(height: 12),
+                    OnboardPrimaryButton(
+                      label: _step == LearnerOnboardStep.ready
+                          ? _c.readyCta
+                          : _c.next,
+                      onTap: _next,
+                      enabled: _canContinue,
+                    ),
+                  ],
+                ],
               ),
-              if (_index > 0 && _step != LearnerOnboardStep.paywall) ...[
-                const SizedBox(height: 12),
-                OnboardPrimaryButton(
-                  label: _step == LearnerOnboardStep.ready
-                      ? _c.readyCta
-                      : _c.next,
-                  onTap: _next,
-                  enabled: _canContinue,
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       ),
@@ -427,7 +441,9 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       title: title,
       mood: _mood,
       speaking: _tts.speaking,
-      listenLabel: _answers.voiceOut ? (_c.isFrench ? "Couper le son" : "Mute voice") : (_c.isFrench ? "Activer la voix" : "Unmute voice"),
+      listenLabel: _answers.voiceOut
+          ? (_c.isFrench ? "Couper le son" : "Mute voice")
+          : (_c.isFrench ? "Activer la voix" : "Unmute voice"),
       voiceEnabled: _answers.voiceOut,
       onListen: () => _toggleVoice(title, null),
       child: child,
@@ -706,7 +722,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         ),
       ),
       LearnerOnboardStep.subject => _ask(
-        title: _c.subjectTitle,
+        title: _c.subjectTitleFor(_system.label.t(locale), _chosenLevel),
         child: Column(
           children: [
             for (final subject in _availableSubjects)
@@ -809,17 +825,36 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           ],
         ),
       ),
-      LearnerOnboardStep.mode => _ask(
-        title: _c.isFrench ? "Souhaites-tu aussi l’aide d’un tuteur ?" : "Would you also like help from a tutor?",
+      LearnerOnboardStep.tutor => _ask(
+        title: _c.tutorTitle(_chosenSubject),
         child: Column(
           children: [
             OnboardChoice(
-              title: _c.isFrench ? 'Avec Mate pour le moment' : 'Just Mate for now',
-              glyph: 'book',
-              selected: _answers.tutorModeId == 'not-now',
-              onTap: () => _choose(_answers.copyWith(
-                tutorModeId: 'not-now', clearCity: true, clearCityOther: true)),
+              title: _c.tutorYes,
+              glyph: 'student',
+              selected: _answers.wantsTutor == true,
+              onTap: () => _choose(_answers.copyWith(wantsTutor: true)),
             ),
+            OnboardChoice(
+              title: _c.tutorNo,
+              glyph: 'book',
+              selected: _answers.wantsTutor == false,
+              onTap: () => _choose(
+                _answers.copyWith(
+                  wantsTutor: false,
+                  clearTutorMode: true,
+                  clearCity: true,
+                  clearCityOther: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      LearnerOnboardStep.mode => _ask(
+        title: _c.modeTitle,
+        child: Column(
+          children: [
             OnboardChoice(
               title: _c.modeOnline,
               glyph: 'online',
@@ -833,13 +868,13 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               ),
             ),
             OnboardChoice(
-              title: _c.modeInPerson,
+              title: _c.modeInPersonLocation,
               glyph: 'home',
               selected: _answers.tutorModeId == 'in-person',
               onTap: () => _choose(_answers.copyWith(tutorModeId: 'in-person')),
             ),
             OnboardChoice(
-              title: _c.modeFlexible,
+              title: _c.modeFlexibleLocation,
               glyph: 'globe',
               selected: _answers.tutorModeId == 'flexible',
               onTap: () => _choose(_answers.copyWith(tutorModeId: 'flexible')),
@@ -931,12 +966,18 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               _chosenSubject,
               _chosenLevel,
             ),
-            note: _c.readyNote(_answers.learningGoalId == 'exam-prep'),
+            note: _c.readyNote(
+              _answers.learningGoalId == 'exam-prep',
+              wantsTutor: _answers.wantsTutor == true,
+            ),
             tail: false,
             listenLabel: _c.listen,
             onListen: () => _speakText(
               _c.readyTitle(_name.text.trim(), _chosenSubject, _chosenLevel),
-              _c.readyNote(_answers.learningGoalId == 'exam-prep'),
+              _c.readyNote(
+                _answers.learningGoalId == 'exam-prep',
+                wantsTutor: _answers.wantsTutor == true,
+              ),
             ),
           ),
         ],

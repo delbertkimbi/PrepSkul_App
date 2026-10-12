@@ -21,6 +21,7 @@ void main() {
         systemId: 'cm-francophone',
         levelId: '3eme',
         subjectId: 'maths',
+        learningGoalId: 'exam-prep',
         examId: 'bepc',
         examWhenId: 'soon',
         name: 'Amina',
@@ -29,10 +30,13 @@ void main() {
     expect(map['specific_exam'], 'BEPC');
     expect(map['exam_type'], 'Regional Exams');
     expect(map['class_level'], '3ème');
-    expect(map['preferred_city'], 'Yaoundé');
+    expect(map['city'], 'Yaoundé');
     expect(map['subjects'], ['Mathématiques']);
     expect(map['learning_goals'], ['Préparer BEPC']);
-    expect('${map['specific_exam']}${map['exam_type']}', isNot(contains('SAT')));
+    expect(
+      '${map['specific_exam']}${map['exam_type']}',
+      isNot(contains('SAT')),
+    );
   });
 
   test('Anglophone Cameroon uses GCE not US grades', () {
@@ -40,5 +44,21 @@ void main() {
     expect(system.levels.any((l) => l.id == 'form5'), isTrue);
     expect(system.exams.any((e) => e.id == 'gce-o'), isTrue);
     expect(system.levels.any((l) => l.label.en.contains('5th grade')), isFalse);
+  });
+
+  test('subject suggestions follow the selected country and level', () {
+    final nigeria = packById('ng');
+    final nigeriaSystem = systemById(nigeria, 'ng-waec');
+    expect(
+      subjectOptionsFor(nigeria, nigeriaSystem, 'ss3').map((item) => item.id),
+      containsAll(['basic-science', 'social-studies']),
+    );
+
+    final cameroon = packById('cm');
+    final francophone = systemById(cameroon, 'cm-francophone');
+    expect(
+      subjectOptionsFor(cameroon, francophone, 'cm2').map((item) => item.id),
+      ['maths', 'language', 'science', 'other'],
+    );
   });
 }

@@ -542,7 +542,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                     Expanded(
                                       child: Text(
                                         name,
-                                        style: GoogleFonts.poppins(
+                                        style: GoogleFonts.nunito(
                                           fontSize: 24,
                                           fontWeight: FontWeight.w700,
                                           color: Colors.black,
@@ -574,7 +574,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                             const SizedBox(width: 4),
                                             Text(
                                               'Verified',
-                                              style: GoogleFonts.poppins(
+                                              style: GoogleFonts.nunito(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w600,
                                                 color: AppTheme.primaryColor,
@@ -596,7 +596,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                     const SizedBox(width: 4),
                                     Text(
                                       rating.toStringAsFixed(1),
-                                      style: GoogleFonts.poppins(
+                                      style: GoogleFonts.nunito(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
                                         color: Colors.black,
@@ -606,7 +606,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                     if (rating > 0 && totalReviews >= 3)
                                       Text(
                                         ' ($totalReviews)',
-                                        style: GoogleFonts.poppins(
+                                        style: GoogleFonts.nunito(
                                           fontSize: 14,
                                           color: Colors.grey[600],
                                         ),
@@ -631,7 +631,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           const SizedBox(width: 6),
                           Text(
                             '$city, $quarter',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 14,
                               color: Colors.grey[600],
                             ),
@@ -694,7 +694,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     children: [
                       Text(
                         'Subjects',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                           color: Colors.black,
@@ -724,7 +724,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                     ),
                                     child: Text(
                                       subject.toString(),
-                                      style: GoogleFonts.poppins(
+                                      style: GoogleFonts.nunito(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w500,
                                         color: AppTheme.primaryColor,
@@ -772,7 +772,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       children: [
                         Text(
                           'Certifications',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
                             color: Colors.black,
@@ -834,7 +834,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               const SizedBox(width: 10),
               Text(
                 'Pricing & Availability',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: Colors.black,
@@ -858,7 +858,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   children: [
                     Text(
                       'Monthly Package',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 14,
                         color: Colors.grey[700],
                       ),
@@ -869,7 +869,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         if (hasDiscount && originalPerMonth != null) ...[
                           Text(
                             PricingService.formatPrice(originalPerMonth),
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 16,
                               fontWeight: FontWeight.w500,
                               color: Colors.grey[500],
@@ -880,7 +880,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         ],
                     Text(
                       PricingService.formatPrice(perMonth),
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.primaryColor,
@@ -896,7 +896,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                             ),
                             child: Text(
                               '${discountPercent.toStringAsFixed(0)}% OFF',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.green[700],
@@ -914,7 +914,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   children: [
                     Text(
                       'Based on $sessionsPerWeek session${sessionsPerWeek > 1 ? 's' : ''}/week',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         color: Colors.grey[600],
                       ),
@@ -928,7 +928,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   children: [
                     Text(
                       'Per Session',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 14,
                         color: Colors.grey[700],
                       ),
@@ -939,7 +939,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         if (hasDiscount && originalPerSession != null) ...[
                           Text(
                             PricingService.formatPrice(originalPerSession),
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
                               color: Colors.grey[500],
@@ -950,7 +950,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         ],
                     Text(
                       PricingService.formatPrice(perSession),
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                             color: AppTheme.primaryColor,
@@ -987,7 +987,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           child: Center(
             child: Text(
               'Preview Mode - Booking Disabled',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[600],
@@ -1094,7 +1094,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ),
               child: Text(
                 'Book Trial Session',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
@@ -1143,7 +1143,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ),
               child: Text(
                 'Book This Tutor',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1162,7 +1162,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         const SizedBox(height: 4),
         Text(
           value,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 14,
             fontWeight: FontWeight.w700,
             color: Colors.black,
@@ -1170,7 +1170,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         ),
         Text(
           label,
-          style: GoogleFonts.poppins(fontSize: 10, color: Colors.grey[600]),
+          style: GoogleFonts.nunito(fontSize: 10, color: Colors.grey[600]),
         ),
       ],
     );
@@ -1188,7 +1188,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         children: [
           Text(
             title,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: Colors.black,
@@ -1200,7 +1200,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           else
             Text(
               content,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 12,
                 color: Colors.grey[700],
                 height: 1.6,
@@ -1215,7 +1215,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     return StatefulBuilder(
       builder: (context, setState) {
         final isExpanded = _aboutExpanded;
-        final textStyle = GoogleFonts.poppins(
+        final textStyle = GoogleFonts.nunito(
           fontSize: 12,
           color: Colors.grey[700],
           height: 1.6,
@@ -1256,7 +1256,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               },
               child: Text(
                 isExpanded ? 'Show less' : 'Read more',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
@@ -1309,7 +1309,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     if (displayItems.isEmpty) {
       return Text(
         'No certifications yet',
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.nunito(
           fontSize: 14,
           color: Colors.grey[600],
           fontStyle: FontStyle.italic,
@@ -1338,7 +1338,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     if (item['type'] == 'education') ...[
                       Text(
                         'Highest Certificate',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primaryColor,
@@ -1349,7 +1349,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     ],
                     Text(
                       item['text'] as String,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 14,
                         fontWeight: item['type'] == 'education'
                             ? FontWeight.w600
@@ -1503,7 +1503,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                             children: [
                               Text(
                 name.isNotEmpty ? name[0].toUpperCase() : 'T',
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 80,
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.primaryColor,
@@ -1512,7 +1512,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                               const SizedBox(height: 10),
                               Text(
                                 name,
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w500,
                                   color: Colors.grey[700],
@@ -1529,7 +1529,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : 'T',
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 36,
             fontWeight: FontWeight.w600,
             color: AppTheme.primaryColor,
@@ -1543,7 +1543,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     if (availability == null || availability.isEmpty) {
       return Text(
         'Schedule not available',
-        style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey[600]),
+        style: GoogleFonts.nunito(fontSize: 11, color: Colors.grey[600]),
       );
     }
 
@@ -1692,7 +1692,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               const SizedBox(width: 10),
               Text(
                 'Reviews',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: Colors.black,
@@ -1712,7 +1712,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           else if (_reviews.isEmpty)
             Text(
               'No reviews yet. Be the first to review this tutor!',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 color: Colors.grey[600],
                 fontStyle: FontStyle.italic,
@@ -1731,7 +1731,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
                   'Showing 5 of ${_reviews.length} reviews',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 12,
                     color: Colors.grey[600],
                     fontStyle: FontStyle.italic,
@@ -1764,7 +1764,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             children: [
               Text(
                 averageRating.toStringAsFixed(1),
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
                   color: Colors.black,
@@ -1788,7 +1788,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   const SizedBox(height: 4),
                   Text(
                     '$totalReviews ${totalReviews == 1 ? 'review' : 'reviews'}',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 12,
                       color: Colors.grey[600],
                     ),
@@ -1809,7 +1809,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   children: [
                     Text(
                       '$rating',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey[700],
@@ -1829,7 +1829,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     const SizedBox(width: 8),
                     Text(
                       '$count',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         color: Colors.grey[600],
                       ),
@@ -1901,7 +1901,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               const SizedBox(width: 8),
               Text(
                 dateText,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 12,
                   color: Colors.grey[600],
                 ),
@@ -1921,7 +1921,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       const SizedBox(width: 4),
                       Text(
                         'Recommended',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.accentGreen,
@@ -1937,7 +1937,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             const SizedBox(height: 12),
             Text(
               reviewText,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 color: Colors.grey[800],
                 height: 1.5,
@@ -1963,7 +1963,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       children: [
                         Text(
                           'What went well:',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.accentGreen,
@@ -1972,7 +1972,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         const SizedBox(height: 4),
                         Text(
                           whatWentWell,
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 12,
                             color: Colors.grey[700],
                           ),
@@ -2003,7 +2003,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       children: [
                         Text(
                           'Could improve:',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: Colors.orange[700],
@@ -2012,7 +2012,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         const SizedBox(height: 4),
                         Text(
                           whatCouldImprove,
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 12,
                             color: Colors.grey[700],
                           ),
@@ -2047,7 +2047,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       const SizedBox(width: 8),
                       Text(
                         'Tutor Response:',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primaryColor,
@@ -2058,7 +2058,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   const SizedBox(height: 8),
                   Text(
                     review['tutor_response'] as String,
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 13,
                       color: Colors.grey[800],
                       height: 1.5,
@@ -2081,7 +2081,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 icon: const Icon(Icons.reply, size: 16),
                 label: Text(
                   'Respond',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
@@ -2186,7 +2186,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             SnackBar(
               content: Text(
                 'Unable to share tutor profile.',
-                style: GoogleFonts.poppins(),
+                style: GoogleFonts.nunito(),
               ),
               backgroundColor: Colors.red,
             ),
@@ -2233,7 +2233,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           SnackBar(
             content: Text(
               'Failed to share tutor profile. Please try again.',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
@@ -2252,7 +2252,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           SnackBar(
             content: Text(
               'You must be logged in to message.',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red,
           ),
@@ -2267,7 +2267,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           SnackBar(
             content: Text(
               'Unable to start conversation. Tutor ID not found.',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red,
           ),
@@ -2444,7 +2444,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             SnackBar(
               content: Text(
                 'Book a trial or session to start chatting with this tutor.',
-                style: GoogleFonts.poppins(),
+                style: GoogleFonts.nunito(),
               ),
               backgroundColor: Colors.orange,
             ),
@@ -2502,7 +2502,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           SnackBar(
             content: Text(
               'Unable to start conversation. Please try again.',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red,
           ),

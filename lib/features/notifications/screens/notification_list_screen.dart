@@ -406,7 +406,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
               onPressed: _markAllAsRead,
               child: Text(
                 'Mark all read',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
@@ -475,7 +475,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      labelStyle: GoogleFonts.poppins(
+      labelStyle: GoogleFonts.nunito(
         fontSize: 12,
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
         color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
@@ -524,7 +524,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
               child: Center(
                 child: Text(
                   'No more notifications',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 13,
                     color: AppTheme.textMedium,
                   ),
@@ -555,7 +555,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                 ),
                 child: Text(
                   currentTimeGroup!,
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textMedium,

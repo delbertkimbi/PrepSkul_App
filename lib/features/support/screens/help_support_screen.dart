@@ -55,7 +55,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
             SnackBar(
               content: Text(
                 'WhatsApp is not installed. Please install WhatsApp to contact support.',
-                style: GoogleFonts.poppins(),
+                style: GoogleFonts.nunito(),
               ),
               backgroundColor: Colors.red,
             ),
@@ -69,7 +69,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
           SnackBar(
             content: Text(
               'Unable to open WhatsApp. Please try again or contact us via email.',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red,
           ),
@@ -87,7 +87,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
         SnackBar(
           content: Text(
             'Please describe your issue or question',
-            style: GoogleFonts.poppins(),
+            style: GoogleFonts.nunito(),
           ),
           backgroundColor: Colors.orange,
         ),
@@ -130,7 +130,7 @@ Thank you!''';
           SnackBar(
             content: Text(
               'Opening WhatsApp...',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.green,
           ),
@@ -143,7 +143,7 @@ Thank you!''';
           SnackBar(
             content: Text(
               'Error: ${e.toString()}',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red,
           ),
@@ -173,7 +173,7 @@ Thank you!''';
             SnackBar(
               content: Text(
                 'No email app found. Please email us at $_supportEmail',
-                style: GoogleFonts.poppins(),
+                style: GoogleFonts.nunito(),
               ),
               backgroundColor: Colors.orange,
             ),
@@ -187,7 +187,7 @@ Thank you!''';
           SnackBar(
             content: Text(
               'Unable to open email app. Please email us at $_supportEmail',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red,
           ),
@@ -255,7 +255,7 @@ Thank you!''';
                       children: [
                         Text(
                           'Need help?',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.textDark,
@@ -264,7 +264,7 @@ Thank you!''';
                         const SizedBox(height: 2),
                         Text(
                           'Tell us what you need',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 12,
                             color: AppTheme.textMedium,
                             height: 1.3,
@@ -281,7 +281,7 @@ Thank you!''';
             // Complaint/Issue Input Section
             Text(
               'What can we help you with?',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
@@ -294,7 +294,7 @@ Thank you!''';
               maxLines: 5,
               decoration: InputDecoration(
                 hintText: 'Describe your issue or question...',
-                hintStyle: GoogleFonts.poppins(
+                hintStyle: GoogleFonts.nunito(
                   fontSize: 13,
                   color: AppTheme.textLight,
                 ),
@@ -314,7 +314,7 @@ Thank you!''';
                 ),
                 contentPadding: const EdgeInsets.all(12),
               ),
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 13,
                 color: AppTheme.textDark,
               ),
@@ -352,7 +352,7 @@ Thank you!''';
                     const SizedBox(width: 10),
                     Text(
                       _isSubmitting ? 'Opening...' : 'Send via WhatsApp',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
@@ -367,7 +367,7 @@ Thank you!''';
             // Quick Contact Options
             Text(
               'Other ways to reach us',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
@@ -394,7 +394,7 @@ Thank you!''';
             // FAQ Section
             Text(
               'Frequently Asked Questions',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
@@ -441,7 +441,7 @@ Thank you!''';
                       children: [
                         Text(
                           'Support Hours',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.textDark,
@@ -450,7 +450,7 @@ Thank you!''';
                         const SizedBox(height: 4),
                         Text(
                           'Monday - Friday: 8:00 AM - 6:00 PM\nSaturday: 9:00 AM - 2:00 PM',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 12,
                             color: AppTheme.textMedium,
                             height: 1.4,
@@ -502,7 +502,7 @@ Thank you!''';
                 children: [
                   Text(
                     title,
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
@@ -511,7 +511,7 @@ Thank you!''';
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 12,
                       color: AppTheme.textMedium,
                     ),
@@ -542,7 +542,7 @@ Thank you!''';
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         title: Text(
           question,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
@@ -551,7 +551,7 @@ Thank you!''';
         children: [
           Text(
             answer,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 13,
               color: AppTheme.textMedium,
               height: 1.5,

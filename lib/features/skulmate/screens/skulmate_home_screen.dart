@@ -683,7 +683,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
           constraints: const BoxConstraints(maxWidth: 390),
           child: Text(
             copy.tutorStartBody,
-            style: GoogleFonts.plusJakartaSans(
+            style: GoogleFonts.nunito(
               color: AppTheme.textMedium,
               fontSize: 15,
               height: 1.5,
@@ -701,7 +701,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
         const SizedBox(height: 22),
         Text(
           copy.tutorStartChoices,
-          style: GoogleFonts.plusJakartaSans(
+          style: GoogleFonts.nunito(
             color: AppTheme.textDark,
             fontSize: 15,
             fontWeight: FontWeight.w700,
@@ -766,7 +766,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
           style: TextButton.styleFrom(
             foregroundColor: AppTheme.primaryColor,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            textStyle: GoogleFonts.plusJakartaSans(
+            textStyle: GoogleFonts.nunito(
               fontWeight: FontWeight.w700,
               fontSize: 13,
             ),
@@ -858,7 +858,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
               children: [
                 Text(
                   _error!,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: GoogleFonts.nunito(
                     color: AppTheme.textDark,
                     fontSize: 14,
                     height: 1.4,
@@ -931,7 +931,7 @@ class _StudyAction extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: GoogleFonts.nunito(
                         color: AppTheme.textDark,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -942,7 +942,7 @@ class _StudyAction extends StatelessWidget {
                       subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
+                      style: GoogleFonts.nunito(
                         color: AppTheme.textMedium,
                         fontSize: 11,
                         height: 1.25,
@@ -996,7 +996,7 @@ class _LearnerContextLine extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: GoogleFonts.nunito(
                     color: Colors.white.withValues(alpha: 0.76),
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -1007,7 +1007,7 @@ class _LearnerContextLine extends StatelessWidget {
                   detail,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: GoogleFonts.nunito(
                     color: Colors.white,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -1016,7 +1016,7 @@ class _LearnerContextLine extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   footnote,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: GoogleFonts.nunito(
                     color: Colors.white.withValues(alpha: 0.76),
                     fontSize: 11,
                     height: 1.3,
@@ -1048,7 +1048,7 @@ class _StarterPrompt extends StatelessWidget {
       onPressed: onTap,
       avatar: Icon(icon, size: 17, color: AppTheme.primaryColor),
       label: Text(label),
-      labelStyle: GoogleFonts.plusJakartaSans(
+      labelStyle: GoogleFonts.nunito(
         color: AppTheme.primaryColor,
         fontSize: 12,
         fontWeight: FontWeight.w600,

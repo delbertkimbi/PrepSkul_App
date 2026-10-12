@@ -192,8 +192,14 @@ flutter:
     - assets/config/client.env # Generated public configuration; never bundle root .env
 
   fonts:
+    - family: Fredoka
+      fonts:
+        - asset: assets/fonts/Fredoka/Fredoka.ttf
     - family: Poppins
       fonts:
+    - family: Fredoka
+      fonts:
+        - asset: assets/fonts/Fredoka/Fredoka.ttf
         - asset: assets/fonts/Poppins/Poppins-Regular.ttf
           weight: 400
         - asset: assets/fonts/Poppins/Poppins-Medium.ttf

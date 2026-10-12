@@ -72,6 +72,9 @@ class LearnerOnboardingCopy {
   String get subjectTitle => isFrench
       ? 'De quoi tu as le plus besoin maintenant ?'
       : 'What do you need the most help with right now?';
+  String subjectTitleFor(String system, String level) => isFrench
+      ? '$subjectTitle — $system${level.isEmpty ? '' : ', $level'}'
+      : '$subjectTitle — $system${level.isEmpty ? '' : ', $level'}';
 
   String get goalTitle => isFrench
       ? 'Qu’aimerais-tu réussir en premier ?'
@@ -123,12 +126,25 @@ class LearnerOnboardingCopy {
 
   String get readyKicker => isFrench ? 'PRÊT' : 'READY';
   String get modeTitle => isFrench
-      ? 'Comment préfères-tu apprendre avec un tuteur ?'
-      : 'How would you prefer to learn with a tutor?';
+      ? 'Où aimerais-tu apprendre avec ce tuteur ?'
+      : 'Where would you love to learn with your tutor?';
+  String tutorTitle(String subject) => isFrench
+      ? 'Veux-tu aussi réserver un tuteur pour $subject ?'
+      : 'Would you also like to book a tutor for $subject?';
+  String get tutorYes => isFrench
+      ? 'Oui, aide-moi à trouver un tuteur'
+      : 'Yes, help me find a tutor';
+  String get tutorNo => isFrench
+      ? 'Pas maintenant, je continue avec Mate'
+      : 'Not now, I’ll continue with Mate';
   String get modeOnline => isFrench ? 'En ligne' : 'Online';
   String get modeInPerson => isFrench ? 'En personne' : 'In person';
   String get modeFlexible =>
       isFrench ? 'Les deux me conviennent' : 'I’m open to either';
+  String get modeInPersonLocation =>
+      isFrench ? 'À la maison ou à l’école' : 'At home or school';
+  String get modeFlexibleLocation =>
+      isFrench ? 'En ligne ou en personne' : 'Online or in person';
 
   String readyTitle(String name, String subject, String level) {
     final learner = name.trim().isEmpty
@@ -148,13 +164,21 @@ class LearnerOnboardingCopy {
         : '$learner, let’s work on $subject at $level.';
   }
 
-  String readyNote(bool examPrep) => isFrench
+  String readyNote(bool examPrep, {required bool wantsTutor}) => isFrench
       ? examPrep
-            ? 'Mate t’aidera à comprendre la matière et à te préparer à l’examen que tu as choisi. Tu peux aussi trouver un tuteur selon ta ville et ta préférence.'
-            : 'Mate t’aidera à comprendre tes cours. Tu peux aussi trouver un tuteur selon ta matière, ta classe et ta préférence.'
+            ? wantsTutor
+                  ? 'Mate t’aidera à comprendre la matière et à te préparer à l’examen que tu as choisi. On cherchera aussi un tuteur selon ta ville et ta préférence.'
+                  : 'Mate t’aidera à comprendre la matière et à te préparer à l’examen que tu as choisi.'
+            : wantsTutor
+            ? 'Mate t’aidera à comprendre tes cours. On cherchera aussi un tuteur selon ta matière, ta classe et ta préférence.'
+            : 'Mate t’aidera à comprendre tes cours, à ton rythme.'
       : examPrep
-      ? 'Mate can help you understand the subject and prepare for the exam you chose. You can also find a tutor based on your location and preference.'
-      : 'Mate can help with your lessons. You can also find a tutor based on your subject, class, and learning preference.';
+      ? wantsTutor
+            ? 'Mate can help you understand the subject and prepare for the exam you chose. We’ll also look for a tutor based on your location and preference.'
+            : 'Mate can help you understand the subject and prepare for the exam you chose.'
+      : wantsTutor
+      ? 'Mate can help with your lessons. We’ll also look for a tutor based on your subject, class, and learning preference.'
+      : 'Mate can help with your lessons at your pace.';
   String get readyCta => isFrench ? 'Continuer' : 'Continue';
 
   String payTitle(String name) {

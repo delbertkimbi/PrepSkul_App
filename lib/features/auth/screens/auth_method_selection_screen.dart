@@ -172,7 +172,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
                                 padding: const EdgeInsets.symmetric(horizontal: 16),
                                 child: Text(
                                   t.authOr,
-                                  style: GoogleFonts.poppins(
+                                  style: GoogleFonts.nunito(
                                     fontSize: subtitleFontSize,
                                     color: AppTheme.textLight,
                                     fontWeight: FontWeight.w500,
@@ -214,6 +214,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
 
                         const SizedBox(height: 16),
 
+                        if (_isLogin || AppConfig.enablePhoneOtpVerification)
                         _AuthMethodButton(
                           icon: Icons.phone_outlined,
                                 label: _isLogin ? t.authSignInWithPhone : t.authSignUpWithPhone,
@@ -248,7 +249,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
                               child: Text(
                                 _isLogin ? '${t.authNoAccount} ' : '${t.authHaveAccount} ',
                                 key: ValueKey<String>(_isLogin ? 'no-account' : 'has-account'),
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: subtitleFontSize,
                                 color: AppTheme.textMedium,
                                 ),
@@ -265,7 +266,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
                               child: Text(
                                   _isLogin ? t.authSignUp : t.authLogin,
                                   key: ValueKey<String>(_isLogin ? 'signup-btn' : 'signin-btn'),
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: subtitleFontSize,
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.primaryColor,
@@ -287,7 +288,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
                               key: ValueKey<bool>(_isLogin),
                               textAlign: TextAlign.center,
                               text: TextSpan(
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 12,
                                   color: AppTheme.textLight,
                                   height: 1.4,
@@ -298,7 +299,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
                                   ),
                                   TextSpan(
                                     text: t.authTermsOfService,
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       color: AppTheme.primaryColor,
                                       fontWeight: FontWeight.w600,
                                       decoration: TextDecoration.underline,
@@ -309,7 +310,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
                                   TextSpan(text: ' ${t.authAnd} '),
                                   TextSpan(
                                     text: t.authPrivacyPolicy,
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       color: AppTheme.primaryColor,
                                       fontWeight: FontWeight.w600,
                                       decoration: TextDecoration.underline,
@@ -373,4 +374,3 @@ class _AuthMethodButton extends StatelessWidget {
     );
   }
 }
-

@@ -1186,7 +1186,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ),
                   child: Text(
                     '$trailingCount',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: color,

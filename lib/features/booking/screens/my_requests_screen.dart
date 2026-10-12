@@ -990,7 +990,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               ),
               label: Text(
                 t.requestAnotherTutor,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
                   fontSize: 11,
@@ -1047,7 +1047,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           const SizedBox(height: 16),
                           Text(
                             'No results found',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 16,
                               color: Colors.grey[600],
                             ),
@@ -1055,7 +1055,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           const SizedBox(height: 8),
                           Text(
                             'Try a different search term',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 14,
                               color: Colors.grey[500],
                             ),
@@ -1269,7 +1269,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               const SizedBox(height: 20),
               Text(
                 title,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textDark,
@@ -1279,7 +1279,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               const SizedBox(height: 8),
               Text(
                 subtitle,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   color: AppTheme.textMedium,
                   height: 1.5,
@@ -1309,7 +1309,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     icon: const Icon(Icons.add, size: 18),
                     label: Text(
                       'Request a Tutor',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),
@@ -1455,7 +1455,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                     request.tutorName.isNotEmpty
                                         ? request.tutorName[0].toUpperCase()
                                         : 'T',
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                   color: AppTheme.primaryColor,
@@ -1490,7 +1490,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           Expanded(
                             child: Text(
                               request.tutorName,
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.textDark,
@@ -1512,7 +1512,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             ),
                             child: Text(
                               _getStatusLabel(displayStatus),
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w600,
                                 color: _getStatusColor(displayStatus),
@@ -1534,7 +1534,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             request.tutorRating > 0
                                 ? request.tutorRating.toStringAsFixed(1)
                                 : 'New',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: Colors.grey[700],
@@ -1549,7 +1549,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             ),
                             child: Text(
                               subject,
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w500,
                                 color: AppTheme.primaryColor,
@@ -1607,7 +1607,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     children: [
                       Text(
                         'Monthly Fee',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: Colors.grey[600],
@@ -1617,7 +1617,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       const SizedBox(height: 4),
                       Text(
                         '${request.monthlyTotal.toStringAsFixed(0)} XAF',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 19,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.primaryColor,
@@ -1666,7 +1666,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           icon: const Icon(Icons.payment, size: 18),
                           label: Text(
                             t.myRequestsPayNow,
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
@@ -1699,7 +1699,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           icon: const Icon(Icons.info_outline, size: 17),
                           label: Text(
                             'View Details',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1745,7 +1745,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           icon: const Icon(Icons.calendar_today, size: 15),
                           label: Text(
                             'View Session',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1844,7 +1844,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   // Custom Request text (plain black, no badge)
                   Text(
                       t.myRequestsFilterCustom,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: AppTheme.textDark,
@@ -1859,7 +1859,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               // Subject title - reduced size
               Text(
                 request.formattedSubjects,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
@@ -1928,7 +1928,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     const SizedBox(width: 4),
                     Text(
                       request.urgencyLabel,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                           fontSize: 11,
                         color: request.urgency == 'urgent'
                               ? Colors.red[700]
@@ -1975,7 +1975,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     const SizedBox(width: 8),
                     Text(
                       'View Details',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.primaryColor,
@@ -2093,7 +2093,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                   tutorName.isNotEmpty
                                       ? tutorName[0].toUpperCase()
                                       : 'T',
-                                  style: GoogleFonts.poppins(
+                                  style: GoogleFonts.nunito(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w600,
                               color: AppTheme.primaryColor,
@@ -2128,7 +2128,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               Expanded(
                                 child: Text(
                           tutorName,
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 18,
                                     fontWeight: FontWeight.w700,
                             color: AppTheme.textDark,
@@ -2150,7 +2150,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             ),
                             child: Text(
                               _getStatusLabel(displayStatus, rejectionReason: rejectionReason),
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: _getStatusColor(displayStatus, rejectionReason: rejectionReason),
@@ -2172,7 +2172,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               tutorRating > 0
                                   ? tutorRating.toStringAsFixed(1)
                                     : 'New',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                   fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.grey[700],
@@ -2187,7 +2187,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 ),
                                 child: Text(
                                   session.subject,
-                                  style: GoogleFonts.poppins(
+                                  style: GoogleFonts.nunito(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w500,
                                     color: AppTheme.primaryColor,
@@ -2258,7 +2258,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   const SizedBox(height: 14),
                   Text(
                     _cleanTrialGoal(session.trialGoal!),
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: Colors.grey[800],
@@ -2282,7 +2282,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         children: [
                           Text(
                             'Trial Fee',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                               color: Colors.grey[600],
@@ -2292,7 +2292,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           const SizedBox(height: 4),
                           Text(
                             '${session.trialFee.toStringAsFixed(0)} XAF',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 19,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.primaryColor,
@@ -2355,7 +2355,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                           Expanded(
                                             child: Text(
                                               'Session time passed before payment. Reschedule to pick a new time.',
-                                              style: GoogleFonts.poppins(
+                                              style: GoogleFonts.nunito(
                                                 fontSize: 11,
                                                 color: Colors.orange.shade900,
                                                 fontWeight: FontWeight.w500,
@@ -2388,7 +2388,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                   icon: const Icon(Icons.edit_calendar, size: 17),
                                   label: Text(
                                     'Reschedule',
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -2425,7 +2425,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               icon: const Icon(Icons.info_outline, size: 17),
                               label: Text(
                                 'View Details',
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -2472,7 +2472,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               icon: const Icon(Icons.payment, size: 18),
                               label: Text(
                                 t.myRequestsPayNow,
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.white,
@@ -2520,7 +2520,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               icon: const Icon(Icons.calendar_today, size: 15),
                               label: Text(
                                 'View Session',
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -2626,7 +2626,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             Expanded(
               child: Text(
                 'Delete Trial Session',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontWeight: FontWeight.w600,
                   fontSize: 18,
                 ),
@@ -2636,14 +2636,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         ),
         content: Text(
           'Are you sure you want to delete this trial session request? This action cannot be undone.',
-          style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+          style: GoogleFonts.nunito(fontSize: 14, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text(
               'Cancel',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 color: AppTheme.textMedium,
                 fontWeight: FontWeight.w500,
               ),
@@ -2654,7 +2654,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: Text(
               'Delete',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -2678,7 +2678,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text('Deleting...', style: GoogleFonts.poppins()),
+                  Text('Deleting...', style: GoogleFonts.nunito()),
                 ],
               ),
               duration: const Duration(seconds: 2),
@@ -2723,7 +2723,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 Expanded(
                   child: Text(
                     'Trial session deleted successfully',
-                    style: GoogleFonts.poppins(),
+                    style: GoogleFonts.nunito(),
                   ),
                 ),
               ],
@@ -2751,7 +2751,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             e.toString().contains('cancel instead')
                         ? 'This session has been approved. Please use the cancel button to cancel it with a reason.'
                         : 'Error: ${e.toString()}',
-                    style: GoogleFonts.poppins(),
+                    style: GoogleFonts.nunito(),
                   ),
                 ),
               ],
@@ -2779,7 +2779,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             Expanded(
               child: Text(
                 'Delete Custom Request',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontWeight: FontWeight.w600,
                   fontSize: 18,
                 ),
@@ -2789,14 +2789,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         ),
         content: Text(
           'Are you sure you want to delete this custom tutor request? This action cannot be undone.',
-          style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+          style: GoogleFonts.nunito(fontSize: 14, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text(
               'Cancel',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 color: AppTheme.textMedium,
                 fontWeight: FontWeight.w500,
               ),
@@ -2807,7 +2807,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: Text(
               'Delete',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -2831,7 +2831,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text('Deleting...', style: GoogleFonts.poppins()),
+                  Text('Deleting...', style: GoogleFonts.nunito()),
                 ],
               ),
               duration: const Duration(seconds: 2),
@@ -2859,7 +2859,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 Expanded(
                   child: Text(
                     'Custom request deleted successfully',
-                    style: GoogleFonts.poppins(),
+                    style: GoogleFonts.nunito(),
                   ),
                 ),
               ],
@@ -2884,7 +2884,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 Expanded(
                   child: Text(
                     'Error: ${e.toString()}',
-                    style: GoogleFonts.poppins(),
+                    style: GoogleFonts.nunito(),
                   ),
                 ),
               ],
@@ -2918,7 +2918,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             Expanded(
               child: Text(
                 'Cancel Trial Session',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontWeight: FontWeight.w600,
                   fontSize: 18,
                 ),
@@ -2932,7 +2932,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           children: [
             Text(
               'The tutor has already approved this session. Please provide a reason for cancellation. The tutor will be notified.',
-              style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+              style: GoogleFonts.nunito(fontSize: 14, height: 1.5),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -2946,9 +2946,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 filled: true,
                 fillColor: Colors.grey[50],
                 labelText: 'Cancellation Reason',
-                labelStyle: GoogleFonts.poppins(fontSize: 12),
+                labelStyle: GoogleFonts.nunito(fontSize: 12),
               ),
-              style: GoogleFonts.poppins(fontSize: 14),
+              style: GoogleFonts.nunito(fontSize: 14),
             ),
             const SizedBox(height: 8),
             Container(
@@ -2965,7 +2965,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   Expanded(
                     child: Text(
                       'The tutor will be notified immediately with your reason.',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 11,
                         color: Colors.blue[900],
                       ),
@@ -2981,7 +2981,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             onPressed: () => Navigator.pop(context, false),
             child: Text(
               'Keep Session',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 color: AppTheme.textMedium,
                 fontWeight: FontWeight.w500,
               ),
@@ -3002,7 +3002,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             ),
             child: Text(
               'Cancel Session',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -3026,7 +3026,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text('Cancelling...', style: GoogleFonts.poppins()),
+                  Text('Cancelling...', style: GoogleFonts.nunito()),
                 ],
               ),
               duration: const Duration(seconds: 2),
@@ -3060,7 +3060,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 Expanded(
                   child: Text(
                     'Trial session cancelled. Tutor has been notified.',
-                    style: GoogleFonts.poppins(),
+                    style: GoogleFonts.nunito(),
                   ),
                 ),
               ],
@@ -3085,7 +3085,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 Expanded(
                   child: Text(
                     'Error: ${e.toString()}',
-                    style: GoogleFonts.poppins(),
+                    style: GoogleFonts.nunito(),
                   ),
                 ),
               ],
@@ -3111,7 +3111,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       builder: (context) => AlertDialog(
         title: Text(
           'Reject Approved Session',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3119,7 +3119,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           children: [
             Text(
               'Please provide a reason for rejecting this approved session:',
-              style: GoogleFonts.poppins(fontSize: 14),
+              style: GoogleFonts.nunito(fontSize: 14),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -3133,14 +3133,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 filled: true,
                 fillColor: Colors.grey[50],
               ),
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
+            child: Text('Cancel', style: GoogleFonts.nunito()),
           ),
           TextButton(
             onPressed: () {
@@ -3149,7 +3149,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.orange),
-            child: Text('Reject', style: GoogleFonts.poppins()),
+            child: Text('Reject', style: GoogleFonts.nunito()),
           ),
         ],
       ),
@@ -3240,7 +3240,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   Expanded(
                     child: Text(
                       'Reschedule request sent. Waiting for tutor approval.',
-                      style: GoogleFonts.poppins(),
+                      style: GoogleFonts.nunito(),
                     ),
                   ),
                 ],
@@ -3274,7 +3274,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           ),
           child: Text(
             'Paid',
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: Colors.green[700],
@@ -3292,7 +3292,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           ),
           child: Text(
             'Pay Now',
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppTheme.primaryColor,
@@ -3357,7 +3357,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       ),
       child: Text(
         label,
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.nunito(
           fontSize: isCompact ? 9 : 10,
           fontWeight: FontWeight.w600,
           color: chipColor,
@@ -3382,7 +3382,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         Flexible(
           child: Text(
             text,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 13,
               color: AppTheme.textDark,
               fontWeight: FontWeight.w500,
@@ -3425,7 +3425,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         const SizedBox(width: 4),
         Text(
           text,
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
+          style: GoogleFonts.nunito(fontSize: 12, color: AppTheme.textMedium),
         ),
       ],
     );
@@ -3439,7 +3439,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         const SizedBox(height: 4),
         Text(
           text,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 11,
             fontWeight: FontWeight.w500,
             color: AppTheme.textDark,
@@ -3462,7 +3462,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         Flexible(
           child: Text(
             text,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 12,
               fontWeight: FontWeight.w500,
               color: Colors.grey.shade700,
@@ -3485,7 +3485,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         Expanded(
           child: Text(
             text,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: Colors.grey[700],
@@ -4011,7 +4011,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               const SizedBox(height: 16),
               Text(
                 'Fixing session issue...',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -4222,7 +4222,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           SnackBar(
             content: Text(
               'Sessions fixed successfully! Navigating to sessions...',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
@@ -4256,7 +4256,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           SnackBar(
             content: Text(
               'Failed to fix sessions: ${e.toString()}',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
@@ -4286,7 +4286,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             Expanded(
               child: Text(
                 title,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textDark,
@@ -4302,7 +4302,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             children: [
               Text(
                 message,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   color: Colors.grey[800],
                   height: 1.5,
@@ -4326,7 +4326,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     Expanded(
                       child: Text(
                         'Check terminal logs for detailed error information.',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 12,
                           color: AppTheme.primaryColor,
                           fontWeight: FontWeight.w500,
@@ -4344,7 +4344,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             onPressed: () => Navigator.pop(context),
             child: Text(
               'Close',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 color: AppTheme.primaryColor,
                 fontWeight: FontWeight.w600,
               ),
@@ -4467,7 +4467,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           const SizedBox(width: 6),
           Text(
             statusText,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: textColor,
@@ -4493,7 +4493,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             const SizedBox(height: 16),
             Text(
               title,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
@@ -4502,7 +4502,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             const SizedBox(height: 8),
             Text(
               subtitle,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 color: AppTheme.textMedium,
               ),
@@ -4531,7 +4531,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      labelStyle: GoogleFonts.poppins(
+      labelStyle: GoogleFonts.nunito(
         fontSize: 12,
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
         color: isSelected
@@ -4761,7 +4761,7 @@ class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringS
     final isValid = _selectedDate != null && _selectedTime != null;
 
     return AlertDialog(
-      title: Text('Reschedule Session', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+      title: Text('Reschedule Session', style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -4769,7 +4769,7 @@ class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringS
           children: [
             Text(
               'Select a new date and time for this session. The tutor will need to approve the change.',
-              style: GoogleFonts.poppins(fontSize: 14),
+              style: GoogleFonts.nunito(fontSize: 14),
             ),
             const SizedBox(height: 20),
             // Date picker
@@ -4790,7 +4790,7 @@ class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringS
                         _selectedDate != null
                             ? DateFormat('MMM d, y').format(_selectedDate!)
                             : 'Select date',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 14,
                           color: _selectedDate != null ? AppTheme.textDark : AppTheme.textLight,
                         ),
@@ -4820,7 +4820,7 @@ class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringS
                         _selectedTime != null
                             ? _selectedTime!.format(context)
                             : 'Select time',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 14,
                           color: _selectedTime != null ? AppTheme.textDark : AppTheme.textLight,
                         ),
@@ -4842,7 +4842,7 @@ class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringS
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              style: GoogleFonts.poppins(fontSize: 14),
+              style: GoogleFonts.nunito(fontSize: 14),
             ),
             const SizedBox(height: 12),
             // Additional notes
@@ -4856,7 +4856,7 @@ class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringS
                 ),
               ),
               maxLines: 2,
-              style: GoogleFonts.poppins(fontSize: 14),
+              style: GoogleFonts.nunito(fontSize: 14),
             ),
           ],
         ),
@@ -4864,7 +4864,7 @@ class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringS
       actions: [
         TextButton(
           onPressed: _isLoading ? null : () => Navigator.pop(context, {'confirmed': false}),
-          child: Text('Cancel', style: GoogleFonts.poppins()),
+          child: Text('Cancel', style: GoogleFonts.nunito()),
         ),
         ElevatedButton(
           onPressed: (_isLoading || !isValid)
@@ -4893,7 +4893,7 @@ class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringS
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                 )
-              : Text('Request Reschedule', style: GoogleFonts.poppins()),
+              : Text('Request Reschedule', style: GoogleFonts.nunito()),
         ),
       ],
     );

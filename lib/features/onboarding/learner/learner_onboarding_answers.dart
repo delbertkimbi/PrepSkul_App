@@ -14,6 +14,7 @@ class LearnerOnboardingAnswers {
     this.examId,
     this.examWhenId,
     this.learningGoalId,
+    this.wantsTutor,
     this.tutorModeId,
     this.channelId = 'mix',
     this.paceId = 'balanced',
@@ -37,6 +38,7 @@ class LearnerOnboardingAnswers {
   final String? examId;
   final String? examWhenId;
   final String? learningGoalId;
+  final bool? wantsTutor;
   final String? tutorModeId;
   final String channelId;
   final String paceId;
@@ -60,6 +62,7 @@ class LearnerOnboardingAnswers {
     'examId': examId,
     'examWhenId': examWhenId,
     'learningGoalId': learningGoalId,
+    'wantsTutor': wantsTutor,
     'tutorModeId': tutorModeId,
     'channelId': channelId,
     'paceId': paceId,
@@ -85,6 +88,7 @@ class LearnerOnboardingAnswers {
       examId: json['examId'] as String?,
       examWhenId: json['examWhenId'] as String?,
       learningGoalId: json['learningGoalId'] as String?,
+      wantsTutor: json['wantsTutor'] as bool?,
       tutorModeId: json['tutorModeId'] as String?,
       channelId: json['channelId'] as String? ?? 'mix',
       paceId: json['paceId'] as String? ?? 'balanced',
@@ -112,6 +116,7 @@ class LearnerOnboardingAnswers {
     String? examId,
     String? examWhenId,
     String? learningGoalId,
+    bool? wantsTutor,
     String? tutorModeId,
     String? channelId,
     String? paceId,
@@ -125,6 +130,7 @@ class LearnerOnboardingAnswers {
     bool clearSystem = false,
     bool clearLevel = false,
     bool clearExam = false,
+    bool clearTutorMode = false,
     bool clearSubjectOther = false,
   }) {
     return LearnerOnboardingAnswers(
@@ -146,7 +152,8 @@ class LearnerOnboardingAnswers {
       examId: clearExam ? null : (examId ?? this.examId),
       examWhenId: examWhenId ?? this.examWhenId,
       learningGoalId: learningGoalId ?? this.learningGoalId,
-      tutorModeId: tutorModeId ?? this.tutorModeId,
+      wantsTutor: wantsTutor ?? this.wantsTutor,
+      tutorModeId: clearTutorMode ? null : (tutorModeId ?? this.tutorModeId),
       channelId: channelId ?? this.channelId,
       paceId: paceId ?? this.paceId,
       examFeelId: examFeelId ?? this.examFeelId,

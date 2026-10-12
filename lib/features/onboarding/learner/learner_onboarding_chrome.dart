@@ -27,7 +27,8 @@ TextStyle onboardDisplay({
   FontWeight weight = FontWeight.w600,
   Color color = AppTheme.primaryColor,
 }) {
-  return GoogleFonts.fredoka(
+  return TextStyle(
+    fontFamily: 'Fredoka',
     fontSize: size,
     fontWeight: weight,
     color: color,
@@ -37,7 +38,7 @@ TextStyle onboardDisplay({
 }
 
 class OnboardPalette {
-  static const cream = Color(0xFFFAF8F3);
+  static const cream = AppTheme.backgroundColor;
 
   static BoxDecoration get page => const BoxDecoration(color: cream);
 
@@ -458,7 +459,9 @@ class _OnboardAskState extends State<OnboardAsk> {
               ValueListenableBuilder<bool>(
                 valueListenable: widget.speaking!,
                 builder: (context, speaking, _) => prepMate(
-                  mood: speaking && widget.voiceEnabled ? Mood.talk : widget.mood,
+                  mood: speaking && widget.voiceEnabled
+                      ? Mood.talk
+                      : widget.mood,
                   size: 108,
                 ),
               )

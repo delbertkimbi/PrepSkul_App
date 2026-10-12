@@ -378,7 +378,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             icon: const Icon(Icons.edit, size: 14),
                             label: Text(
                               'Change Photo',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -479,7 +479,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     Expanded(
                                       child: Text(
                                         'Location: $_selectedCity${_selectedQuarter != null ? ', $_selectedQuarter' : ''}',
-                                        style: GoogleFonts.poppins(
+                                        style: GoogleFonts.nunito(
                                           fontSize: 13,
                                           color: AppTheme.textDark,
                                         ),
@@ -491,7 +491,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             const SizedBox(height: 8),
                             Text(
                               'To change location, please update your profile through the onboarding flow.',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 12,
                                 color: AppTheme.textMedium,
                                 fontStyle: FontStyle.italic,
@@ -529,7 +529,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               )
                             : Text(
                                 'Save Changes',
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -585,7 +585,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(width: 10),
               Text(
                 title,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
@@ -614,7 +614,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       keyboardType: keyboardType,
       enabled: enabled,
       validator: validator,
-      style: GoogleFonts.poppins(
+      style: GoogleFonts.nunito(
         fontSize: 13,
         color: AppTheme.textDark,
       ),

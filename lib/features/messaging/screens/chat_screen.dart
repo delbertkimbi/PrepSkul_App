@@ -103,7 +103,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         SnackBar(
           content: Text(
             '"$candidate" added to vocabulary deck',
-            style: GoogleFonts.poppins(fontSize: 12),
+            style: GoogleFonts.nunito(fontSize: 12),
           ),
           backgroundColor: AppTheme.accentGreen,
         ),
@@ -114,7 +114,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         SnackBar(
           content: Text(
             'Could not add word right now. Try again later.',
-            style: GoogleFonts.poppins(fontSize: 12),
+            style: GoogleFonts.nunito(fontSize: 12),
           ),
           backgroundColor: Colors.orange[700],
         ),
@@ -137,7 +137,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             ListTile(
               leading: const Icon(Icons.reply_rounded),
-              title: Text('Reply', style: GoogleFonts.poppins(fontSize: 14)),
+              title: Text('Reply', style: GoogleFonts.nunito(fontSize: 14)),
               onTap: () {
                 Navigator.pop(ctx);
                 safeSetState(() => _replyingToMessage = message);
@@ -146,7 +146,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             if (canAddWord)
               ListTile(
                 leading: const Icon(Icons.school_outlined),
-                title: Text('Add "$candidate" to vocabulary', style: GoogleFonts.poppins(fontSize: 14)),
+                title: Text('Add "$candidate" to vocabulary', style: GoogleFonts.nunito(fontSize: 14)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _addWordFromMessage(message);
@@ -811,7 +811,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               const SizedBox(height: 16),
               Text(
                 'This conversation is archived',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: Colors.grey[700],
@@ -820,7 +820,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               const SizedBox(height: 8),
               Text(
                 'Unarchive to continue the conversation',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   color: Colors.grey[500],
                 ),
@@ -847,7 +847,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             const SizedBox(height: 16),
             Text(
               'No messages yet',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[700],
@@ -856,7 +856,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             const SizedBox(height: 8),
             Text(
               'Start the conversation by sending a message!',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 14,
                 color: Colors.grey[500],
               ),
@@ -872,7 +872,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
                 child: Text(
                   'Book a Trial Session',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
@@ -1011,7 +1011,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       widget.conversation.otherUserName?.isNotEmpty == true
                           ? widget.conversation.otherUserName![0].toUpperCase()
                           : 'U',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.primaryColor,
@@ -1026,7 +1026,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 children: [
                   Text(
                     widget.conversation.otherUserName ?? 'Unknown User',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
@@ -1036,7 +1036,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   if (widget.conversation.isOtherUserActive)
                     Text(
                       'Active',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 10,
                         color: AppTheme.accentGreen,
                       ),
@@ -1044,7 +1044,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   else if (_isOtherUserTyping)
                     Text(
                       'Typing...',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 10,
                         color: AppTheme.accentGreen,
                         fontStyle: FontStyle.italic,
@@ -1053,7 +1053,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   else if (widget.conversation.otherUserLastSeen != null)
                     Text(
                       _formatLastSeen(widget.conversation.otherUserLastSeen!),
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 10,
                         color: AppTheme.textLight,
                       ),
@@ -1074,7 +1074,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   ),
                   child: Text(
                     'Book trial',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: AppTheme.textDark,
@@ -1107,7 +1107,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     const SizedBox(width: 10),
                     Text(
                       _isArchived ? 'Unarchive' : 'Archive',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         color: AppTheme.textDark,
                       ),
@@ -1149,7 +1149,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                   const SizedBox(width: 12),
                                   Text(
                                     'Loading more...',
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       fontSize: 12,
                                       color: Colors.grey[600],
                                     ),
@@ -1197,7 +1197,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     ),
                                     child: Text(
                                       _formatMessageTime(message.createdAt),
-                                      style: GoogleFonts.poppins(
+                                      style: GoogleFonts.nunito(
                                         fontSize: 10,
                                         fontWeight: FontWeight.w500,
                                         color: AppTheme.textMedium,
@@ -1224,7 +1224,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   Expanded(
                     child: Text(
                       _errorMessage!,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         color: Colors.red[700],
                       ),
@@ -1270,7 +1270,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       children: [
                         Text(
                           'Replying to ${_replyingToMessage!.isCurrentUser ? 'You' : (_replyingToMessage!.senderName ?? 'Unknown')}',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.primaryColor,
@@ -1279,7 +1279,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         const SizedBox(height: 2),
                         Text(
                           _replyingToMessage!.content,
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 11,
                             color: Colors.grey[700],
                           ),
@@ -1335,13 +1335,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       minLines: 1,
                       textInputAction: TextInputAction.newline,
                       keyboardType: TextInputType.multiline,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 13,
                         color: AppTheme.textDark,
                       ),
                       decoration: InputDecoration(
                         hintText: 'Type a message...',
-                        hintStyle: GoogleFonts.poppins(
+                        hintStyle: GoogleFonts.nunito(
                           color: AppTheme.textLight,
                           fontSize: 13,
                         ),
@@ -1480,7 +1480,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       children: [
                         Text(
                           message.replyToSenderName ?? 'Unknown',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
                             color: isCurrentUser
@@ -1491,7 +1491,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         const SizedBox(height: 2),
                         Text(
                           message.replyToContent ?? '',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 10,
                             color: isCurrentUser
                                 ? Colors.white.withOpacity(0.8)
@@ -1507,7 +1507,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 // Message content
                 Text(
                   message.content,
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 13,
                     color: isCurrentUser ? Colors.white : AppTheme.textDark,
                     height: 1.4,
@@ -1526,7 +1526,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                     child: Text(
                       'Vocabulary candidate',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 9,
                         fontWeight: FontWeight.w600,
                         color: isCurrentUser ? Colors.white : AppTheme.primaryColor,
@@ -1541,7 +1541,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   children: [
                     Text(
                       DateFormat('HH:mm').format(message.createdAt),
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 10,
                         color: isCurrentUser 
                             ? Colors.white.withOpacity(0.8)

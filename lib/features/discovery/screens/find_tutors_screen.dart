@@ -851,7 +851,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         );
                       }
                     },
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       color: Colors.black,
                       fontSize:
                           ResponsiveHelper.responsiveBodySize(context) + 1,
@@ -861,7 +861,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           Localizations.localeOf(context).languageCode == 'fr'
                           ? 'Nom ou matière'
                           : 'Name or subject',
-                      hintStyle: GoogleFonts.poppins(
+                      hintStyle: GoogleFonts.nunito(
                         color: Colors.grey[500],
                         fontSize:
                             ResponsiveHelper.responsiveBodySize(context) + 1,
@@ -978,7 +978,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           onPressed: _clearFilters,
                           child: Text(
                             'Clear',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w600,
                               fontSize: ResponsiveHelper.responsiveBodySize(
@@ -1011,7 +1011,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 if (_isFilterActive)
                   Text(
                     'Found ${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: ResponsiveHelper.responsiveBodySize(context),
                       fontWeight: FontWeight.w600,
                       color: Colors.grey[700],
@@ -1186,7 +1186,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         child: Center(
           child: Text(
             label,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 10,
               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
               color: isSelected ? Colors.white : Colors.grey[600],
@@ -1210,7 +1210,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         children: [
           Text(
             label,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 11,
               fontWeight: FontWeight.w500,
               color: AppTheme.primaryColor,
@@ -1356,7 +1356,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             children: [
                               Text(
                                 displayName,
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize:
                                       ResponsiveHelper.responsiveSubheadingSize(
                                         context,
@@ -1395,7 +1395,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                     rating > 0
                                         ? rating.toStringAsFixed(1)
                                         : 'N/A',
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       fontSize:
                                           ResponsiveHelper.responsiveBodySize(
                                             context,
@@ -1470,7 +1470,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                       const SizedBox(width: 5),
                                       Text(
                                         subject.toString(),
-                                        style: GoogleFonts.poppins(
+                                        style: GoogleFonts.nunito(
                                           fontSize:
                                               ResponsiveHelper.responsiveBodySize(
                                                 context,
@@ -1501,7 +1501,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         displayBio,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize:
                               ResponsiveHelper.responsiveBodySize(context) - 3,
                           color: Colors.grey[600],
@@ -1543,7 +1543,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             ),
                             Text(
                               '$completedSessions',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize:
                                     ResponsiveHelper.responsiveBodySize(
                                       context,
@@ -1556,7 +1556,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             ),
                             Text(
                               ' lessons',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize:
                                     ResponsiveHelper.responsiveBodySize(
                                       context,
@@ -1648,7 +1648,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             const SizedBox(width: 4),
             Text(
               label,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 color: isSelected ? Colors.white : Colors.grey[700],
@@ -1724,7 +1724,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     if (hasDiscount) {
       return Text(
         'From ${PricingService.formatPrice(monthlyAmount)}/mo',
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.nunito(
           fontSize: 12,
           color: AppTheme.primaryColor,
           fontWeight: FontWeight.w700,
@@ -1734,7 +1734,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
     return Text(
       'From ${PricingService.formatPrice(monthlyAmount)}/mo',
-      style: GoogleFonts.poppins(
+      style: GoogleFonts.nunito(
         fontSize: 12,
         color: Colors.grey[700],
         fontWeight: FontWeight.w700, // Bold as requested
@@ -1756,7 +1756,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             onPressed: _clearFilters,
             child: Text(
               'Clear all filters/search',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.primaryColor,
@@ -1895,7 +1895,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     children: [
                       Text(
                         'Filters',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 22,
                           fontWeight: FontWeight.w700,
                           color: Colors.black,
@@ -1908,7 +1908,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         },
                         child: Text(
                           'Clear all',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             color: AppTheme.primaryColor,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1928,7 +1928,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           children: [
                             Text(
                               'Subject',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.black,
@@ -1938,7 +1938,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               const SizedBox(width: 8),
                               Text(
                                 '(⭐ = Your preferences)',
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w400,
                                   color: Colors.grey[600],
@@ -2021,7 +2021,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                           ],
                                           Text(
                                             subject,
-                                            style: GoogleFonts.poppins(
+                                            style: GoogleFonts.nunito(
                                               fontSize: 14,
                                               fontWeight: isUserPreferred
                                                   ? FontWeight.w600
@@ -2048,7 +2048,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         const SizedBox(height: 24),
                         Text(
                           AppLocalizations.of(context)!.filterMonthlyPriceRange,
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: Colors.black,
@@ -2094,7 +2094,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                 ),
                                 child: Text(
                                   label,
-                                  style: GoogleFonts.poppins(
+                                  style: GoogleFonts.nunito(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
                                     color: isSelected
@@ -2109,7 +2109,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         const SizedBox(height: 24),
                         Text(
                           AppLocalizations.of(context)!.filterMinimumRating,
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: Colors.black,
@@ -2162,7 +2162,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                             context,
                                           )!.filterAny
                                         : '${_minRating.toStringAsFixed(1)}+',
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w700,
                                       color: AppTheme.primaryColor,
@@ -2242,7 +2242,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                       ),
                       child: Text(
                         'Apply Filters',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2360,7 +2360,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             children: [
               Text(
                 name.isNotEmpty ? name[0].toUpperCase() : 'T',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 80,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
@@ -2369,7 +2369,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               const SizedBox(height: 10),
               Text(
                 name,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 18,
                   fontWeight: FontWeight.w500,
                   color: Colors.grey[700],
@@ -2389,7 +2389,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       child: Center(
         child: Text(
           name.isNotEmpty ? name[0].toUpperCase() : 'T',
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 28,
             fontWeight: FontWeight.w600,
             color: AppTheme.primaryColor,

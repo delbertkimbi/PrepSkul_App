@@ -118,6 +118,7 @@ class LearnerOnboardingPersist {
         'online' => 'online',
         _ => null,
       },
+      'wants_tutor': a.wantsTutor ?? false,
       // The relational columns above power current tutor matching. This
       // versioned JSONB keeps every answer, including custom/region-specific
       // values, available for future recommendations.

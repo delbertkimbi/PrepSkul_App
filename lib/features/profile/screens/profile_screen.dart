@@ -515,21 +515,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) => AlertDialog(
         title: Text(
           t.profileLogout,
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
         ),
         content: Text(
           'Are you sure you want to logout?',
-          style: GoogleFonts.poppins(),
+          style: GoogleFonts.nunito(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
+            child: Text('Cancel', style: GoogleFonts.nunito()),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text(t.profileLogout, style: GoogleFonts.poppins()),
+            child: Text(t.profileLogout, style: GoogleFonts.nunito()),
           ),
         ],
       ),
@@ -1001,7 +1001,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const SizedBox(width: 8),
                               Text(
                                 t.profileLogout,
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.red,
@@ -1059,7 +1059,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 6),
           Text(
             label,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 10,
               color: AppTheme.textMedium,
             ),
@@ -1067,7 +1067,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 2),
           Text(
             value.length > 15 ? '${value.substring(0, 15)}...' : value,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
@@ -1120,7 +1120,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 10),
               Text(
                 title,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textDark,
@@ -1185,7 +1185,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Link copied', style: GoogleFonts.poppins(fontSize: 12)),
+          content: Text('Link copied', style: GoogleFonts.nunito(fontSize: 12)),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
         ),
@@ -1241,7 +1241,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textDark,
@@ -1251,7 +1251,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 11,
                           color: AppTheme.textMedium,
                         ),
@@ -1399,7 +1399,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 8),
                 Text(
                   'Learning Path',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textMedium,
@@ -1411,7 +1411,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 6),
             Text(
               learningPath,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: AppTheme.textDark,
@@ -1442,7 +1442,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(width: 8),
             Text(
               'Subjects',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
@@ -1468,7 +1468,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   child: Text(
                       s.toString(),
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 12,
                         color: AppTheme.textDark,
                       fontWeight: FontWeight.w500,
@@ -1499,7 +1499,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(width: 8),
             Text(
               'Skills',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
@@ -1525,7 +1525,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   child: Text(
                       s.toString(),
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 12,
                         color: AppTheme.textDark,
                       fontWeight: FontWeight.w500,
@@ -1557,7 +1557,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 8),
             Text(
               'Learning Goals',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
@@ -1610,7 +1610,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Expanded(
                       child: Text(
                         goalText,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                               fontSize: 12,
                           color: AppTheme.textDark,
                               height: 1.3,
@@ -1648,7 +1648,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 8),
             Text(
               'Learning Styles',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
@@ -1674,7 +1674,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   child: Text(
                     s.toString(),
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 12,
                       color: AppTheme.textDark,
                       fontWeight: FontWeight.w500,
@@ -1705,7 +1705,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                 'Complete your onboarding survey to see your learning information here.',
                       textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                         fontSize: 13,
                   color: AppTheme.textMedium,
                 ),
@@ -1724,7 +1724,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Text(
           'Unable to load learning information. Please try again later.',
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 12,
             color: AppTheme.textMedium,
             fontStyle: FontStyle.italic,
@@ -1753,7 +1753,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               Text(
                 label,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 12,
                   color: AppTheme.textMedium,
                 ),
@@ -1761,7 +1761,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 2),
               Text(
                 value,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
@@ -1809,7 +1809,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Text(
                       'Complete Your Profile Survey',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textDark,
@@ -1818,7 +1818,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Help us understand your needs so we can match you with the best tutors.',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         color: AppTheme.textMedium,
                       ),
@@ -1848,7 +1848,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: Text(
                 'Complete Survey',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
@@ -1883,7 +1883,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(width: 8),
             Text(
               label,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
@@ -1898,7 +1898,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (value != null)
           Text(
             value,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
@@ -1924,7 +1924,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: Text(
                   chip,
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 12,
                     color: AppTheme.primaryColor,
                     fontWeight: FontWeight.w500,
@@ -1953,7 +1953,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Expanded(
                     child: Text(
                       goal,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 13,
                         color: AppTheme.textDark,
                         height: 1.5,

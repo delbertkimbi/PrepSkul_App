@@ -10,15 +10,17 @@ class AppTheme {
   static const Color primaryLight = Color(0xFF4A6FBF); // Lighter blue
   static const Color primaryDark = Color(0xFF0F1A2E); // Darker blue
 
-  // Background Colors - Soft, warm tones
-  static const Color backgroundColor = Color(0xFFFEFEFE); // Almost white
+  // Paper palette shared by onboarding and every app surface.
+  static const Color backgroundColor = Color(
+    0xFFFAF8F3,
+  ); // Warm onboarding paper
   static const Color surfaceColor = Color(0xFFFFFFFF); // Pure white
-  static const Color cardColor = Color(0xFFFEFEFE); // Soft white
+  static const Color cardColor = Color(0xFFFFFFFF); // White paper cards
 
   // Soft Background Colors for the glassy effect
-  static const Color softBackground = Color(0xFFF9FAFB); // Very light gray
-  static const Color softCard = Color(0xFFFEFEFE); // Soft white
-  static const Color softBorder = Color(0xFFE5E7EB); // Very light border
+  static const Color softBackground = backgroundColor; // Warm page background
+  static const Color softCard = Color(0xFFFFFFFF); // White paper cards
+  static const Color softBorder = Color(0xFFD1D5DE); // Navy-tinted paper border
 
   // Accent Colors - Complementary soft colors
   static const Color accentBlue = Color(0xFF4A6FBF);
@@ -38,6 +40,7 @@ class AppTheme {
   /// Sky blue — calm, focus; pairs with deep blue header
   static const Color skyBlue = Color(0xFF0EA5E9);
   static const Color skyBlueLight = Color(0xFFE0F2FE);
+
   /// Soft yellow — warmth, energy; use for key stats and CTAs
   static const Color softYellow = Color(0xFFEAB308);
   static const Color softYellowLight = Color(0xFFFEF9C3);
@@ -55,9 +58,9 @@ class AppTheme {
   static const Color neutral900 = Color(0xFF111827);
 
   // Text Colors
-  static const Color textDark = Color(0xFF1F2937);
-  static const Color textMedium = Color(0xFF6B7280);
-  static const Color textLight = Color(0xFF9CA3AF);
+  static const Color textDark = primaryColor;
+  static const Color textMedium = Color(0xFF526078);
+  static const Color textLight = Color(0xFF667085);
 
   // Status Colors
   static const Color success = Color(0xFF10B981);
@@ -110,7 +113,14 @@ class AppTheme {
       scaffoldBackgroundColor: backgroundColor,
       colorScheme: ColorScheme.light(
         primary: primaryColor,
-        secondary: accentBlue,
+        secondary: mateBodyBlue,
+        tertiary: softYellow,
+        onTertiary: primaryColor,
+        primaryContainer: skyBlueLight,
+        onPrimaryContainer: primaryColor,
+        secondaryContainer: softYellowLight,
+        onSecondaryContainer: primaryColor,
+        outline: softBorder,
         surface: surfaceColor,
         background: backgroundColor,
         error: error,
@@ -121,93 +131,101 @@ class AppTheme {
         onError: Colors.white,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: Colors.transparent,
+        backgroundColor: backgroundColor,
+        surfaceTintColor: Colors.transparent,
         foregroundColor: textDark,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.poppins(
+        titleTextStyle: TextStyle(
+          fontFamily: 'Fredoka',
           fontSize: 20,
           fontWeight: FontWeight.w600,
           color: textDark,
         ),
       ),
-      textTheme: GoogleFonts.poppinsTextTheme().copyWith(
-        displayLarge: GoogleFonts.poppins(
+      textTheme: GoogleFonts.nunitoTextTheme().copyWith(
+        displayLarge: TextStyle(
+          fontFamily: 'Fredoka',
           fontSize: 32,
           fontWeight: FontWeight.w800,
           color: textDark,
           letterSpacing: -0.5,
         ),
-        displayMedium: GoogleFonts.poppins(
+        displayMedium: TextStyle(
+          fontFamily: 'Fredoka',
           fontSize: 28,
           fontWeight: FontWeight.w700,
           color: textDark,
           letterSpacing: -0.25,
         ),
-        displaySmall: GoogleFonts.poppins(
+        displaySmall: TextStyle(
+          fontFamily: 'Fredoka',
           fontSize: 24,
           fontWeight: FontWeight.w600,
           color: textDark,
         ),
-        headlineLarge: GoogleFonts.poppins(
+        headlineLarge: TextStyle(
+          fontFamily: 'Fredoka',
           fontSize: 22,
           fontWeight: FontWeight.w600,
           color: textDark,
         ),
-        headlineMedium: GoogleFonts.poppins(
+        headlineMedium: TextStyle(
+          fontFamily: 'Fredoka',
           fontSize: 20,
           fontWeight: FontWeight.w600,
           color: textDark,
         ),
-        headlineSmall: GoogleFonts.poppins(
+        headlineSmall: TextStyle(
+          fontFamily: 'Fredoka',
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: textDark,
         ),
-        titleLarge: GoogleFonts.poppins(
+        titleLarge: GoogleFonts.nunito(
           fontSize: 16,
           fontWeight: FontWeight.w600,
           color: textDark,
         ),
-        titleMedium: GoogleFonts.poppins(
+        titleMedium: GoogleFonts.nunito(
           fontSize: 14,
           fontWeight: FontWeight.w500,
           color: textDark,
         ),
-        titleSmall: GoogleFonts.poppins(
+        titleSmall: GoogleFonts.nunito(
           fontSize: 12,
           fontWeight: FontWeight.w500,
           color: textMedium,
         ),
-        bodyLarge: GoogleFonts.poppins(
+        bodyLarge: GoogleFonts.nunito(
           fontSize: 16,
           fontWeight: FontWeight.w400,
           color: textDark,
           height: 1.6,
         ),
-        bodyMedium: GoogleFonts.poppins(
+        bodyMedium: GoogleFonts.nunito(
           fontSize: 14,
           fontWeight: FontWeight.w400,
           color: textMedium,
           height: 1.5,
         ),
-        bodySmall: GoogleFonts.poppins(
+        bodySmall: GoogleFonts.nunito(
           fontSize: 12,
           fontWeight: FontWeight.w400,
           color: textLight,
           height: 1.4,
         ),
-        labelLarge: GoogleFonts.poppins(
+        labelLarge: GoogleFonts.nunito(
           fontSize: 14,
           fontWeight: FontWeight.w500,
           color: textDark,
         ),
-        labelMedium: GoogleFonts.poppins(
+        labelMedium: GoogleFonts.nunito(
           fontSize: 12,
           fontWeight: FontWeight.w500,
           color: textMedium,
         ),
-        labelSmall: GoogleFonts.poppins(
+        labelSmall: GoogleFonts.nunito(
           fontSize: 10,
           fontWeight: FontWeight.w500,
           color: textLight,
@@ -217,7 +235,8 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryColor,
           foregroundColor: Colors.white,
-          elevation: 2, // Subtle shadow for softness
+          elevation: 0,
+          minimumSize: const Size(48, 56),
           shadowColor: primaryColor.withOpacity(0.3),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(
@@ -225,7 +244,7 @@ class AppTheme {
             ), // More rounded for softness
           ),
           padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 36),
-          textStyle: GoogleFonts.poppins(
+          textStyle: GoogleFonts.nunito(
             fontSize: 16,
             fontWeight: FontWeight.w600,
             height: 1.2,
@@ -234,8 +253,14 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
+          foregroundColor: primaryColor,
+          minimumSize: const Size(48, 48),
+          side: const BorderSide(color: primaryColor, width: 2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          textStyle: GoogleFonts.poppins(
+          textStyle: GoogleFonts.nunito(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             height: 1.2,
@@ -269,22 +294,46 @@ class AppTheme {
           horizontal: 24,
           vertical: 20,
         ),
-        labelStyle: GoogleFonts.poppins(
+        labelStyle: GoogleFonts.nunito(
           color: textMedium,
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
-        hintStyle: GoogleFonts.poppins(
+        hintStyle: GoogleFonts.nunito(
           color: textLight,
           fontSize: 14,
           fontWeight: FontWeight.w400,
         ),
       ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surfaceColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: const BorderSide(color: softBorder, width: 2),
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: backgroundColor,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: mateBodyBlue,
+        linearTrackColor: skyBlueLight,
+      ),
       cardTheme: CardThemeData(
         color: softCard,
         elevation: 2, // Subtle elevation for softness
         shadowColor: Colors.black.withOpacity(0.05),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: const BorderSide(color: softBorder, width: 1.5),
+        ),
       ),
     );
   }

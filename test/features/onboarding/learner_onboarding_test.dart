@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_screen.dart';
 
 void main() {
@@ -12,6 +13,7 @@ void main() {
   testWidgets('Mate-first onboarding asks school world, not tutor matching', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       const MediaQuery(
         data: MediaQueryData(size: Size(390, 844), disableAnimations: true),
@@ -22,8 +24,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('PrepSkul'), findsNothing);
-    expect(find.textContaining('Hi there'), findsOneWidget);
-    expect(find.textContaining('Mate listens'), findsOneWidget);
+    expect(find.textContaining('Hi. I’m Mate.'), findsOneWidget);
+    expect(find.textContaining('I can help you understand'), findsOneWidget);
     expect(find.textContaining('best tutor'), findsNothing);
     expect(find.textContaining('your child'), findsNothing);
 
@@ -39,7 +41,7 @@ void main() {
     await settle(tester);
 
     expect(find.text('I’m the student'), findsOneWidget);
-    expect(find.textContaining('I’m a parent'), findsOneWidget);
+    expect(find.textContaining('I’m choosing for my child'), findsOneWidget);
     expect(find.textContaining('watch'), findsNothing);
   });
 }

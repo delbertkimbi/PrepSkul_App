@@ -320,7 +320,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
         children: [
           Text(
             label,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 16,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               color: isSelected ? AppTheme.textDark : Colors.grey[600],
@@ -357,7 +357,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
               const SizedBox(height: 12),
               Text(
                 'No archived conversations',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   color: AppTheme.textDark,
@@ -464,7 +464,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
                                   conversation.otherUserName?.isNotEmpty == true
                                       ? conversation.otherUserName![0].toUpperCase()
                                       : 'U',
-                                  style: GoogleFonts.poppins(
+                                  style: GoogleFonts.nunito(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
                                     color: AppTheme.primaryColor,
@@ -482,7 +482,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
                                 conversation.otherUserName?.isNotEmpty == true
                                     ? conversation.otherUserName![0].toUpperCase()
                                     : 'U',
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.primaryColor,
@@ -509,7 +509,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
                         child: Center(
                           child: Text(
                             conversation.unreadCount > 99 ? '99+' : '${conversation.unreadCount}',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
@@ -531,7 +531,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
                         Expanded(
                           child: Text(
                             conversation.otherUserName ?? 'Unknown User',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textDark,
@@ -543,7 +543,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
                         if (conversation.lastMessageTime != null)
                           Text(
                             _formatLastMessageTime(conversation.lastMessageTime),
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 11,
                               color: Colors.grey[600],
                             ),
@@ -553,7 +553,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
                     const SizedBox(height: 3),
                     Text(
                       conversation.lastMessagePreview ?? 'No messages yet',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         color: conversation.unreadCount > 0
                             ? AppTheme.textDark
@@ -594,7 +594,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen>
                         const SizedBox(width: 8),
                         Text(
                           _selectedTab == 'archived' ? 'Unarchive' : 'Archive',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 13,
                             color: AppTheme.textDark,
                           ),
