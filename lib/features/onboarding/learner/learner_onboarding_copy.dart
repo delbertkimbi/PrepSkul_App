@@ -11,6 +11,24 @@ class LearnerOnboardingCopy {
       ? 'Je t’aide à comprendre tes cours, à t’entraîner et à trouver un tuteur si tu en as besoin. Commençons par ce que tu apprends.'
       : 'I’ll help you understand your lessons, practise, and find a tutor when you need one. Let’s start with what you’re learning.';
   String get welcomeCta => isFrench ? 'C’est parti !' : 'Let’s go';
+  String get introTitle => isFrench
+      ? 'Apprends avec le bon soutien.'
+      : 'Learn with the support you need.';
+  String get introLearnTitle =>
+      isFrench ? 'Comprends avec Mate' : 'Understand with Mate';
+  String get introLearnNote => isFrench
+      ? 'Reprends une leçon, pose tes questions et entraîne-toi étape par étape, selon ta classe et ton programme.'
+      : 'Work through a lesson, ask questions and practise step by step, with your class and school programme in mind.';
+  String get introTutorTitle => isFrench
+      ? 'Un tuteur quand tu en as besoin'
+      : 'A tutor when you need one';
+  String get introTutorNote => isFrench
+      ? 'Trouve ou demande un tuteur pour ta matière, en ligne ou en personne. Tu choisis si tu en as besoin.'
+      : 'Find or request a tutor for your subject, online or in person. You choose whether you need one.';
+  String get introNext => isFrench
+      ? 'Quelques questions pour adapter la suite à ce que tu apprends.'
+      : 'A few questions will help me tailor the next steps to what you’re learning.';
+
   String get tutorEntry => isFrench ? 'Je suis tuteur' : 'I’m a tutor';
 
   String get languageKicker => isFrench ? 'LANGUE' : 'LANGUAGE';
@@ -179,6 +197,7 @@ class LearnerOnboardingCopy {
       : wantsTutor
       ? 'Mate can help with your lessons. We’ll also look for a tutor based on your subject, class, and learning preference.'
       : 'Mate can help with your lessons at your pace.';
+  String get signupCta => isFrench ? 'Créer mon compte' : 'Create my account';
   String get readyCta => isFrench ? 'Continuer' : 'Continue';
 
   String payTitle(String name) {

@@ -6,11 +6,11 @@ Run this version from `/Users/user/Desktop/PrepSkul/prepskul_app_release`, branc
 flutter run -d chrome
 ```
 
-First-time learners see the current animated Mate with EN/FR controls and one welcome, followed by role, name, school country/system, class, subject and goal. Tutor matching follows subject selection; city is requested only for in-person or flexible tutoring. Separate language, greeting, channel and pace pages no longer interrupt setup. Existing lesson voice controls remain available; learning preferences retain their existing balanced defaults.
+First-time learners see the current animated Mate with EN/FR controls and one welcome, then a short information screen with the existing tutor photo, followed by role, name, school country/system, class, subject and goal. Tutor matching follows subject selection; city is requested only for in-person or flexible tutoring. Separate language, greeting, channel and pace pages no longer interrupt setup. The plan choice comes after signup, using the saved answers. Existing lesson voice controls remain available; learning preferences retain their existing balanced defaults.
 
 Drafts now resume by step name. Older numeric drafts retain their answers and restart at the welcome so shortened navigation cannot skip questions. Draft restoration does not wait for text-to-speech initialization. The name field updates Continue immediately.
 
-Validation: 16 focused onboarding, region, mascot mapping and session routing tests pass. Release uses the existing public configuration injector and payments-disabled configuration. Authenticated lessons and payments are outside this onboarding verification.
+Validation: 18 focused onboarding, region, mascot mapping and session routing tests pass. Release uses the existing public configuration injector and payments-disabled configuration. Authenticated lessons and payments are outside this onboarding verification.
 
 Build and publish:
 

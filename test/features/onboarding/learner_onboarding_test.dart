@@ -16,7 +16,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   }
 
-  Future<void> start(WidgetTester tester) async {
+  Future<void> start(WidgetTester tester, {bool beforeAuth = true}) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -25,7 +25,11 @@ void main() {
           data: MediaQuery.of(context).copyWith(disableAnimations: true),
           child: child!,
         ),
-        home: const LearnerOnboardingScreen(beforeAuth: true),
+        home: LearnerOnboardingScreen(beforeAuth: beforeAuth),
+        routes: {
+          '/auth-method-selection': (_) =>
+              const Scaffold(body: Text('Signup destination')),
+        },
       ),
     );
     await settle(tester);
@@ -36,7 +40,7 @@ void main() {
     await LanguageService.setLanguage(const Locale('en'));
   });
 
-  testWidgets('one welcome leads directly to learner and school questions', (
+  testWidgets('welcome leads to useful information before learner questions', (
     tester,
   ) async {
     await start(tester);
@@ -45,6 +49,12 @@ void main() {
     expect(find.text('EN'), findsOneWidget);
     expect(find.text('FR'), findsOneWidget);
     await tester.tap(find.text('LET’S GO'));
+    await settle(tester);
+    expect(find.text(copy.introTitle), findsOneWidget);
+    expect(find.text(copy.introLearnTitle), findsOneWidget);
+    expect(find.text(copy.introTutorTitle), findsOneWidget);
+    expect(find.text(copy.whoStudent), findsNothing);
+    await tester.tap(find.text('CONTINUE'));
     await settle(tester);
     expect(find.text(copy.whoStudent), findsOneWidget);
     await tester.tap(find.text(copy.whoStudent));
@@ -124,5 +134,32 @@ void main() {
     await start(tester);
     expect(find.textContaining('Hi, I’m Mate.'), findsOneWidget);
     expect((await LearnerOnboardingPersist.loadDraft())!.name, 'Alex');
+  });
+  testWidgets('ready sends guests to signup without showing a paywall', (
+    tester,
+  ) async {
+    await LearnerOnboardingPersist.saveDraft(
+      const LearnerOnboardingAnswers(name: 'Alex', wantsTutor: false),
+      stepId: 'ready',
+    );
+    await start(tester);
+    expect(find.text(copy.payCta.toUpperCase()), findsNothing);
+    await tester.tap(find.text(copy.signupCta.toUpperCase()));
+    await settle(tester);
+    expect(find.text('Signup destination'), findsOneWidget);
+    expect((await LearnerOnboardingPersist.loadDraft())!.superChoice, isNull);
+  });
+
+  testWidgets('after signup the saved answers open the paywall', (
+    tester,
+  ) async {
+    await LearnerOnboardingPersist.saveDraft(
+      const LearnerOnboardingAnswers(name: 'Alex', wantsTutor: false),
+      stepId: 'ready',
+    );
+    await start(tester, beforeAuth: false);
+    expect(find.text(copy.payCta.toUpperCase()), findsOneWidget);
+    expect(find.text(copy.paySkip), findsOneWidget);
+    expect(find.text(copy.whoStudent), findsNothing);
   });
 }

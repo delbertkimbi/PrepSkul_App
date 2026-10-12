@@ -13,6 +13,7 @@ import 'package:prepskul/features/skulmate/services/tts_service.dart';
 
 enum LearnerOnboardStep {
   welcome,
+  introduction,
   language,
   who,
   name,
@@ -94,16 +95,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         });
         return;
       } else {
-        final saved = await LearnerOnboardingPersist.save(draft);
-        if (saved) {
-          if (!mounted) return;
-          final role = draft.accountRole == 'parent' ? 'parent' : 'student';
-          NavigationService.resetStackNamed(
-            context,
-            role == 'parent' ? '/parent-nav' : '/student-nav',
-          );
-          return;
-        }
+        // Authentication routes return here with the saved answers.
+        // Present the plan choice only now; persist the profile on completion.
         if (mounted) {
           setState(() {
             _answers = draft;
@@ -137,6 +130,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   List<LearnerOnboardStep> get _steps {
     final steps = <LearnerOnboardStep>[
       LearnerOnboardStep.welcome,
+      LearnerOnboardStep.introduction,
       LearnerOnboardStep.who,
       LearnerOnboardStep.name,
       LearnerOnboardStep.country,
@@ -166,7 +160,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
             _answers.tutorModeId == 'flexible')) {
       steps.add(LearnerOnboardStep.city);
     }
-    steps.addAll(const [LearnerOnboardStep.ready, LearnerOnboardStep.paywall]);
+    steps.add(LearnerOnboardStep.ready);
+    if (!widget.beforeAuth) steps.add(LearnerOnboardStep.paywall);
     return steps;
   }
 
@@ -278,7 +273,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     );
   }
 
-  Future<void> _finish({String superChoice = 'skip'}) async {
+  Future<void> _finish({String? superChoice}) async {
     if (_saving) return;
     setState(() => _saving = true);
     final named = _answers.copyWith(
@@ -436,7 +431,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                     const SizedBox(height: 12),
                     OnboardPrimaryButton(
                       label: _step == LearnerOnboardStep.ready
-                          ? _c.readyCta
+                          ? (widget.beforeAuth ? _c.signupCta : _c.readyCta)
                           : _c.next,
                       onTap: _next,
                       enabled: _canContinue,
@@ -483,6 +478,36 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     );
   }
 
+  Widget _introCard(IconData icon, String title, String note) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: OnboardPalette.paperCard,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppTheme.primaryColor, size: 28),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: onboardFont(size: 18)),
+              const SizedBox(height: 6),
+              Text(
+                note,
+                style: onboardFont(
+                  size: 16,
+                  weight: FontWeight.w600,
+                  color: AppTheme.textMedium,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
   Widget _page() {
     final locale = _answers.locale;
     return switch (_step) {
@@ -516,6 +541,38 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               child: Text(_c.tutorEntry, style: onboardFont(size: 15)),
             ),
           ],
+        ],
+      ),
+      LearnerOnboardStep.introduction => Column(
+        children: [
+          const OnboardPeopleMateStage(
+            photoAsset: 'assets/images/onboarding2.png',
+            mood: Mood.point,
+            flipMate: false,
+          ),
+          Text(
+            _c.introTitle,
+            textAlign: TextAlign.center,
+            style: onboardDisplay(size: 26),
+          ),
+          const SizedBox(height: 16),
+          _introCard(
+            Icons.auto_stories_outlined,
+            _c.introLearnTitle,
+            _c.introLearnNote,
+          ),
+          const SizedBox(height: 12),
+          _introCard(
+            Icons.people_outline,
+            _c.introTutorTitle,
+            _c.introTutorNote,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _c.introNext,
+            textAlign: TextAlign.center,
+            style: onboardFont(size: 16, weight: FontWeight.w600),
+          ),
         ],
       ),
       LearnerOnboardStep.language => _ask(
