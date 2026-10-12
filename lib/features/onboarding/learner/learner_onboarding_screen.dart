@@ -75,11 +75,12 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   }
 
   Future<void> _initializeOnboarding() async {
-    await _tts.ensureInitialized();
+    // Voice availability must not delay restoring the learner’s answers.
+    unawaited(_tts.ensureInitialized());
     final draft = await LearnerOnboardingPersist.loadDraft();
     if (draft != null) {
       if (widget.beforeAuth) {
-        final step = await LearnerOnboardingPersist.loadDraftStep();
+        final stepId = await LearnerOnboardingPersist.loadDraftStepId();
         if (!mounted) return;
         setState(() {
           _answers = draft;
@@ -87,7 +88,9 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           _countryOther.text = draft.countryOther ?? '';
           _cityOther.text = draft.cityOther ?? '';
           _subjectOther.text = draft.subjectOther ?? '';
-          _index = step.clamp(0, _steps.length - 1);
+          // Resume by identity: shortening the flow must not skip questions.
+          final restored = _steps.indexWhere((step) => step.name == stepId);
+          _index = restored < 0 ? 0 : restored;
         });
         return;
       } else {
@@ -134,10 +137,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
   List<LearnerOnboardStep> get _steps {
     final steps = <LearnerOnboardStep>[
       LearnerOnboardStep.welcome,
-      LearnerOnboardStep.language,
       LearnerOnboardStep.who,
       LearnerOnboardStep.name,
-      LearnerOnboardStep.meet,
       LearnerOnboardStep.country,
     ];
     if (_pack.systems.length > 1) steps.add(LearnerOnboardStep.system);
@@ -165,12 +166,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
             _answers.tutorModeId == 'flexible')) {
       steps.add(LearnerOnboardStep.city);
     }
-    steps.addAll(const [
-      LearnerOnboardStep.channel,
-      LearnerOnboardStep.pace,
-      LearnerOnboardStep.ready,
-      LearnerOnboardStep.paywall,
-    ]);
+    steps.addAll(const [LearnerOnboardStep.ready, LearnerOnboardStep.paywall]);
     return steps;
   }
 
@@ -278,6 +274,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     await LearnerOnboardingPersist.saveDraft(
       _answers.copyWith(name: _name.text.trim()),
       step: _index,
+      stepId: _step.name,
     );
   }
 
@@ -289,7 +286,11 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       superChoice: superChoice,
     );
     if (widget.beforeAuth) {
-      await LearnerOnboardingPersist.saveDraft(named, step: _index);
+      await LearnerOnboardingPersist.saveDraft(
+        named,
+        step: _index,
+        stepId: _step.name,
+      );
       await LearnerOnboardingPersist.markOnboardingComplete();
       if (!mounted) return;
       await _goToAuth();
@@ -365,7 +366,39 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (_index == 0)
-                    const SizedBox(height: 12)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                            value: 'en',
+                            label: Text('EN'),
+                            tooltip: 'English',
+                          ),
+                          ButtonSegment(
+                            value: 'fr',
+                            label: Text('FR'),
+                            tooltip: 'Français',
+                          ),
+                        ],
+                        selected: {_answers.locale},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (selection) {
+                          unawaited(_tts.stop());
+                          setState(
+                            () => _answers = _answers.copyWith(
+                              locale: selection.first,
+                            ),
+                          );
+                          unawaited(
+                            LanguageService.setLanguage(
+                              Locale(selection.first),
+                            ),
+                          );
+                          unawaited(_persistDraft());
+                        },
+                      ),
+                    )
                   else
                     OnboardTopBar(progress: progress, onBack: _back),
                   const SizedBox(height: 8),
@@ -475,14 +508,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
             },
           ),
           const SizedBox(height: 28),
-          AnimatedOpacity(
-            opacity: _welcomeTyped ? 1 : 0,
-            duration: const Duration(milliseconds: 320),
-            child: IgnorePointer(
-              ignoring: !_welcomeTyped,
-              child: OnboardPrimaryButton(label: _c.welcomeCta, onTap: _next),
-            ),
-          ),
+          OnboardPrimaryButton(label: _c.welcomeCta, onTap: _next),
           if (widget.beforeAuth) ...[
             const SizedBox(height: 8),
             TextButton(
@@ -553,7 +579,10 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               controller: _name,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.done,
-              onChanged: (_) => unawaited(_persistDraft()),
+              onChanged: (_) {
+                setState(() {});
+                unawaited(_persistDraft());
+              },
               onSubmitted: (_) => _next(),
               style: onboardFont(size: 20, weight: FontWeight.w800),
               textAlign: TextAlign.center,

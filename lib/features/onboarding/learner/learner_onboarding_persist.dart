@@ -13,17 +13,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 class LearnerOnboardingPersist {
   static const _draftKey = 'learner_onboarding_draft';
   static const _draftStepKey = 'learner_onboarding_draft_step';
+  static const _draftStepIdKey = 'learner_onboarding_draft_step_id';
 
   /// Keep a learner's answers on this device until they create an account.
   static Future<void> saveDraft(
     LearnerOnboardingAnswers answers, {
     int? step,
+    String? stepId,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_draftKey, jsonEncode(answers.toJson()));
     await prefs.setString('preferred_language', answers.locale);
     await prefs.setString('skulmate.voiceOut', answers.voiceOut ? 'on' : 'off');
     if (step != null) await prefs.setInt(_draftStepKey, step);
+    if (stepId != null) await prefs.setString(_draftStepIdKey, stepId);
+  }
+
+  static Future<String?> loadDraftStepId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_draftStepIdKey);
   }
 
   static Future<int> loadDraftStep({int fallback = 0}) async {
@@ -48,6 +56,7 @@ class LearnerOnboardingPersist {
       LogService.warning('Could not restore learner onboarding draft: $e');
       await prefs.remove(_draftKey);
       await prefs.remove(_draftStepKey);
+      await prefs.remove(_draftStepIdKey);
       return null;
     }
   }
@@ -56,6 +65,7 @@ class LearnerOnboardingPersist {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_draftKey);
     await prefs.remove(_draftStepKey);
+    await prefs.remove(_draftStepIdKey);
   }
 
   static Map<String, dynamic> toSurveyMap(LearnerOnboardingAnswers a) {
@@ -149,6 +159,7 @@ class LearnerOnboardingPersist {
       await prefs.setBool('survey_intro_seen', true);
       await prefs.remove(_draftKey);
       await prefs.remove(_draftStepKey);
+      await prefs.remove(_draftStepIdKey);
       return true;
     } catch (e) {
       LogService.warning('Learner onboarding save deferred: $e');

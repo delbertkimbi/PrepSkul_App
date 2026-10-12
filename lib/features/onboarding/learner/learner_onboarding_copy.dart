@@ -6,10 +6,10 @@ class LearnerOnboardingCopy {
 
   String get welcomeKicker => isFrench ? 'TON TUTEUR' : 'YOUR TUTOR';
   String get welcomeTitle =>
-      isFrench ? 'Salut, moi c’est Mate.' : 'Hi. I’m Mate.';
+      isFrench ? 'Salut, moi c’est Mate.' : 'Hi, I’m Mate.';
   String get welcomeNote => isFrench
-      ? 'Je peux t’aider à comprendre tes cours. Tu cherches un tuteur ? Je peux t’aider à en trouver un.'
-      : 'I can help you understand your lessons. Need a tutor? I’ll help you find one.';
+      ? 'Je t’aide à comprendre tes cours, à t’entraîner et à trouver un tuteur si tu en as besoin. Commençons par ce que tu apprends.'
+      : 'I’ll help you understand your lessons, practise, and find a tutor when you need one. Let’s start with what you’re learning.';
   String get welcomeCta => isFrench ? 'C’est parti !' : 'Let’s go';
   String get tutorEntry => isFrench ? 'Je suis tuteur' : 'I’m a tutor';
 
