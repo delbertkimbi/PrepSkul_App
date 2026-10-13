@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'mate_bundled_voice.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, ValueNotifier;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:prepskul/core/localization/language_service.dart';
@@ -13,6 +14,7 @@ class TTSService {
   TTSService._internal();
 
   FlutterTts? _flutterTts;
+  final _bundledVoice = MateBundledVoice();
   bool _isInitialized = false;
   bool _isEnabled = true;
   final ValueNotifier<bool> speaking = ValueNotifier(false);
@@ -40,7 +42,7 @@ class TTSService {
       await _flutterTts!.setLanguage(_currentLanguage);
       await _flutterTts!.setSpeechRate(_speechRate);
       await _flutterTts!.setVolume(_ttsVolume);
-      await _flutterTts!.setPitch(1.0);
+      await _flutterTts!.setPitch(1.12);
       // Prefer a clear male voice in the requested language. Browser voice
       // lists can arrive late, so refresh that selection before speaking too.
       await _preferNeuralVoice();
@@ -189,6 +191,10 @@ class TTSService {
   /// Use this when you need to wait before advancing (e.g. wrong-answer explanation).
   Future<void> speakAndWait(String text, {Duration? timeout}) async {
     if (!_isEnabled || text.isEmpty) return;
+    await stop();
+    if (await _bundledVoice.speak(text, (value) => speaking.value = value)) {
+      return;
+    }
     if (!_isInitialized) await ensureInitialized();
     if (!_isInitialized) return;
     if (kIsWeb) await _preferNeuralVoice();
@@ -229,6 +235,7 @@ class TTSService {
 
   /// Stop current speech
   Future<void> stop() async {
+    await _bundledVoice.stop();
     speaking.value = false;
     if (!_isInitialized) return;
 

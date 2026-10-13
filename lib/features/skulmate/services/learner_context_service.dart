@@ -32,6 +32,10 @@ class LearnerContextService {
           'student_grade',
           'class_level',
           'curriculum',
+          'country_code',
+          'education_level',
+          'specific_exam',
+          'onboarding_context',
           'school_system',
           'exam',
           'exam_type',
@@ -59,7 +63,32 @@ class LearnerContextService {
         }
       }
 
+      final onboarding = context['onboarding_context'];
+      if (onboarding is Map) {
+        context['curriculumScope'] = {
+          'schemaVersion': 1,
+          for (final key in [
+            'countryId',
+            'systemId',
+            'levelId',
+            'pathwayId',
+            'streamId',
+            'subjectId',
+            'subjectOther',
+            'examId',
+          ])
+            if (onboarding[key] != null) key: onboarding[key],
+          // Profile specificity is not proof of syllabus grounding.
+          'coverageStatus': 'requires-source-verification',
+          'requiredEvidence':
+              'official syllabus edition + objective + source page',
+        };
+      }
+
       if (childId != null && childId.isNotEmpty) {
+        // A parent's own programme must never be assigned to another child.
+        context.remove('curriculumScope');
+        context.remove('onboarding_context');
         // Optional linked-profile notes only. The signed-in parent is still the student.
         context['childId'] = childId;
         final userId = user.id;

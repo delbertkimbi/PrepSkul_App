@@ -11,23 +11,21 @@ class LearnerOnboardingCopy {
       ? 'Je t’aide à comprendre tes cours, à t’entraîner et à trouver un tuteur si tu en as besoin. Commençons par ce que tu apprends.'
       : 'I’ll help you understand your lessons, practise, and find a tutor when you need one. Let’s start with what you’re learning.';
   String get welcomeCta => isFrench ? 'C’est parti !' : 'Let’s go';
-  String get introTitle => isFrench
-      ? 'Apprends avec le bon soutien.'
-      : 'Learn with the support you need.';
+  String get introTitle =>
+      isFrench ? 'À toi de choisir.' : 'Your learning. Your way.';
   String get introLearnTitle =>
       isFrench ? 'Comprends avec Mate' : 'Understand with Mate';
   String get introLearnNote => isFrench
-      ? 'Reprends une leçon, pose tes questions et entraîne-toi étape par étape, selon ta classe et ton programme.'
-      : 'Work through a lesson, ask questions and practise step by step, with your class and school programme in mind.';
+      ? 'Comprends tes cours. Entraîne-toi avec moi.'
+      : 'Understand a lesson. Practise together.';
   String get introTutorTitle => isFrench
       ? 'Un tuteur quand tu en as besoin'
       : 'A tutor when you need one';
   String get introTutorNote => isFrench
-      ? 'Trouve ou demande un tuteur pour ta matière, en ligne ou en personne. Tu choisis si tu en as besoin.'
-      : 'Find or request a tutor for your subject, online or in person. You choose whether you need one.';
-  String get introNext => isFrench
-      ? 'Quelques questions pour adapter la suite à ce que tu apprends.'
-      : 'A few questions will help me tailor the next steps to what you’re learning.';
+      ? 'Trouve un tuteur, en ligne ou en personne.'
+      : 'Find a tutor, online or in person.';
+  String get introNext =>
+      isFrench ? 'Maintenant, parlons de toi.' : 'Now, let’s make it yours.';
 
   String get tutorEntry => isFrench ? 'Je suis tuteur' : 'I’m a tutor';
 
@@ -90,9 +88,7 @@ class LearnerOnboardingCopy {
   String get subjectTitle => isFrench
       ? 'De quoi tu as le plus besoin maintenant ?'
       : 'What do you need the most help with right now?';
-  String subjectTitleFor(String system, String level) => isFrench
-      ? '$subjectTitle — $system${level.isEmpty ? '' : ', $level'}'
-      : '$subjectTitle — $system${level.isEmpty ? '' : ', $level'}';
+  String subjectTitleFor(String system, String level) => subjectTitle;
 
   String get goalTitle => isFrench
       ? 'Qu’aimerais-tu réussir en premier ?'

@@ -16,7 +16,6 @@ import 'package:prepskul/features/onboarding/learner/learner_onboarding_chrome.d
 import 'package:prepskul/core/widgets/alive_mate.dart';
 import 'package:prepskul/features/profile/screens/survey_intro_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_login_screen.dart';
-import 'package:prepskul/features/auth/screens/beautiful_signup_screen.dart';
 import 'package:prepskul/features/auth/screens/forgot_password_screen.dart';
 import 'package:prepskul/features/auth/screens/forgot_password_email_screen.dart';
 import 'package:prepskul/features/auth/screens/reset_password_screen.dart';
@@ -82,7 +81,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Allow Poppins-Italic and other font variants to load at runtime when needed.
   // With false, FontStyle.italic on Poppins throws if variant not in assets.
-  GoogleFonts.config.allowRuntimeFetching = true;
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   try {
     // CRITICAL: Initialize Firebase BEFORE runApp() on web
@@ -1459,7 +1458,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> with WidgetsBindingObserver {
               );
             }
           case '/beautiful-signup':
-            return _createFadeRoute(() => const BeautifulSignupScreen());
+            return _createFadeRoute(() => const EmailSignupScreen());
           case '/email-signup':
             return _createFadeRoute(() => const EmailSignupScreen());
           case '/email-login':

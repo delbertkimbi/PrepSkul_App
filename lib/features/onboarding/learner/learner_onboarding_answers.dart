@@ -7,6 +7,8 @@ class LearnerOnboardingAnswers {
     this.countryOther,
     this.cityId,
     this.cityOther,
+    this.pathwayId,
+    this.streamId,
     this.systemId,
     this.levelId,
     this.subjectId,
@@ -31,6 +33,8 @@ class LearnerOnboardingAnswers {
   final String? countryOther;
   final String? cityId;
   final String? cityOther;
+  final String? pathwayId;
+  final String? streamId;
   final String? systemId;
   final String? levelId;
   final String? subjectId;
@@ -55,6 +59,8 @@ class LearnerOnboardingAnswers {
     'countryOther': countryOther,
     'cityId': cityId,
     'cityOther': cityOther,
+    'pathwayId': pathwayId,
+    'streamId': streamId,
     'systemId': systemId,
     'levelId': levelId,
     'subjectId': subjectId,
@@ -81,6 +87,8 @@ class LearnerOnboardingAnswers {
       countryOther: json['countryOther'] as String?,
       cityId: json['cityId'] as String?,
       cityOther: json['cityOther'] as String?,
+      pathwayId: json['pathwayId'] as String?,
+      streamId: json['streamId'] as String?,
       systemId: json['systemId'] as String?,
       levelId: json['levelId'] as String?,
       subjectId: json['subjectId'] as String?,
@@ -109,6 +117,8 @@ class LearnerOnboardingAnswers {
     String? countryOther,
     String? cityId,
     String? cityOther,
+    String? pathwayId,
+    String? streamId,
     String? systemId,
     String? levelId,
     String? subjectId,
@@ -127,6 +137,8 @@ class LearnerOnboardingAnswers {
     bool clearCity = false,
     bool clearCountryOther = false,
     bool clearCityOther = false,
+    bool clearPathway = false,
+    bool clearSubject = false,
     bool clearSystem = false,
     bool clearLevel = false,
     bool clearExam = false,
@@ -143,13 +155,28 @@ class LearnerOnboardingAnswers {
           : (countryOther ?? this.countryOther),
       cityId: clearCity ? null : (cityId ?? this.cityId),
       cityOther: clearCityOther ? null : (cityOther ?? this.cityOther),
+      pathwayId: clearPathway || clearSystem || clearLevel
+          ? null
+          : (pathwayId ?? this.pathwayId),
+      streamId: clearPathway || clearSystem || clearLevel
+          ? null
+          : (streamId ?? this.streamId),
       systemId: clearSystem ? null : (systemId ?? this.systemId),
       levelId: clearLevel ? null : (levelId ?? this.levelId),
-      subjectId: subjectId ?? this.subjectId,
-      subjectOther: clearSubjectOther
+      subjectId: clearSubject || clearSystem || clearLevel || clearPathway
+          ? null
+          : (subjectId ?? this.subjectId),
+      subjectOther:
+          clearSubjectOther ||
+              clearSubject ||
+              clearSystem ||
+              clearLevel ||
+              clearPathway
           ? null
           : (subjectOther ?? this.subjectOther),
-      examId: clearExam ? null : (examId ?? this.examId),
+      examId: clearExam || clearSystem || clearLevel || clearPathway
+          ? null
+          : (examId ?? this.examId),
       examWhenId: examWhenId ?? this.examWhenId,
       learningGoalId: learningGoalId ?? this.learningGoalId,
       wantsTutor: wantsTutor ?? this.wantsTutor,

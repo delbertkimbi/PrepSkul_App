@@ -1,3 +1,4 @@
+import 'mate_poster.dart';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ class MascotView extends StatefulWidget {
 
 class _MascotViewState extends State<MascotView> {
   web.HTMLElement? _element;
+  bool _loaded = false;
   late final JSFunction _onLoad;
   late final JSFunction _visibility;
   bool _animate = true;
@@ -23,6 +25,7 @@ class _MascotViewState extends State<MascotView> {
   void initState() {
     super.initState();
     _onLoad = ((web.Event _) {
+      if (mounted) setState(() => _loaded = true);
       _sync();
     }).toJS;
     _visibility = ((web.Event _) {
@@ -73,6 +76,8 @@ class _MascotViewState extends State<MascotView> {
     m.style.width = '100%';
     m.style.height = '100%';
     m.style.pointerEvents = 'none';
+    m.setAttribute('loading', 'eager');
+    m.setAttribute('poster', 'assets/assets/mascot/model-front.webp');
     m.setAttribute('src', 'assets/assets/3d/skulmate.glb?v=soft-mate-7');
     m.setAttribute('camera-orbit', '0deg 85deg 7.7m');
     m.setAttribute('camera-target', '0m 1.7m 0m');
@@ -105,9 +110,19 @@ class _MascotViewState extends State<MascotView> {
   Widget build(BuildContext context) => SizedBox(
     width: widget.size,
     height: widget.size,
-    child: HtmlElementView.fromTagName(
-      tagName: 'model-viewer',
-      onElementCreated: _created,
+    child: Stack(
+      children: [
+        Positioned.fill(
+          child: HtmlElementView.fromTagName(
+            tagName: 'model-viewer',
+            onElementCreated: _created,
+          ),
+        ),
+        if (!_loaded)
+          IgnorePointer(
+            child: MatePoster(clip: widget.clip, size: widget.size),
+          ),
+      ],
     ),
   );
 }

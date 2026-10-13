@@ -143,6 +143,7 @@ flutter:
     # exact static instances here makes the first launch offline-correct with
     # no code change. The weights are the ones PrimarTheme actually asks for;
     # anything else resolves to the nearest bundled one.
+    - assets/audio/mate/
     - assets/fonts/google/
     - lib/data/
     - assets/images/mate_3d/
@@ -197,9 +198,6 @@ flutter:
         - asset: assets/fonts/Fredoka/Fredoka.ttf
     - family: Poppins
       fonts:
-    - family: Fredoka
-      fonts:
-        - asset: assets/fonts/Fredoka/Fredoka.ttf
         - asset: assets/fonts/Poppins/Poppins-Regular.ttf
           weight: 400
         - asset: assets/fonts/Poppins/Poppins-Medium.ttf

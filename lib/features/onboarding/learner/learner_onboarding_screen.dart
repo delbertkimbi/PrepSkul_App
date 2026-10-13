@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:prepskul/features/onboarding/region/cameroon_pathways.dart';
 
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/localization/language_service.dart';
@@ -22,6 +23,8 @@ enum LearnerOnboardStep {
   city,
   system,
   level,
+  pathway,
+  stream,
   subject,
   goal,
   exam,
@@ -136,11 +139,16 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       LearnerOnboardStep.country,
     ];
     if (_pack.systems.length > 1) steps.add(LearnerOnboardStep.system);
-    steps.addAll(const [
-      LearnerOnboardStep.level,
-      LearnerOnboardStep.subject,
-      LearnerOnboardStep.goal,
-    ]);
+    steps.add(LearnerOnboardStep.level);
+    if (needsCameroonPathway(
+      _answers.countryId,
+      _answers.systemId,
+      _answers.levelId,
+    )) {
+      steps.add(LearnerOnboardStep.pathway);
+      if (_answers.pathwayId == 'general') steps.add(LearnerOnboardStep.stream);
+    }
+    steps.addAll(const [LearnerOnboardStep.subject, LearnerOnboardStep.goal]);
     RegionLevel? selectedLevel;
     for (final item in _system.levels) {
       if (item.id == _answers.levelId) selectedLevel = item;
@@ -172,8 +180,11 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
     return '';
   }
 
-  List<RegionOption> get _availableSubjects =>
-      subjectOptionsFor(_pack, _system, _answers.levelId);
+  List<RegionOption> get _availableSubjects => pathwaySubjects(
+    subjectOptionsFor(_pack, _system, _answers.levelId),
+    _answers.pathwayId,
+    stream: _answers.streamId,
+  );
 
   String get _chosenSubject {
     for (final item in _availableSubjects) {
@@ -258,6 +269,8 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       _answers.subjectId != null &&
           (_answers.subjectId != 'other' ||
               (_answers.subjectOther?.trim().isNotEmpty ?? false)),
+    LearnerOnboardStep.pathway => _answers.pathwayId != null,
+    LearnerOnboardStep.stream => _answers.streamId != null,
     LearnerOnboardStep.goal => _answers.learningGoalId != null,
     LearnerOnboardStep.tutor => _answers.wantsTutor != null,
     LearnerOnboardStep.mode => _answers.tutorModeId != null,
@@ -548,7 +561,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           const OnboardPeopleMateStage(
             photoAsset: 'assets/images/onboarding2.png',
             mood: Mood.point,
-            flipMate: false,
+            flipMate: true,
           ),
           Text(
             _c.introTitle,
@@ -778,7 +791,9 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           children: [
             for (final system in _pack.systems)
               OnboardChoice(
-                title: system.label.t(locale),
+                title: _pack.id == 'cm'
+                    ? '${system.id == "cm-anglophone" ? "📘" : "📗"} ${system.label.t(locale)}'
+                    : system.label.t(locale),
                 glyph: system.id,
                 selected: _answers.systemId == system.id,
                 onTap: () => _choose(
@@ -802,13 +817,58 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               _Chip(
                 label: level.label.t(locale),
                 selected: _answers.levelId == level.id,
-                onTap: () => _choose(_answers.copyWith(levelId: level.id)),
+                onTap: () => _choose(
+                  _answers.copyWith(
+                    levelId: level.id,
+                    clearPathway: true,
+                    clearExam: true,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      LearnerOnboardStep.pathway => _ask(
+        title: _c.isFrench
+            ? 'Quel parcours suis-tu ?'
+            : 'Which school path are you on?',
+        child: Column(
+          children: [
+            for (final path in cameroonPathways)
+              OnboardChoice(
+                title: path.label.t(locale),
+                selected: _answers.pathwayId == path.id,
+                onTap: () => _choose(
+                  _answers.copyWith(
+                    pathwayId: path.id,
+                    streamId: 'mixed',
+                    clearSubject: true,
+                    clearExam: true,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      LearnerOnboardStep.stream => _ask(
+        title: _c.isFrench
+            ? 'Lettres, sciences ou les deux ?'
+            : 'Arts, science, or still doing both?',
+        child: Column(
+          children: [
+            for (final stream in cameroonStreams)
+              OnboardChoice(
+                title: stream.label.t(locale),
+                selected: _answers.streamId == stream.id,
+                onTap: () => _choose(
+                  _answers.copyWith(streamId: stream.id, clearSubject: true),
+                ),
               ),
           ],
         ),
       ),
       LearnerOnboardStep.subject => _ask(
-        title: _c.subjectTitleFor(_system.label.t(locale), _chosenLevel),
+        title: _c.subjectTitle,
         child: Column(
           children: [
             for (final subject in _availableSubjects)
@@ -889,7 +949,11 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
         note: _c.examNote,
         child: Column(
           children: [
-            for (final exam in _system.exams)
+            for (final exam in pathwayExams(
+              _answers.pathwayId,
+              _answers.levelId,
+              _system.exams,
+            ))
               OnboardChoice(
                 title: exam.label.t(locale),
                 selected: _answers.examId == exam.id,

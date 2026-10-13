@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:prepskul/features/onboarding/region/cameroon_pathways.dart';
 
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/localization/language_service.dart';
@@ -76,11 +77,15 @@ class LearnerOnboardingPersist {
       if (item.id == a.levelId) level = item;
     }
     RegionOption? exam;
-    for (final item in system.exams) {
+    for (final item in pathwayExams(a.pathwayId, a.levelId, system.exams)) {
       if (item.id == a.examId) exam = item;
     }
     RegionOption? subject;
-    for (final item in system.subjects) {
+    for (final item in pathwaySubjects(
+      subjectOptionsFor(pack, system, a.levelId),
+      a.pathwayId,
+      stream: a.streamId,
+    )) {
       if (item.id == a.subjectId) subject = item;
     }
     RegionOption? city;

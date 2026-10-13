@@ -2,8 +2,64 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_answers.dart';
 import 'package:prepskul/features/onboarding/learner/learner_onboarding_persist.dart';
 import 'package:prepskul/features/onboarding/region/region_packs.dart';
+import 'package:prepskul/features/onboarding/region/cameroon_pathways.dart';
 
 void main() {
+  test(
+    'arts and science change suggestion order and retain other subjects',
+    () {
+      final base = cameroonAnglophone.subjects;
+      final science = pathwaySubjects(base, 'general', stream: 'science');
+      final arts = pathwaySubjects(base, 'general', stream: 'arts');
+      expect(science.take(4).map((s) => s.id), [
+        'maths',
+        'physics',
+        'chemistry',
+        'biology',
+      ]);
+      expect(arts.first.id, 'english');
+      expect(arts.map((s) => s.id), contains('maths'));
+      expect(arts.last.id, 'other');
+      expect(
+        pathwaySubjects(base, 'commercial').map((s) => s.id),
+        contains('accounting'),
+      );
+      expect(
+        pathwaySubjects(base, 'technical').map((s) => s.id),
+        isNot(contains('accounting')),
+      );
+    },
+  );
+  test('changing level clears stale curriculum choices', () {
+    const original = LearnerOnboardingAnswers(
+      systemId: 'cm-anglophone',
+      levelId: 'form5',
+      pathwayId: 'commercial',
+      subjectId: 'other',
+      subjectOther: 'Accounting',
+      examId: 'tvee-il',
+    );
+    final changed = original.copyWith(levelId: 'u6', clearPathway: true);
+    expect(changed.pathwayId, isNull);
+    expect(changed.subjectId, isNull);
+    expect(changed.subjectOther, isNull);
+    expect(changed.examId, isNull);
+  });
+  test('commercial subjects and scope survive saving', () {
+    const answers = LearnerOnboardingAnswers(
+      systemId: 'cm-anglophone',
+      levelId: 'form5',
+      pathwayId: 'commercial',
+      subjectId: 'accounting',
+      examId: 'tvee-il',
+    );
+    final restored = LearnerOnboardingAnswers.fromJson(answers.toJson());
+    final survey = LearnerOnboardingPersist.toSurveyMap(restored);
+    expect(restored.pathwayId, 'commercial');
+    expect(survey['subjects'], ['Accounting']);
+    expect(survey['specific_exam'], 'TVEE Intermediate Level');
+  });
+
   test('Cameroon is the default pack with both school worlds', () {
     final cm = packById(null);
     expect(cm.id, 'cm');

@@ -10,7 +10,7 @@ First-time learners see the current animated Mate with EN/FR controls and one we
 
 Drafts now resume by step name. Older numeric drafts retain their answers and restart at the welcome so shortened navigation cannot skip questions. Draft restoration does not wait for text-to-speech initialization. The name field updates Continue immediately.
 
-Validation: 18 focused onboarding, region, mascot mapping and session routing tests pass. Release uses the existing public configuration injector and payments-disabled configuration. Authenticated lessons and payments are outside this onboarding verification.
+Validation: 20 focused onboarding, region, mascot mapping and session routing tests pass. Release uses the existing public configuration injector and payments-disabled configuration. Authenticated lessons and payments are outside this onboarding verification.
 
 Build and publish:
 
@@ -23,3 +23,5 @@ firebase deploy --only hosting --project operating-axis-420213 --non-interactive
 
 Hosting: https://operating-axis-420213.web.app
 Use a private browser window to test a fresh onboarding without an existing account or completed-onboarding flag.
+
+Fonts are bundled, with runtime font fetching disabled. Common bilingual onboarding prompts use bundled Puck audio; dynamic lesson speech still uses existing device/provider behavior. Offline Mate uses a static full-body render of the same Blender model, not a new animated 2D design.

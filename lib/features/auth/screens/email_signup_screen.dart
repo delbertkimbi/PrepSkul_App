@@ -54,223 +54,219 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   Widget build(BuildContext context) {
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: OnboardPalette.cream,
-      resizeToAvoidBottomInset: true,
-      body: Stack(
-        children: [
-          // Curved wave background at top
-          
-          // Main content
-          SafeArea(
-            child: Column(
-              children: [
-                const AuthPaperHeader(
-                  title: 'Sign up',
-                  subtitle: 'Start with Mate.',
-                ),
+        backgroundColor: OnboardPalette.cream,
+        resizeToAvoidBottomInset: true,
+        body: Stack(
+          children: [
+            // Curved wave background at top
 
-                // Form content
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const SizedBox(height: 12),
-                        Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Full Name Field
-                              Text(
-                                'Full Name',
-                                style: onboardFont(size: 14, weight: FontWeight.w800),
-                              ),
-                              const SizedBox(height: 5),
-                              TextFormField(
-                                controller: _nameController,
-                                validator: (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return 'Please enter your full name';
-                                  }
-                                  if (value.trim().length < 3) {
-                                    return 'Name must be at least 3 characters';
-                                  }
-                                  return null;
-                                },
-                                decoration: paperFieldDecoration(hintText: 'Enter your name'),
-                              ),
-                              const SizedBox(height: 12),
+            // Main content
+            SafeArea(
+              child: Column(
+                children: [
+                  const AuthPaperHeader(
+                    title: 'Sign up',
+                    subtitle: 'Start with Mate.',
+                  ),
 
-                              // Email Field
-                              Text(
-                                'Email Address',
-                                style: onboardFont(size: 14, weight: FontWeight.w800),
-                              ),
-                              const SizedBox(height: 5),
-                              TextFormField(
-                                controller: _emailController,
-                                keyboardType: TextInputType.emailAddress,
-                                validator: (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return 'Please enter your email';
-                                  }
-                                  if (!_emailRegex.hasMatch(value.trim())) {
-                                    return 'Please enter a valid email address';
-                                  }
-                                  return null;
-                                },
-                                decoration: paperFieldDecoration(hintText: 'your.email@example.com'),
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Password Field
-                              Text(
-                                'Password',
-                                style: onboardFont(size: 14, weight: FontWeight.w800),
-                              ),
-                              const SizedBox(height: 5),
-                              TextFormField(
-                                controller: _passwordController,
-                                obscureText: _obscurePassword,
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please enter a password';
-                                  }
-                                  if (value.length < 6) {
-                                    return 'Password must be at least 6 characters';
-                                  }
-                                  return null;
-                                },
-                                decoration: paperFieldDecoration(
-                                  hintText: 'Enter your password',
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_outlined
-                                          : Icons.visibility_off_outlined,
-                                    ),
-                                    onPressed: () {
-                                      safeSetState(() {
-                                        _obscurePassword = !_obscurePassword;
-                                      });
-                                    },
+                  // Form content
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const SizedBox(height: 12),
+                          Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Full Name Field
+                                Text(
+                                  'Full Name',
+                                  style: onboardFont(
+                                    size: 14,
+                                    weight: FontWeight.w800,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(height: 12),
-
-                              // Confirm Password Field
-                              Text(
-                                'Confirm Password',
-                                style: onboardFont(size: 14, weight: FontWeight.w800),
-                              ),
-                              const SizedBox(height: 5),
-                              TextFormField(
-                                controller: _confirmPasswordController,
-                                obscureText: _obscureConfirmPassword,
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please confirm your password';
-                                  }
-                                  if (value != _passwordController.text) {
-                                    return 'Passwords do not match';
-                                  }
-                                  return null;
-                                },
-                                decoration: paperFieldDecoration(
-                                  hintText: 'Confirm your password',
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscureConfirmPassword
-                                          ? Icons.visibility_outlined
-                                          : Icons.visibility_off_outlined,
-                                    ),
-                                    onPressed: () {
-                                      safeSetState(() {
-                                        _obscureConfirmPassword =
-                                            !_obscureConfirmPassword;
-                                      });
-                                    },
+                                const SizedBox(height: 5),
+                                TextFormField(
+                                  controller: _nameController,
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Please enter your full name';
+                                    }
+                                    if (value.trim().length < 3) {
+                                      return 'Name must be at least 3 characters';
+                                    }
+                                    return null;
+                                  },
+                                  decoration: paperFieldDecoration(
+                                    hintText: 'Enter your name',
                                   ),
                                 ),
-                              ),
-                              const SizedBox(height: 12),
+                                const SizedBox(height: 12),
 
-                              // Signup Button
-                              OnboardPrimaryButton(
-                                label: 'Create Account',
-                                busy: _isLoading,
-                                onTap: _handleSignup,
-                              ),
-                              const SizedBox(height: 32),
+                                // Email Field
+                                Text(
+                                  'Email Address',
+                                  style: onboardFont(
+                                    size: 14,
+                                    weight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                TextFormField(
+                                  controller: _emailController,
+                                  keyboardType: TextInputType.emailAddress,
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Please enter your email';
+                                    }
+                                    if (!_emailRegex.hasMatch(value.trim())) {
+                                      return 'Please enter a valid email address';
+                                    }
+                                    return null;
+                                  },
+                                  decoration: paperFieldDecoration(
+                                    hintText: 'your.email@example.com',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
 
-                              Center(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      'Already have an account? ',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        color: AppTheme.textMedium,
+                                // Password Field
+                                Text(
+                                  'Password',
+                                  style: onboardFont(
+                                    size: 14,
+                                    weight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                TextFormField(
+                                  controller: _passwordController,
+                                  obscureText: _obscurePassword,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter a password';
+                                    }
+                                    if (value.length < 6) {
+                                      return 'Password must be at least 6 characters';
+                                    }
+                                    return null;
+                                  },
+                                  decoration: paperFieldDecoration(
+                                    hintText: 'Enter your password',
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscurePassword
+                                            ? Icons.visibility_outlined
+                                            : Icons.visibility_off_outlined,
                                       ),
-                                    ),
-                                    GestureDetector(
-                                      onTap: () {
-                                        Navigator.pushReplacementNamed(
-                                          context,
-                                          '/email-login',
-                                        );
+                                      onPressed: () {
+                                        safeSetState(() {
+                                          _obscurePassword = !_obscurePassword;
+                                        });
                                       },
-                                      child: Text(
-                                        'Sign in',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Confirm Password Field
+                                Text(
+                                  'Confirm Password',
+                                  style: onboardFont(
+                                    size: 14,
+                                    weight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                TextFormField(
+                                  controller: _confirmPasswordController,
+                                  obscureText: _obscureConfirmPassword,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please confirm your password';
+                                    }
+                                    if (value != _passwordController.text) {
+                                      return 'Passwords do not match';
+                                    }
+                                    return null;
+                                  },
+                                  decoration: paperFieldDecoration(
+                                    hintText: 'Confirm your password',
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscureConfirmPassword
+                                            ? Icons.visibility_outlined
+                                            : Icons.visibility_off_outlined,
+                                      ),
+                                      onPressed: () {
+                                        safeSetState(() {
+                                          _obscureConfirmPassword =
+                                              !_obscureConfirmPassword;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Signup Button
+                                OnboardPrimaryButton(
+                                  label: 'Create Account',
+                                  busy: _isLoading,
+                                  onTap: _handleSignup,
+                                ),
+                                const SizedBox(height: 32),
+
+                                Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        'Already have an account? ',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.primaryColor,
-                                          decoration: TextDecoration.underline,
+                                          color: AppTheme.textMedium,
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (AppConfig.enablePhoneSignIn) ...[
-                                const SizedBox(height: 16),
-                                Center(
-                                  child: TextButton(
-                                    onPressed: () {
-                                      Navigator.pushReplacementNamed(
-                                        context,
-                                        '/beautiful-signup',
-                                      );
-                                    },
-                                    child: Text(
-                                      'Use phone number instead',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppTheme.primaryColor,
+                                      GestureDetector(
+                                        onTap: () {
+                                          Navigator.pushReplacementNamed(
+                                            context,
+                                            '/email-login',
+                                          );
+                                        },
+                                        child: Text(
+                                          'Sign in',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.primaryColor,
+                                            decoration:
+                                                TextDecoration.underline,
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ),
                               ],
-                            ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -304,7 +300,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       LogService.debug('📧 [SIGNUP] Signing up with email: $email');
       LogService.debug('📧 [SIGNUP] Using redirect URL: $redirectUrl');
       LogService.debug('📧 [SIGNUP] Platform: ${kIsWeb ? "Web" : "Mobile"}');
-      
+
       // Check if Supabase is initialized before attempting sign up
       if (!SupabaseService.isClientAvailable) {
         throw Exception(
@@ -331,16 +327,24 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
           'email_confirmed': response.user?.emailConfirmedAt != null,
         },
       );
-      
+
       LogService.debug('📧 [SIGNUP] User created: ${response.user!.id}');
-      LogService.debug('📧 [SIGNUP] Email confirmed: ${response.user!.emailConfirmedAt != null}');
-      LogService.debug('📧 [SIGNUP] Session created: ${response.session != null}');
-      
+      LogService.debug(
+        '📧 [SIGNUP] Email confirmed: ${response.user!.emailConfirmedAt != null}',
+      );
+      LogService.debug(
+        '📧 [SIGNUP] Session created: ${response.session != null}',
+      );
+
       // If email is already confirmed, it means email confirmations are disabled
       if (response.user!.emailConfirmedAt != null) {
-        LogService.info('ℹ️ [SIGNUP] Email already confirmed - email confirmations may be disabled in Supabase');
+        LogService.info(
+          'ℹ️ [SIGNUP] Email already confirmed - email confirmations may be disabled in Supabase',
+        );
       } else {
-        LogService.info('ℹ️ [SIGNUP] Email confirmation required - verification email should be sent');
+        LogService.info(
+          'ℹ️ [SIGNUP] Email confirmation required - verification email should be sent',
+        );
       }
 
       final prefs = await SharedPreferences.getInstance();
@@ -361,10 +365,8 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => EmailConfirmationScreen(
-                email: email,
-                fullName: fullName,
-              ),
+              builder: (context) =>
+                  EmailConfirmationScreen(email: email, fullName: fullName),
             ),
           );
         }
@@ -389,12 +391,13 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       LogService.error('Email signup error: $e');
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
-        
+
         // Check if this is an offline error - show branded offline dialog
         if (errorMessage == 'OFFLINE_ERROR' || AuthService.isOfflineError(e)) {
           await OfflineDialog.show(
             context,
-            message: 'Unable to create account. Please check your internet connection and try again.',
+            message:
+                'Unable to create account. Please check your internet connection and try again.',
           );
         } else {
           // Show regular error as SnackBar
@@ -402,7 +405,11 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -441,4 +448,3 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
     super.dispose();
   }
 }
-
