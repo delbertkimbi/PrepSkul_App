@@ -4,15 +4,22 @@ import 'package:speech_to_text/speech_to_text.dart';
 
 enum TutorVoiceState { idle, recording, thinking, speaking }
 
-/// Always-on student talk + tutor speech. No tap to start talking.
+/// Learner speech and tutor audio. Web listening begins with a microphone tap.
 class SkulMateTutorVoiceService {
-  SkulMateTutorVoiceService._();
+  SkulMateTutorVoiceService._() : _stt = SpeechToText(), _tts = TTSService();
+
+  @visibleForTesting
+  SkulMateTutorVoiceService.forTesting({
+    required SpeechToText recognizer,
+    required TTSService speech,
+  }) : _stt = recognizer,
+       _tts = speech;
 
   static final SkulMateTutorVoiceService instance =
       SkulMateTutorVoiceService._();
 
-  final SpeechToText _stt = SpeechToText();
-  final TTSService _tts = TTSService();
+  final SpeechToText _stt;
+  final TTSService _tts;
   final ValueNotifier<TutorVoiceState> state = ValueNotifier<TutorVoiceState>(
     TutorVoiceState.idle,
   );
@@ -23,21 +30,46 @@ class SkulMateTutorVoiceService {
   bool _alwaysOn = false;
   bool _speaking = false;
   int _sessionGeneration = 0;
-  bool privacyMute = false;
+  bool privacyMute = true;
+  String? lastError;
+  int _recognitionErrors = 0;
+  bool get isListening => _stt.isListening;
   void Function(String text)? _onUtterance;
   String _locale = 'en';
+  String _recognitionLocale = 'en-US';
 
   Future<void> prepare() async {
-    await _tts.ensureInitialized();
+    // Input permission must not wait on output voice initialization.
     try {
       _sttReady = await _stt.initialize(
-        onError: (_) {
+        onError: (error) {
+          lastError = error.errorMsg;
+          state.value = TutorVoiceState.idle;
+          _recognitionErrors += 1;
+          final denied = RegExp(
+            r'permission|not_allowed|audio_capture|language_not_supported|not_available',
+            caseSensitive: false,
+          ).hasMatch(error.errorMsg);
+          if (denied || _recognitionErrors >= 3) {
+            _alwaysOn = false;
+            privacyMute = true;
+            return;
+          }
           if (_alwaysOn && !privacyMute && !_speaking) {
             Future<void>.delayed(const Duration(milliseconds: 400), _restart);
           }
         },
         onStatus: (status) {
+          if (status == 'listening' &&
+              _alwaysOn &&
+              !privacyMute &&
+              !_speaking) {
+            state.value = TutorVoiceState.recording;
+          }
           if (status == 'done' || status == 'notListening') {
+            if (state.value == TutorVoiceState.recording) {
+              state.value = TutorVoiceState.idle;
+            }
             if (_alwaysOn && !privacyMute && !_speaking) {
               Future<void>.delayed(const Duration(milliseconds: 200), _restart);
             }
@@ -47,6 +79,11 @@ class SkulMateTutorVoiceService {
     } catch (_) {
       _sttReady = false;
     }
+    if (!_sttReady) {
+      lastError = 'speech_unavailable';
+      privacyMute = true;
+      state.value = TutorVoiceState.idle;
+    }
   }
 
   Future<void> startAlwaysOn({
@@ -54,27 +91,47 @@ class SkulMateTutorVoiceService {
     required void Function(String text) onUtterance,
   }) async {
     final generation = ++_sessionGeneration;
+    lastError = null;
+    _recognitionErrors = 0;
     _locale = locale;
     _onUtterance = onUtterance;
     _alwaysOn = true;
     privacyMute = false;
     if (!_sttReady) await prepare();
     if (generation != _sessionGeneration) return;
+    _recognitionLocale = locale.startsWith('fr') ? 'fr-FR' : 'en-US';
+    if (_sttReady) {
+      try {
+        final available = await _stt.locales();
+        final matches = available.where(
+          (item) => item.localeId
+              .replaceAll('_', '-')
+              .toLowerCase()
+              .startsWith(locale.startsWith('fr') ? 'fr-' : 'en-'),
+        );
+        if (matches.isNotEmpty) _recognitionLocale = matches.first.localeId;
+      } catch (_) {
+        /* Use the requested language's standard browser locale. */
+      }
+    }
+    if (generation != _sessionGeneration) return;
     await _restart();
   }
 
   Future<void> _restart() async {
-    if (!_alwaysOn || privacyMute || !_sttReady || _speaking ||
+    if (!_alwaysOn ||
+        privacyMute ||
+        !_sttReady ||
+        _speaking ||
         state.value == TutorVoiceState.thinking) {
       return;
     }
     if (_stt.isListening) return;
     _heard = '';
-    state.value = TutorVoiceState.recording;
     try {
       await _stt.listen(
         listenOptions: SpeechListenOptions(
-          localeId: _locale.startsWith('fr') ? 'fr_FR' : 'en_NG',
+          localeId: _recognitionLocale,
           pauseFor: const Duration(milliseconds: 1400),
           listenFor: const Duration(minutes: 8),
           partialResults: true,
@@ -82,18 +139,30 @@ class SkulMateTutorVoiceService {
         ),
         onResult: (result) {
           _heard = result.recognizedWords;
+          if (_heard.trim().isNotEmpty) _recognitionErrors = 0;
           if (state.value == TutorVoiceState.speaking &&
               result.recognizedWords.trim().split(RegExp(r'\s+')).length >= 2) {
             _tts.stop();
           }
-          if (result.finalResult && _heard.trim().length >= 4) {
+          if (result.finalResult && _heard.trim().isNotEmpty) {
             final text = _heard.trim();
             _heard = '';
             _onUtterance?.call(text);
           }
         },
       );
+      if (_stt.isListening && _alwaysOn && !privacyMute) {
+        state.value = TutorVoiceState.recording;
+      } else if (!_stt.isListening) {
+        lastError ??= 'speech_not_started';
+        privacyMute = true;
+        _alwaysOn = false;
+        state.value = TutorVoiceState.idle;
+      }
     } catch (_) {
+      lastError = 'speech_not_started';
+      privacyMute = true;
+      _alwaysOn = false;
       state.value = TutorVoiceState.idle;
     }
   }
@@ -153,6 +222,7 @@ class SkulMateTutorVoiceService {
 
     _tts.speaking.addListener(reflectPlayback);
     try {
+      await _tts.ensureInitialized();
       await _tts.setLanguage(_locale.startsWith('fr') ? 'fr' : 'en');
       await _tts.speakAndWait(text);
     } finally {

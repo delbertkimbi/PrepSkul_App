@@ -482,11 +482,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
       title: title,
       mood: _mood,
       speaking: _tts.speaking,
-      listenLabel: _answers.voiceOut
-          ? (_c.isFrench ? "Couper le son" : "Mute voice")
-          : (_c.isFrench ? "Activer la voix" : "Unmute voice"),
-      voiceEnabled: _answers.voiceOut,
-      onListen: () => _toggleVoice(title, null),
       child: child,
     );
   }
@@ -791,9 +786,7 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
           children: [
             for (final system in _pack.systems)
               OnboardChoice(
-                title: _pack.id == 'cm'
-                    ? '${system.id == "cm-anglophone" ? "📘" : "📗"} ${system.label.t(locale)}'
-                    : system.label.t(locale),
+                title: system.label.t(locale),
                 glyph: system.id,
                 selected: _answers.systemId == system.id,
                 onTap: () => _choose(
@@ -1121,14 +1114,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
               wantsTutor: _answers.wantsTutor == true,
             ),
             tail: false,
-            listenLabel: _c.listen,
-            onListen: () => _speakText(
-              _c.readyTitle(_name.text.trim(), _chosenSubject, _chosenLevel),
-              _c.readyNote(
-                _answers.learningGoalId == 'exam-prep',
-                wantsTutor: _answers.wantsTutor == true,
-              ),
-            ),
           ),
         ],
       ),
@@ -1140,11 +1125,6 @@ class _LearnerOnboardingScreenState extends State<LearnerOnboardingScreen> {
             title: _c.payTitle(_name.text.trim()),
             note: _c.payNote(_answers.countryId),
             tail: false,
-            listenLabel: _c.listen,
-            onListen: () => _speakText(
-              _c.payTitle(_name.text.trim()),
-              _c.payNote(_answers.countryId),
-            ),
           ),
           const SizedBox(height: 16),
           for (var i = 0; i < _c.payBenefits.length; i++)

@@ -52,7 +52,7 @@ class AppConfig {
   /// 
   /// Set to `false` until phone verification is fully tested and ready.
   /// Phone login requires additional backend setup for SMS verification.
-  static const bool enablePhoneSignIn = true; // ← Enabled for phone OTP authentication
+  static const bool enablePhoneSignIn = false; // Email and Google are the supported sign-in methods.
 
   /// Enable/disable Phone OTP verification flows.
   ///

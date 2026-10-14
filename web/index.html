@@ -307,7 +307,9 @@
     window.env.SUPABASE_ANON_KEY_PROD = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU";
     window.env.ENVIRONMENT = "production";
     window.env.API_BASE_URL_PROD = "https://www.prepskul.com/api";
-    window.env.SKULMATE_HTTP_API_BASE = "https://www.prepskul.com/api";
+    window.env.SKULMATE_HTTP_API_BASE = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+      ? 'http://localhost:3000/api'
+      : 'https://www.prepskul.com/api';
     window.env.ENABLE_FAPSHI_PAYMENTS = "false";
     window.env.NEXT_PUBLIC_SUPABASE_URL = window.env.NEXT_PUBLIC_SUPABASE_URL || window.env.SUPABASE_URL_PROD || '';
     window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || window.env.SUPABASE_ANON_KEY_PROD || '';
@@ -318,39 +320,10 @@
       hideAndRemoveSplash('Flutter signalled readiness');
     };
     
-    // Fallback: Remove splash after 3s if Flutter never calls removeSplash
-    // (e.g. during a flaky reload). This prevents the centered logo from
-    // staying on top of a fully loaded UI.
-    setTimeout(function() {
-      hideAndRemoveSplash('3s timeout fallback');
-    }, 3000);
-
-    // Extra safety: once the whole page has loaded, ensure the splash is gone.
-    // This covers cases where Flutter rendered successfully but never
-    // invoked the JS bridge for any reason.
-    window.addEventListener('load', function() {
-      hideAndRemoveSplash('window load event');
+    // Keep loading feedback visible until Flutter has actually rendered.
+    window.addEventListener('flutter-first-frame', function() {
+      hideAndRemoveSplash('Flutter first frame');
     });
-
-    // Final safety net: for about 10 seconds after startup, periodically
-    // check that the splash has actually been removed. If for any reason it
-    // is still present, force-remove it. After that window, we stop polling.
-    (function startSplashGuard() {
-      var checks = 0;
-      var maxChecks = 20; // 20 * 500ms ≈ 10s
-      var interval = setInterval(function() {
-        var loader = document.getElementById('flutter-loading');
-        if (!loader || loader.classList.contains('hidden')) {
-          clearInterval(interval);
-          return;
-        }
-        checks++;
-        hideAndRemoveSplash('interval safety check #' + checks);
-        if (checks >= maxChecks) {
-          clearInterval(interval);
-        }
-      }, 500);
-    })();
   </script>
 </head>
 <body>

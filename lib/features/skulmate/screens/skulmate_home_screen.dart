@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
@@ -58,13 +59,16 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
 
   void _reactToAnswer(bool correct) {
     _reactionTimer?.cancel();
-    safeSetState(() => _reaction = correct
-        ? SkulMateMascotState.success
-        : SkulMateMascotState.tryAgain);
+    safeSetState(
+      () => _reaction = correct
+          ? SkulMateMascotState.success
+          : SkulMateMascotState.tryAgain,
+    );
     _reactionTimer = Timer(const Duration(milliseconds: 2200), () {
       if (mounted) safeSetState(() => _reaction = null);
     });
   }
+
   bool _showTranscript = false;
   bool _attachOpen = false;
   bool _recording = false;
@@ -81,7 +85,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     SkulMateHomeRefreshBus.tick.addListener(_onRefresh);
     SkulMateTutorIntakeBus.pending.addListener(_onIntake);
     _applyStatusBarStyle();
-    unawaited(_voice.prepare());
+    if (!kIsWeb) unawaited(_voice.prepare());
     unawaited(_bootstrap());
     unawaited(_loadLearnerContext());
     SkulMateStreakReminderService.recordActivityAndReschedule();
@@ -96,7 +100,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   void _onVoiceState() {
     if (mounted) {
       safeSetState(() {
-      _recording = _voice.state.value == TutorVoiceState.recording;
+        _recording = _voice.state.value == TutorVoiceState.recording;
       });
     }
   }
@@ -143,7 +147,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_alwaysStarted) return;
+    // Web recognition must begin from the learner’s microphone tap.
+    if (kIsWeb || _alwaysStarted) return;
     _alwaysStarted = true;
     final locale = Localizations.localeOf(context).languageCode;
     unawaited(
@@ -156,7 +161,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
             },
           )
           .then((_) {
-            if (mounted) safeSetState(() => _recording = !_voice.privacyMute);
+            if (mounted) safeSetState(() => _recording = _voice.isListening);
           }),
     );
   }
@@ -206,10 +211,10 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     } catch (e) {
       if (mounted) {
         safeSetState(() {
-          _sessionId = 'demo';
-          _demo = true;
+          _sessionId = null;
+          _demo = false;
           _busy = false;
-          _error = null;
+          _error = SkulMateCopy.read(context).tutorSessionError;
         });
       }
     }
@@ -261,9 +266,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   Future<void> _applyOpened(Map<String, dynamic> opened) async {
     final session = opened['session'] as Map<String, dynamic>?;
     final id = (session?['id'] as String?) ?? opened['sessionId'] as String?;
-    if (id == null) {
-      if (mounted) safeSetState(() => _busy = false);
-      return;
+    if (id == null || id == 'demo') {
+      throw Exception('A saved learning session could not be opened.');
     }
     final cached = await SkulMateSessionCache.loadTurns(id);
     final remoteTurns = opened['turns'] as List<dynamic>? ?? [];
@@ -440,12 +444,24 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   Future<void> _toggleMic() async {
     if (_voice.state.value == TutorVoiceState.speaking) {
       await _voice.interrupt();
-      if (mounted) safeSetState(() => _recording = !_voice.privacyMute);
+      if (mounted) safeSetState(() => _recording = _voice.isListening);
       return;
     }
-    final next = !_voice.privacyMute;
-    await _voice.setPrivacyMute(next);
-    if (mounted) safeSetState(() => _recording = !next);
+    if (!_alwaysStarted || _voice.privacyMute || !_voice.isListening) {
+      _alwaysStarted = true;
+      await _voice.startAlwaysOn(
+        locale: Localizations.localeOf(context).languageCode,
+        onUtterance: (text) {
+          if (!mounted || _busy) return;
+          unawaited(_sendText(text));
+        },
+      );
+      if (!mounted) return;
+      safeSetState(() => _recording = _voice.isListening);
+      return;
+    }
+    await _voice.setPrivacyMute(true);
+    if (mounted) safeSetState(() => _recording = false);
   }
 
   void _toggleVoiceOut() {
@@ -507,7 +523,9 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     final latestReply = _turns.where((turn) => !turn.isUser).lastOrNull;
     final visibleTurns = _showTranscript
         ? _turns
-        : latestReply != null ? [latestReply] : <TutorTurn>[];
+        : latestReply != null
+        ? [latestReply]
+        : <TutorTurn>[];
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SkulMateSurfaceStyles.lightStatusBarOverlay,
@@ -530,23 +548,26 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                     ValueListenableBuilder<TutorVoiceState>(
                       valueListenable: _voice.state,
                       builder: (_, state, __) => SkulMateHeroMascot(
-                        state: _reaction ?? switch (state) {
-                          TutorVoiceState.thinking =>
-                            SkulMateMascotState.thinking,
-                          TutorVoiceState.speaking =>
-                            SkulMateMascotState.speaking,
-                          TutorVoiceState.recording =>
-                            SkulMateMascotState.listening,
-                          TutorVoiceState.idle =>
-                            SkulMateMascotState.neutral,
-                        },
+                        state:
+                            _reaction ??
+                            switch (state) {
+                              TutorVoiceState.thinking =>
+                                SkulMateMascotState.thinking,
+                              TutorVoiceState.speaking =>
+                                SkulMateMascotState.speaking,
+                              TutorVoiceState.recording =>
+                                SkulMateMascotState.listening,
+                              TutorVoiceState.idle =>
+                                SkulMateMascotState.neutral,
+                            },
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         Localizations.localeOf(context).languageCode == 'fr'
-                            ? 'Ton espace pour apprendre' : 'Your learning desk',
+                            ? 'Ton espace pour apprendre'
+                            : 'Your learning desk',
                         style: SkulMateTypography.heroTitle(),
                       ),
                     ),
@@ -588,11 +609,24 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton.icon(
-                            onPressed: () => setState(() => _showTranscript = !_showTranscript),
-                            icon: Icon(_showTranscript ? Icons.dashboard_outlined : Icons.history),
-                            label: Text(Localizations.localeOf(context).languageCode == 'fr'
-                              ? (_showTranscript ? 'Revenir à la leçon' : 'Voir la conversation')
-                              : (_showTranscript ? 'Back to lesson' : 'View conversation')),
+                            onPressed: () => setState(
+                              () => _showTranscript = !_showTranscript,
+                            ),
+                            icon: Icon(
+                              _showTranscript
+                                  ? Icons.dashboard_outlined
+                                  : Icons.history,
+                            ),
+                            label: Text(
+                              Localizations.localeOf(context).languageCode ==
+                                      'fr'
+                                  ? (_showTranscript
+                                        ? 'Revenir à la leçon'
+                                        : 'Voir la conversation')
+                                  : (_showTranscript
+                                        ? 'Back to lesson'
+                                        : 'View conversation'),
+                            ),
                           ),
                         ),
                       for (final turn in visibleTurns) ...[
@@ -604,6 +638,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                           SkulMateTutorBoard(board: turn.board!),
                         if (turn.surface != null)
                           SkulMateInThreadSurface(
+                            key: ValueKey('practice-${turn.id}'),
                             surface: turn.surface!,
                             onOutcome: (correct) async {
                               _reactToAnswer(correct);
@@ -615,6 +650,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                                 turnId: turn.id,
                                 conceptId: turn.surface?.conceptId,
                                 surfaceType: turn.surface?.gameType,
+                                hintUsed:
+                                    turn.surface?.gameType == 'flashcards',
                               );
                             },
                           ),
@@ -647,6 +684,19 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                   ),
                 ),
               ),
+              if (_voice.lastError != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      copy.isFrench
+                          ? 'Le micro n’a pas démarré. Autorise-le dans ton navigateur, puis touche le micro pour réessayer. Tu peux aussi écrire.'
+                          : 'The microphone did not start. Allow it in your browser, then tap the mic to retry. You can also type.',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ),
               SkulMateTutorComposer(
                 controller: _composer,
                 onSend: () => _sendText(_composer.text),
@@ -725,9 +775,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                     icon: PhosphorIcons.lightbulb,
                     title: copy.tutorActionExplainTitle,
                     subtitle: copy.tutorActionExplainBody,
-                    onTap: () => unawaited(
-                      _sendText(_starterMessage(copy, 'explain')),
-                    ),
+                    onTap: () =>
+                        unawaited(_sendText(_starterMessage(copy, 'explain'))),
                   ),
                 ),
                 SizedBox(
@@ -736,9 +785,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                     icon: PhosphorIcons.notePencil,
                     title: copy.tutorActionQuestionTitle,
                     subtitle: copy.tutorActionQuestionBody,
-                    onTap: () => unawaited(
-                      _sendText(_starterMessage(copy, 'question')),
-                    ),
+                    onTap: () =>
+                        unawaited(_sendText(_starterMessage(copy, 'question'))),
                   ),
                 ),
                 SizedBox(
@@ -747,9 +795,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                     icon: PhosphorIcons.lightning,
                     title: copy.tutorActionPracticeTitle,
                     subtitle: copy.tutorActionPracticeBody,
-                    onTap: () => unawaited(
-                      _sendText(_starterMessage(copy, 'practice')),
-                    ),
+                    onTap: () =>
+                        unawaited(_sendText(_starterMessage(copy, 'practice'))),
                   ),
                 ),
               ],

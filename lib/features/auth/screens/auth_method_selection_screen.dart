@@ -250,7 +250,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen>
 
                                 const SizedBox(height: 16),
 
-                                if (_isLogin)
+                                if (_isLogin && AppConfig.enablePhoneSignIn)
                                   _AuthMethodButton(
                                     icon: Icons.phone_outlined,
                                     label: _isLogin

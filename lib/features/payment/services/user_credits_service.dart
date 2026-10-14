@@ -72,6 +72,9 @@ class UserCreditsService {
       final metadata = (paymentRequest['metadata'] as Map?)
           ?.cast<String, dynamic>();
       final isSkulmateTopup = metadata?['is_skulmate_topup'] == true;
+      if (isSkulmateTopup) {
+        throw Exception('Learning credits are fulfilled by the verified payment server.');
+      }
       final packageCredits = (metadata?['credits'] as num?)?.toInt();
 
       // Calculate credits:

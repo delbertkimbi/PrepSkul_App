@@ -1,5 +1,7 @@
 # Firebase app review release — 8 October 2026
 
+> Historical snapshot. For the current checkout, deployed baseline, and outstanding release gates, read [the October 13 continuation](product/ADAPTIVE_LEARNING_NEXT_STEPS_2026_10_13.md). The latest working checkout is `prepskul_app_release`, not the October 8 checkout below.
+
 Canonical checkout: `prepskul_app_delbert`, branch `delbert`, origin `delbertkimbi/PrepSkul_App`.
 Android application ID and iOS bundle ID remain `com.prepskul.prepskul`. This is the existing app on a branch. Firebase Hosting publishes its web build; it does not submit a new store app.
 

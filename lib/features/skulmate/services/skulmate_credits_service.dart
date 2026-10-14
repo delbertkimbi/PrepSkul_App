@@ -3,7 +3,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'skulmate_pricing_service.dart';
 import 'skulmate_service.dart';
 
-/// Revision credits + daily free usage (user_credits is source of truth for balance).
+/// Revision credits + daily free usage (skulmate_credit_balances is source of truth for balance).
 class SkulmateCreditsSnapshot {
   final int creditsBalance;
   final int docUsed;
@@ -38,7 +38,7 @@ class SkulmateCreditsService {
     if (userId == null) return 0;
     try {
       final row = await SupabaseService.client
-          .from('user_credits')
+          .from('skulmate_credit_balances')
           .select('balance')
           .eq('user_id', userId)
           .maybeSingle();

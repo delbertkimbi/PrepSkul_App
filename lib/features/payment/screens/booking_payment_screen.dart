@@ -127,7 +127,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       if (request != null && mounted) {
         // `amount` is what this installment charges (weekly/bi-weekly/monthly slice).
         final installmentAmount = (request['amount'] as num).toDouble();
-        final charges = installmentAmount * 0.02;
+        // Charge the stored server quote; do not invent a client-only fee.
+        const charges = 0.0;
         final total = installmentAmount + charges;
         safeSetState(() {
           _paymentRequest = request;
@@ -444,7 +445,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                 return true;
               } catch (e) {
                 LogService.error('Error completing payment: $e');
-                return true;
+                return false;
               }
             },
           ),
@@ -544,6 +545,21 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   Future<void> _completePayment(String transId) async {
     try {
+      // Top-ups are fulfilled atomically by the verified server status endpoint.
+      if (_isSkulmateTopup) {
+        final status = await FapshiService.getPaymentStatus(transId);
+        if (!status.isSuccessful) {
+          throw Exception('Payment is not confirmed yet. Please do not pay again.');
+        }
+        final purchase = await SupabaseService.client.from('skulmate_credit_transactions')
+            .select('amount').eq('reference_id', widget.paymentRequestId)
+            .eq('reference_type', 'payment_request').eq('type', 'purchase').maybeSingle();
+        if (purchase == null) {
+          throw Exception('Payment received. Credits are still being confirmed. Please do not pay again.');
+        }
+        return;
+      }
+
       LogService.info(
         'Completing payment: ${widget.paymentRequestId}, transId: $transId',
       );
@@ -733,9 +749,10 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         safeSetState(() {
           _errorMessage =
               'Payment completed but failed to update status: ${ErrorHandler.getUserFriendlyMessage(e)}';
-          _paymentStatus = 'failed';
+          _paymentStatus = 'pending';
         });
       }
+      rethrow;
     }
   }
 

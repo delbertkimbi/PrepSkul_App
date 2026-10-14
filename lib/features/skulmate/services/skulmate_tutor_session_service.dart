@@ -203,7 +203,7 @@ class SkulMateTutorSessionService {
   }) async {
     final token = await _token();
     final userId = await _userId();
-    await SkulMateService.postJson(
+    final response = await SkulMateService.postJson(
       url: '$_base/skulmate/outcome',
       token: token ?? '',
       body: {
@@ -217,6 +217,9 @@ class SkulMateTutorSessionService {
         'hintUsed': hintUsed,
       },
     );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Could not save your practice result. Please retry.');
+    }
   }
 
   static String _sourceType(SkulMateIntakePayload payload) {

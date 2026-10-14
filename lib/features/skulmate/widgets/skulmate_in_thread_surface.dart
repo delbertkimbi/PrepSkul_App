@@ -25,12 +25,17 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
   int? _picked;
   bool _revealed = false;
   bool _done = false;
+  bool _saving = false;
+  bool _allCorrect = true;
+  String? _saveError;
 
   Map<String, dynamic> get _item =>
       widget.surface.items[_index.clamp(0, widget.surface.items.length - 1)];
 
   @override
   Widget build(BuildContext context) {
+    if (widget.surface.items.isEmpty) return const SizedBox.shrink();
+    final french = Localizations.localeOf(context).languageCode == 'fr';
     final item = _item;
     final options = (item['options'] as List?)?.map((e) => '$e').toList() ?? [];
     final term = item['term'] as String?;
@@ -112,10 +117,17 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: () => _finish(true),
-                child: const Text('Got it'),
+                onPressed: _saving ? null : () => _finish(true),
+                child: Text(french ? 'Continuer' : 'Continue'),
               ),
             ),
+          if (_saving) const LinearProgressIndicator(),
+          if (_saveError != null) ...[
+            Text(french ? 'Progression non enregistrée. Réessayez.' : 'Progress was not saved. Please retry.'),
+            TextButton(onPressed: _saving ? null : _saveResult,
+              child: Text(french ? 'Réessayer' : 'Retry')),
+          ],
+          if (_done) Text(french ? 'Progression enregistrée' : 'Progress saved'),
         ],
       ),
     );
@@ -132,7 +144,8 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
   }
 
   Future<void> _finish(bool correct) async {
-    if (_done) return;
+    if (!mounted || _done || _saving) return;
+    _allCorrect = _allCorrect && correct;
     if (_index < widget.surface.items.length - 1) {
       setState(() {
         _index += 1;
@@ -141,7 +154,19 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
       });
       return;
     }
-    setState(() => _done = true);
-    await widget.onOutcome(correct);
+    await _saveResult();
+  }
+
+  Future<void> _saveResult() async {
+    if (_saving || _done) return;
+    setState(() { _saving = true; _saveError = null; });
+    try {
+      await widget.onOutcome(_allCorrect);
+      if (mounted) setState(() => _done = true);
+    } catch (_) {
+      if (mounted) setState(() => _saveError = 'save_failed');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 }
