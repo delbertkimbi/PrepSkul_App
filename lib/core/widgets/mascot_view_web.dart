@@ -57,7 +57,7 @@ class _MascotViewState extends State<MascotView> {
     m.setProperty('timeScale'.toJS, mascotSpeed(widget.clip).toJS);
     m.setAttribute(
       'animation-crossfade-duration',
-      widget.clip == '33_talk' || widget.clip == '01_idle' ? '80' : '220',
+      widget.clip == '33_talk' || widget.clip == '01_idle' ? '120' : '280',
     );
     if (m.hasProperty('loaded'.toJS).toDart &&
         m.getProperty<JSBoolean>('loaded'.toJS).toDart) {
@@ -73,8 +73,8 @@ class _MascotViewState extends State<MascotView> {
     m.style.width = '100%';
     m.style.height = '100%';
     m.style.pointerEvents = 'none';
-    m.setAttribute('src', 'assets/assets/3d/skulmate.glb?v=soft-limbs-5');
-    m.setAttribute('camera-orbit', '0deg 85deg 7m');
+    m.setAttribute('src', 'assets/assets/3d/skulmate.glb?v=soft-mate-7');
+    m.setAttribute('camera-orbit', '0deg 85deg 7.7m');
     m.setAttribute('camera-target', '0m 1.7m 0m');
     m.setAttribute('field-of-view', '30deg');
     m.setAttribute('shadow-intensity', '0.35');

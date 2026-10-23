@@ -50,8 +50,8 @@ class _MascotViewState extends State<MascotView> with WidgetsBindingObserver {
     try {
       await _controller!.runJavaScript('''
         (() => { const m = document.querySelector('model-viewer'); if (!m) return;
-          if (m.animationName !== $clip) { m.animationName = $clip; m.currentTime = 0; }
-          m.animationCrossfadeDuration = ${widget.clip == '33_talk' || widget.clip == '01_idle' ? 80 : 220};
+          if (m.animationName !== $clip) { m.animationName = $clip; }
+          m.animationCrossfadeDuration = ${widget.clip == '33_talk' || widget.clip == '01_idle' ? 120 : 280};
           m.timeScale = ${mascotSpeed(widget.clip)};
           m.${_animate && _foreground ? 'play' : 'pause'}();
         })();
@@ -78,7 +78,7 @@ class _MascotViewState extends State<MascotView> with WidgetsBindingObserver {
         cameraControls: false,
         disableZoom: true,
         ar: false,
-        cameraOrbit: '0deg 85deg 7m',
+        cameraOrbit: '0deg 85deg 7.7m',
         cameraTarget: widget.clip == '21_explaining'
             ? '0.25m 1.7m 0m'
             : '0m 1.7m 0m',
@@ -88,7 +88,7 @@ class _MascotViewState extends State<MascotView> with WidgetsBindingObserver {
         exposure: 1,
         animationName: widget.clip,
         autoPlay: _animate && _foreground,
-        animationCrossfadeDuration: 120,
+        animationCrossfadeDuration: 280,
         relatedCss:
             'model-viewer::part(default-progress-bar) { display:none; }',
         debugLogging: false,
