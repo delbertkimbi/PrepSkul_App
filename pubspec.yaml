@@ -110,6 +110,7 @@ dependencies:
   model_viewer_plus: ^1.10.0
   web: ^1.1.1
   webview_flutter: ^4.14.1
+  timeline_tile: 2.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -155,6 +156,7 @@ flutter:
     - assets/audio/music/bgm_adventure_loop.ogg
     - assets/audio/music/bgm_results_soft_loop.ogg
     - assets/audio/music/sfx_card_flip.ogg
+    - assets/audio/music/mate_twinkle.wav
     - assets/audio/music/sfx_correct_chime.ogg
     - assets/audio/music/sfx_level_up.ogg
     - assets/audio/music/sfx_streak_ping.ogg

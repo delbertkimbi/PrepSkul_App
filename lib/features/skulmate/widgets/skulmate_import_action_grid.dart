@@ -4,7 +4,6 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import '../l10n/skulmate_copy.dart';
 import '../services/skulmate_import_actions.dart';
 import 'skulmate_from_class_sheet.dart';
-import 'skulmate_intake_popup_menu.dart';
 import 'skulmate_surface_styles.dart';
 import 'skulmate_typography.dart';
 
@@ -35,13 +34,6 @@ class SkulMateImportActionGrid extends StatelessWidget {
       }),
       _ChipDef(copy.sessions, Icons.video_library_rounded, (ctx, _) async {
         await SkulMateFromClassSheet.show(ctx, childId: childId);
-      }),
-      _ChipDef(copy.more, Icons.keyboard_arrow_down_rounded, (ctx, box) async {
-        await SkulMateIntakePopupMenu.showExtraTools(
-          ctx,
-          anchor: box,
-          childId: childId,
-        );
       }),
     ];
 

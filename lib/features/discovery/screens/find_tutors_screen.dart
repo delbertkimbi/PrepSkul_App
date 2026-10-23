@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
+import 'package:prepskul/core/utils/tutor_search.dart';
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/design/learner_design.dart';
+import 'package:prepskul/core/design/prepskul_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -107,27 +110,44 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     'Geography',
     'Accounting',
     'Business Studies',
-    'Python',
-    'JavaScript',
+    'Agricultural Science',
+    'Arts and Crafts',
+    'Civic Education',
+    'Computer Science',
+    'Economics',
+    'Environmental Studies',
+    'Further Mathematics',
+    'General Science',
+    'German',
+    'Home Economics',
+    'ICT',
+    'Literature',
+    'Music',
+    'Reading and Phonics',
+    'Religious Studies',
+    'Spanish',
+    'Technical Drawing',
   ];
 
-  // Monthly price ranges (in XAF per month)
-  // Based on typical monthly pricing: 2-3 sessions/week × 4 weeks
-  // Example: 3k/session × 2 sessions/week × 4 weeks = 24k/month
-
-  // Get localized price ranges
+  // Tutor discovery compares a single session; frequency belongs to booking.
   List<Map<String, dynamic>> _getPriceRanges(BuildContext context) {
-    final t = AppLocalizations.of(context)!;
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
     return [
-      {'label': t.filterUnder20k, 'min': 0, 'max': 20000},
-      {'label': t.filter20kTo30k, 'min': 20000, 'max': 30000},
-      {'label': t.filter30kTo40k, 'min': 30000, 'max': 40000},
-      {'label': t.filter40kTo50k, 'min': 40000, 'max': 50000},
-      {'label': t.filterAbove50k, 'min': 50000, 'max': 200000},
+      {
+        'label': fr ? 'Moins de 3 000 XAF' : 'Under 3,000 XAF',
+        'min': 0,
+        'max': 2999,
+      },
+      {'label': '3,000–5,000 XAF', 'min': 3000, 'max': 4999},
+      {'label': '5,000–8,000 XAF', 'min': 5000, 'max': 7999},
+      {'label': '8,000–12,000 XAF', 'min': 8000, 'max': 11999},
+      {
+        'label': fr ? '12 000 XAF et plus' : '12,000 XAF and above',
+        'min': 12000,
+        'max': double.infinity,
+      },
     ];
   }
-
-  // Get localized price ranges
 
   @override
   void initState() {
@@ -259,8 +279,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         final userSubjects = List<String>.from(surveyData['subjects'] ?? []);
 
         // Get education level, system, and stream for dynamic subject loading
-        final system = surveyData['system']?.toString() ?? 'anglophone';
-        final stream = surveyData['stream']?.toString();
+        final system =
+            surveyData['school_system']?.toString() ??
+            surveyData['system']?.toString() ??
+            'anglophone';
+        final onboarding = surveyData['onboarding_context'];
+        final stream =
+            surveyData['stream']?.toString() ??
+            (onboarding is Map ? onboarding['streamId']?.toString() : null);
         final eduLevel = surveyData['education_level']?.toString();
 
         // Load available subjects based on user's niche
@@ -289,7 +315,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         }
 
         // If still empty or very few, add default subjects
-        if (allSubjectsSet.length < 5) {
+        if (allSubjectsSet.isEmpty) {
           for (var subject in _defaultSubjects) {
             allSubjectsSet.add(subject);
           }
@@ -673,15 +699,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   void _filterTutors() {
     safeSetState(() {
       _filteredTutors = _tutors.where((tutor) {
-        final searchQuery = _searchController.text.toLowerCase();
-        if (searchQuery.isNotEmpty) {
-          final name = (tutor['full_name'] ?? '').toString().toLowerCase();
-          final subjects =
-              (tutor['subjects'] as List?)?.join(' ').toLowerCase() ?? '';
-          if (!name.contains(searchQuery) && !subjects.contains(searchQuery)) {
-            return false;
-          }
-        }
+        if (!TutorSearch.matches(tutor, _searchController.text)) return false;
 
         if (_selectedSubject != null) {
           final subjects = tutor['subjects'] as List?;
@@ -694,11 +712,11 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           final priceRange = _getPriceRanges(
             context,
           ).firstWhere((range) => range['label'] == _selectedPriceRange);
-          // Calculate monthly price for this tutor
+          // Compare the actual per-session rate
           final pricing = PricingService.calculateFromTutorData(tutor);
-          final monthlyPrice = (pricing['perMonth'] ?? 0.0) as double;
-          if (monthlyPrice < priceRange['min'] ||
-              monthlyPrice > priceRange['max']) {
+          final sessionPrice = (pricing['perSession'] ?? 0.0) as double;
+          if (sessionPrice < priceRange['min'] ||
+              sessionPrice > priceRange['max']) {
             return false;
           }
         }
@@ -735,17 +753,28 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     return Scaffold(
       backgroundColor: OnboardPalette.cream,
       appBar: AppBar(
+        toolbarHeight: 48,
         automaticallyImplyLeading: false, // Remove back button
         elevation: 0,
         backgroundColor: OnboardPalette.cream,
         surfaceTintColor: OnboardPalette.cream,
         title: Text(
           Localizations.localeOf(context).languageCode == 'fr'
-              ? 'Trouve quelqu’un'
-              : 'Find a person',
-          style: onboardDisplay(size: 22),
+              ? 'Trouve ton tuteur'
+              : 'Find your tutor',
+          style: LearnerDesign.title(22),
         ),
         actions: [
+          IconButton(
+            tooltip: Localizations.localeOf(context).languageCode == 'fr'
+                ? 'Demander un tuteur'
+                : 'Request a tutor',
+            icon: const PrepSkulIcon(PrepSkulGlyph.tutorRequest),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RequestTutorFlowScreen()),
+            ),
+          ),
           if (AppConfig.enableGroupClasses)
             IconButton(
               icon: Icon(
@@ -771,37 +800,6 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   ? 'Group classes unavailable offline'
                   : 'Group classes',
             ),
-          IconButton(
-            icon: Icon(
-              Icons.person_add_alt_1_outlined,
-              color: _isOffline ? Colors.grey[400] : Colors.black,
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const RequestTutorFlowScreen(),
-                ),
-              );
-            },
-            tooltip: 'Request a tutor',
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.tune,
-              color: _isOffline ? Colors.grey[400] : Colors.black,
-            ),
-            onPressed: _isOffline
-                ? () => OfflineDialog.show(
-                    context,
-                    message:
-                        'Filters require an internet connection. Please check your connection and try again.',
-                  )
-                : _showFilterBottomSheet,
-            tooltip: _isOffline
-                ? 'Filters unavailable offline'
-                : 'Filter tutors',
-          ),
         ],
       ),
       body: Column(
@@ -812,16 +810,16 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               ResponsiveHelper.responsiveHorizontalPadding(context),
               ResponsiveHelper.responsiveSpacing(
                 context,
-                mobile: 8,
-                tablet: 10,
-                desktop: 12,
+                mobile: 0,
+                tablet: 0,
+                desktop: 0,
               ),
               ResponsiveHelper.responsiveHorizontalPadding(context),
               ResponsiveHelper.responsiveSpacing(
                 context,
-                mobile: 12,
-                tablet: 16,
-                desktop: 20,
+                mobile: 8,
+                tablet: 8,
+                desktop: 8,
               ),
             ),
             child: Column(
@@ -830,41 +828,35 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 Container(
                   height: ResponsiveHelper.responsiveSpacing(
                     context,
-                    mobile: 46,
-                    tablet: 50,
-                    desktop: 54,
+                    mobile: 44,
+                    tablet: 44,
+                    desktop: 44,
                   ),
-                  decoration: OnboardPalette.paperField,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: LearnerDesign.line),
+                  ),
                   child: TextField(
                     controller: _searchController,
-                    enabled: !_isOffline, // Disable search when offline
-                    onChanged: (value) {
-                      if (!_isOffline) {
-                        safeSetState(() {});
-                        _filterTutors();
-                      } else {
-                        // Show offline dialog if user tries to search while offline
-                        OfflineDialog.show(
-                          context,
-                          message:
-                              'Search requires an internet connection. Please check your connection and try again.',
-                        );
-                      }
+                    enabled:
+                        true, // Filter already loaded tutors without a network request
+                    onChanged: (_) {
+                      safeSetState(() {});
+                      _filterTutors();
                     },
                     style: GoogleFonts.nunito(
                       color: Colors.black,
-                      fontSize:
-                          ResponsiveHelper.responsiveBodySize(context) + 1,
+                      fontSize: 14,
                     ),
                     decoration: InputDecoration(
                       hintText:
                           Localizations.localeOf(context).languageCode == 'fr'
-                          ? 'Nom ou matière'
-                          : 'Name or subject',
+                          ? 'Matière, examen ou tuteur'
+                          : 'Subject, exam or tutor',
                       hintStyle: GoogleFonts.nunito(
                         color: Colors.grey[500],
-                        fontSize:
-                            ResponsiveHelper.responsiveBodySize(context) + 1,
+                        fontSize: 14,
                       ),
                       prefixIcon: Icon(
                         Icons.search,
@@ -896,6 +888,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             )
                           : null,
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false,
                       contentPadding: EdgeInsets.symmetric(
                         horizontal:
                             ResponsiveHelper.responsiveHorizontalPadding(
@@ -912,6 +907,16 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   ),
                 ),
 
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(child: _quickFilter(0)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _quickFilter(1)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _quickFilter(2)),
+                  ],
+                ),
                 // Active Filters - Responsive
                 if (_selectedSubject != null ||
                     _selectedPriceRange != null ||
@@ -1227,387 +1232,206 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Widget _buildTutorCard(Map<String, dynamic> tutor) {
-    Map<String, dynamic>? profile;
-    final profilesData = tutor['profiles'];
-    if (profilesData is Map) {
-      profile = Map<String, dynamic>.from(profilesData);
-    } else {
-      profile = {
-        if (tutor['full_name'] != null) 'full_name': tutor['full_name'],
-        if (tutor['email'] != null) 'email': tutor['email'],
-      };
-    }
-    final fullName = TutorDisplayNameUtils.resolve(tutor, profile);
-    final displayName = TutorDisplayNameUtils.cardLabel(tutor, profile);
-
-    // Use pre-calculated values from tutor_service (no duplicate calculation)
-    final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
-
-    // DEBUG: Log values being used (debug mode only)
-    LogService.debug('Find Tutors - Tutor: $fullName', {'rating': rating});
-    final bio = tutor['bio'] ?? '';
-    final completedSessions = tutor['completed_sessions'] ?? 0;
-    final isVerified = tutor['is_verified'] == true;
-
-    // Remove "Hello!" from bio if it starts with it (for cards)
-    String displayBio = bio;
-    if (displayBio.toLowerCase().startsWith('hello!')) {
-      displayBio = displayBio.substring(6).trim();
-      // Remove "I am" if it follows
-      if (displayBio.toLowerCase().startsWith('i am')) {
-        displayBio = displayBio.substring(4).trim();
-      }
-    }
-
-    final cardPadding = ResponsiveHelper.responsiveSpacing(
-      context,
-      mobile: 12,
-      tablet: 14,
-      desktop: 16,
-    );
-    final avatarSize = ResponsiveHelper.responsiveSpacing(
-      context,
-      mobile: 58,
-      tablet: 68,
-      desktop: 78,
-    );
-    final cardMargin = ResponsiveHelper.responsiveSpacing(
-      context,
-      mobile: 10,
-      tablet: 12,
-      desktop: 14,
-    );
-
-    return Container(
-      margin: EdgeInsets.only(bottom: cardMargin),
-      decoration: OnboardPalette.paperCard,
-      child: Stack(
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _isOffline
-                  ? () => OfflineDialog.show(
-                      context,
-                      message:
-                          'Viewing tutor details requires an internet connection. Please check your connection and try again.',
-                    )
-                  : () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => TutorDetailScreen(tutor: tutor),
+    final rawProfile = tutor['profiles'];
+    final profile = rawProfile is Map
+        ? Map<String, dynamic>.from(rawProfile)
+        : <String, dynamic>{};
+    final name = TutorDisplayNameUtils.cardLabel(tutor, profile);
+    final rating = (tutor['rating'] as num?)?.toDouble() ?? 0;
+    final subjects = (tutor['subjects'] as List? ?? [])
+        .map((s) => s.toString())
+        .take(3)
+        .toList();
+    final price =
+        PricingService.calculateFromTutorData(tutor)['perSession'] as double;
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    final photo =
+        tutor['avatar_url'] ??
+        tutor['profile_photo_url'] ??
+        profile['avatar_url'];
+    final bio = (tutor['personal_statement'] ?? tutor['bio'] ?? '')
+        .toString()
+        .trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x181B2C4F),
+              offset: Offset(0, 4),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: Color(0xFFC9D6E4), width: 1.5),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: _isOffline
+                ? () => OfflineDialog.show(
+                    context,
+                    message: fr
+                        ? 'Reconnecte-toi pour voir ce profil.'
+                        : 'Reconnect to view this tutor.',
+                  )
+                : () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TutorDetailScreen(tutor: tutor),
+                    ),
+                  ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 64,
+                        height: 72,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: _buildAvatarImage(photo, name),
                         ),
-                      );
-                    },
-              borderRadius: BorderRadius.circular(14),
-              child: Padding(
-                padding: EdgeInsets.all(cardPadding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Avatar (Larger & clickable) - Responsive
-                        GestureDetector(
-                          onTap: () => _showProfileImage(context, tutor),
-                          child: Container(
-                            width: avatarSize,
-                            height: avatarSize,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppTheme.primaryColor.withOpacity(
-                                0.1,
-                              ), // Background for fallback
-                              border: Border.all(
-                                color: AppTheme.primaryColor.withOpacity(0.3),
-                                width: 2,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.08),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: LearnerDesign.title(19),
                             ),
-                            child: ClipOval(
-                              child: _buildAvatarImage(
-                                tutor['avatar_url'] ??
-                                    tutor['profile_photo_url'],
-                                displayName,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: ResponsiveHelper.responsiveSpacing(
-                            context,
-                            mobile: 10,
-                            tablet: 12,
-                            desktop: 14,
-                          ),
-                        ),
-                        // Info - Responsive
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                displayName,
-                                style: GoogleFonts.nunito(
-                                  fontSize:
-                                      ResponsiveHelper.responsiveSubheadingSize(
-                                        context,
-                                      ) -
-                                      2,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.black,
-                                ),
-                              ),
-                              SizedBox(
-                                height: ResponsiveHelper.isSmallHeight(context)
-                                    ? 2
-                                    : 4,
-                              ),
+                            const SizedBox(height: 6),
+                            if (rating > 0)
                               Row(
                                 children: [
-                                  Icon(
-                                    Icons.star,
-                                    size: ResponsiveHelper.responsiveIconSize(
-                                      context,
-                                      mobile: 14,
-                                      tablet: 16,
-                                      desktop: 18,
-                                    ),
-                                    color: Colors.amber[700],
+                                  const Icon(
+                                    Icons.star_rounded,
+                                    color: Color(0xFFFFB800),
+                                    size: 18,
                                   ),
-                                  SizedBox(
-                                    width: ResponsiveHelper.responsiveSpacing(
-                                      context,
-                                      mobile: 4,
-                                      tablet: 5,
-                                      desktop: 6,
-                                    ),
-                                  ),
+                                  const SizedBox(width: 4),
                                   Text(
-                                    rating > 0
-                                        ? rating.toStringAsFixed(1)
-                                        : 'N/A',
-                                    style: GoogleFonts.nunito(
-                                      fontSize:
-                                          ResponsiveHelper.responsiveBodySize(
-                                            context,
-                                          ),
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.black,
-                                    ),
+                                    rating.toStringAsFixed(1),
+                                    style: LearnerDesign.body(
+                                      13,
+                                    ).copyWith(color: LearnerDesign.ink),
                                   ),
                                 ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(
-                      height: ResponsiveHelper.responsiveSpacing(
-                        context,
-                        mobile: 8,
-                        tablet: 10,
-                        desktop: 12,
-                      ),
-                    ),
-                    // Subjects - Responsive
-                    Wrap(
-                      spacing: ResponsiveHelper.responsiveSpacing(
-                        context,
-                        mobile: 4,
-                        tablet: 6,
-                        desktop: 8,
-                      ),
-                      runSpacing: ResponsiveHelper.responsiveSpacing(
-                        context,
-                        mobile: 4,
-                        tablet: 6,
-                        desktop: 8,
-                      ),
-                      children:
-                          (tutor['subjects'] as List?)
-                              ?.take(3)
-                              .map(
-                                (subject) => Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal:
-                                        ResponsiveHelper.responsiveSpacing(
-                                          context,
-                                          mobile: 8,
-                                          tablet: 10,
-                                          desktop: 12,
-                                        ),
-                                    vertical:
-                                        ResponsiveHelper.responsiveSpacing(
-                                          context,
-                                          mobile: 3,
-                                          tablet: 4,
-                                          desktop: 5,
-                                        ),
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[100],
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      OnboardGlyph(
-                                        seed: _prepSkulSubjectGlyph(
-                                          subject.toString(),
-                                        ),
-                                        size: 22,
-                                      ),
-                                      const SizedBox(width: 5),
-                                      Text(
-                                        subject.toString(),
-                                        style: GoogleFonts.nunito(
-                                          fontSize:
-                                              ResponsiveHelper.responsiveBodySize(
-                                                context,
-                                              ) -
-                                              2,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
                               )
-                              .toList() ??
-                          [],
-                    ),
-                    SizedBox(
-                      height: ResponsiveHelper.responsiveSpacing(
-                        context,
-                        mobile: 8,
-                        tablet: 10,
-                        desktop: 12,
-                      ),
-                    ),
-                    // Bio (personal statement, with "Hello!" removed for cards) - Responsive
-                    if (displayBio.isNotEmpty)
-                      Text(
-                        displayBio,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.nunito(
-                          fontSize:
-                              ResponsiveHelper.responsiveBodySize(context) - 3,
-                          color: Colors.grey[600],
-                          height: 1.5,
+                            else
+                              Text(
+                                fr ? 'Découvre son profil' : 'Get to know them',
+                                style: LearnerDesign.body(12),
+                              ),
+                          ],
                         ),
                       ),
-                    SizedBox(
-                      height: ResponsiveHelper.responsiveSpacing(
-                        context,
-                        mobile: 8,
-                        tablet: 10,
-                        desktop: 12,
-                      ),
+                    ],
+                  ),
+                  if (subjects.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: subjects
+                          .map(
+                            (subject) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: LearnerDesign.sky,
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                              child: Text(
+                                subject,
+                                style: LearnerDesign.body(
+                                  12,
+                                ).copyWith(color: LearnerDesign.ink),
+                              ),
+                            ),
+                          )
+                          .toList(),
                     ),
-                    // Bottom Info Row - Focus on value, not pricing - Responsive
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Sessions completed (bold as requested) - Responsive
-                        Row(
+                  ],
+                  if (bio.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      bio,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: LearnerDesign.body(13),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  const Divider(height: 1, color: LearnerDesign.line),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.school_outlined,
-                              size: ResponsiveHelper.responsiveIconSize(
-                                context,
-                                mobile: 14,
-                                tablet: 16,
-                                desktop: 18,
-                              ),
-                              color: Colors.grey[600],
-                            ),
-                            SizedBox(
-                              width: ResponsiveHelper.responsiveSpacing(
-                                context,
-                                mobile: 4,
-                                tablet: 5,
-                                desktop: 6,
-                              ),
+                            Text(
+                              PricingService.formatPrice(price),
+                              style: LearnerDesign.title(19),
                             ),
                             Text(
-                              '$completedSessions',
-                              style: GoogleFonts.nunito(
-                                fontSize:
-                                    ResponsiveHelper.responsiveBodySize(
-                                      context,
-                                    ) -
-                                    2,
-                                color: Colors.grey[700],
-                                fontWeight:
-                                    FontWeight.w700, // Bold as requested
-                              ),
-                            ),
-                            Text(
-                              ' lessons',
-                              style: GoogleFonts.nunito(
-                                fontSize:
-                                    ResponsiveHelper.responsiveBodySize(
-                                      context,
-                                    ) -
-                                    2,
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.w500,
-                              ),
+                              fr ? 'par séance' : 'per session',
+                              style: LearnerDesign.body(12),
                             ),
                           ],
                         ),
-                        // Subtle monthly estimate (not emphasized)
-                        _buildSubtleMonthlyEstimate(tutor),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: LearnerDesign.ink,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              fr ? 'Voir le profil' : 'View profile',
+                              style: LearnerDesign.text(
+                                size: 13,
+                                weight: FontWeight.w700,
+                              ).copyWith(color: Colors.white),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
-          if (isVerified)
-            Positioned(
-              top: 10,
-              right: 10,
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  PhosphorIcons.checkFill,
-                  size: ResponsiveHelper.responsiveIconSize(
-                    context,
-                    mobile: 12,
-                    tablet: 14,
-                    desktop: 16,
-                  ),
-                  color: Colors.white,
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -1675,8 +1499,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           case 'price':
             final pricingA = PricingService.calculateFromTutorData(a);
             final pricingB = PricingService.calculateFromTutorData(b);
-            final priceA = (pricingA['perMonth'] ?? 0.0) as double;
-            final priceB = (pricingB['perMonth'] ?? 0.0) as double;
+            final priceA = (pricingA['perSession'] ?? 0.0) as double;
+            final priceB = (pricingB['perSession'] ?? 0.0) as double;
             return priceA.compareTo(priceB);
           default:
             return 0;
@@ -1714,30 +1538,17 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     return ordered;
   }
 
-  Widget _buildSubtleMonthlyEstimate(Map<String, dynamic> tutor) {
-    // Calculate monthly pricing but display it subtly
-    final pricing = PricingService.calculateFromTutorData(tutor);
-    final monthlyAmount = pricing['perMonth'] as double;
-    final hasDiscount = pricing['hasDiscount'] as bool? ?? false;
-
-    // On cards, show only discount price if available
-    if (hasDiscount) {
-      return Text(
-        'From ${PricingService.formatPrice(monthlyAmount)}/mo',
-        style: GoogleFonts.nunito(
-          fontSize: 12,
-          color: AppTheme.primaryColor,
-          fontWeight: FontWeight.w700,
-        ),
-      );
-    }
-
-    return Text(
-      'From ${PricingService.formatPrice(monthlyAmount)}/mo',
-      style: GoogleFonts.nunito(
-        fontSize: 12,
-        color: Colors.grey[700],
-        fontWeight: FontWeight.w700, // Bold as requested
+  Widget _buildSessionPrice(Map<String, dynamic> tutor) {
+    final amount =
+        PricingService.calculateFromTutorData(tutor)['perSession'] as double;
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    return Flexible(
+      child: Text(
+        '${PricingService.formatPrice(amount)} / ${fr ? 'séance' : 'session'}',
+        textAlign: TextAlign.end,
+        style: LearnerDesign.body(
+          13,
+        ).copyWith(color: LearnerDesign.ink, fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -1768,13 +1579,13 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           // Request Tutor CTA
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: OnboardPalette.paperCard,
+            decoration: LearnerDesign.surface(),
             child: Column(
               children: [
                 prepMate(mood: Mood.point, size: 72),
                 const SizedBox(height: 16),
                 Text(
-                  'Need a person at the table?',
+                  'Need help finding a tutor?',
                   style: onboardDisplay(size: 20),
                   textAlign: TextAlign.center,
                 ),
@@ -1791,7 +1602,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 ),
                 const SizedBox(height: 20),
                 OnboardPrimaryButton(
-                  label: 'Request a person',
+                  label: 'Request a tutor',
                   onTap: () {
                     Navigator.push(
                       context,
@@ -1835,427 +1646,147 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     }
   }
 
-  void _showFilterBottomSheet() {
-    // #region agent log
-    try {
-      final logData = {
-        'sessionId': 'debug-session',
-        'runId': 'run1',
-        'hypothesisId': 'C',
-        'location': 'find_tutors_screen.dart:1304',
-        'message': 'Filter bottom sheet opening',
-        'data': {'isOffline': _isOffline},
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      };
-      File(
-        '/Users/user/Desktop/PrepSkul/.cursor/debug.log',
-      ).writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
-    } catch (_) {}
-    // #endregion
-
-    if (_isOffline) {
-      OfflineDialog.show(
-        context,
-        message:
-            'Filters require an internet connection. Please check your connection and try again.',
-      );
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setModalState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.75,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(24),
-                topRight: Radius.circular(24),
+  Widget _quickFilter(int kind) {
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    final labels = fr
+        ? ['Matière', 'Prix', 'Avis']
+        : ['Subject', 'Price', 'Rating'];
+    final value = switch (kind) {
+      0 => _selectedSubject,
+      1 => _selectedPriceRange,
+      _ => _minRating > 0 ? '${_minRating.toInt()}+' : null,
+    };
+    return Material(
+      color: value == null ? Colors.white : LearnerDesign.sky,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: LearnerDesign.line),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _pickQuickFilter(kind),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  value ?? labels[kind],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: LearnerDesign.text(size: 13, weight: FontWeight.w700),
+                ),
               ),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Filters',
-                        style: GoogleFonts.nunito(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          _clearFilters();
-                          Navigator.pop(context);
-                        },
-                        child: Text(
-                          'Clear all',
-                          style: GoogleFonts.nunito(
-                            color: AppTheme.primaryColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Divider(color: Colors.grey[200]),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'Subject',
-                              style: GoogleFonts.nunito(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black,
-                              ),
-                            ),
-                            if (_userPreferredSubjects.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              Text(
-                                '(⭐ = Your preferences)',
-                                style: GoogleFonts.nunito(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w400,
-                                  color: Colors.grey[600],
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        // Show loading indicator if subjects haven't loaded yet
-                        _subjectsLoaded
-                            ? Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: _subjects.map((subject) {
-                                  final isSelected =
-                                      _selectedSubject == subject;
-                                  final isUserPreferred = _userPreferredSubjects
-                                      .contains(subject);
-                                  return GestureDetector(
-                                    onTap: () {
-                                      safeSetState(() {
-                                        _selectedSubject = isSelected
-                                            ? null
-                                            : subject;
-                                      });
-                                      // Update modal state to reflect the change
-                                      WidgetsBinding.instance
-                                          .addPostFrameCallback((_) {
-                                            setModalState(() {});
-                                          });
-                                      _filterTutors(); // Apply filter when subject changes
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 10,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? AppTheme.primaryColor
-                                            : isUserPreferred
-                                            ? AppTheme.primaryColor.withOpacity(
-                                                0.1,
-                                              )
-                                            : Colors.grey[100],
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: isSelected
-                                              ? AppTheme.primaryColor
-                                              : isUserPreferred
-                                              ? AppTheme.primaryColor
-                                                    .withOpacity(0.5)
-                                              : Colors.grey[300]!,
-                                          width: isUserPreferred && !isSelected
-                                              ? 2
-                                              : 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          OnboardGlyph(
-                                            seed: _prepSkulSubjectGlyph(
-                                              subject,
-                                            ),
-                                            size: 26,
-                                            selected: isSelected,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          if (isUserPreferred &&
-                                              !isSelected) ...[
-                                            Icon(
-                                              Icons.star,
-                                              size: 14,
-                                              color: AppTheme.primaryColor,
-                                            ),
-                                            const SizedBox(width: 4),
-                                          ],
-                                          Text(
-                                            subject,
-                                            style: GoogleFonts.nunito(
-                                              fontSize: 14,
-                                              fontWeight: isUserPreferred
-                                                  ? FontWeight.w600
-                                                  : FontWeight.w500,
-                                              color: isSelected
-                                                  ? Colors.white
-                                                  : isUserPreferred
-                                                  ? AppTheme.primaryColor
-                                                  : Colors.grey[700],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              )
-                            : const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(20.0),
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                        const SizedBox(height: 24),
-                        Text(
-                          AppLocalizations.of(context)!.filterMonthlyPriceRange,
-                          style: GoogleFonts.nunito(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _getPriceRanges(context).map((range) {
-                            final label = range['label'] as String;
-                            final isSelected = _selectedPriceRange == label;
-                            return GestureDetector(
-                              onTap: () {
-                                safeSetState(() {
-                                  _selectedPriceRange = isSelected
-                                      ? null
-                                      : label;
-                                });
-                                // Update modal state to reflect the change
-                                WidgetsBinding.instance.addPostFrameCallback((
-                                  _,
-                                ) {
-                                  setModalState(() {});
-                                });
-                                _filterTutors(); // Apply filter when price range changes
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? AppTheme.primaryColor
-                                      : Colors.grey[100],
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? AppTheme.primaryColor
-                                        : Colors.grey[300]!,
-                                  ),
-                                ),
-                                child: Text(
-                                  label,
-                                  style: GoogleFonts.nunito(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: isSelected
-                                        ? Colors.white
-                                        : Colors.grey[700],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          AppLocalizations.of(context)!.filterMinimumRating,
-                          style: GoogleFonts.nunito(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    child: Slider(
-                                      value: _minRating,
-                                      min: 0,
-                                      max: 5,
-                                      divisions: 5,
-                                      label: _minRating == 0
-                                          ? AppLocalizations.of(
-                                              context,
-                                            )!.filterAny
-                                          : '${_minRating.toStringAsFixed(1)} ⭐',
-                                      activeColor: AppTheme.primaryColor,
-                                      inactiveColor: Colors.grey[300],
-                                      onChanged: (value) {
-                                        // Update parent state first
-                                        safeSetState(() {
-                                          // Round to nearest integer for proper snapping
-                                          _minRating = value.round().toDouble();
-                                        });
-                                        // Then update modal state to reflect the change
-                                        // Schedule modal state update after current frame to ensure parent state is committed
-                                        WidgetsBinding.instance
-                                            .addPostFrameCallback((_) {
-                                              setModalState(() {});
-                                            });
-                                        _filterTutors(); // Apply filter when rating changes
-                                      },
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Container(
-                                  width: 60,
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    _minRating == 0
-                                        ? AppLocalizations.of(
-                                            context,
-                                          )!.filterAny
-                                        : '${_minRating.toStringAsFixed(1)}+',
-                                    style: GoogleFonts.nunito(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppTheme.primaryColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            // Rating value indicators
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _buildRatingIndicator(
-                                  0,
-                                  AppLocalizations.of(context)!.filterAny,
-                                  modalSetState: setModalState,
-                                ),
-                                _buildRatingIndicator(
-                                  1,
-                                  '1',
-                                  modalSetState: setModalState,
-                                ),
-                                _buildRatingIndicator(
-                                  2,
-                                  '2',
-                                  modalSetState: setModalState,
-                                ),
-                                _buildRatingIndicator(
-                                  3,
-                                  '3',
-                                  modalSetState: setModalState,
-                                ),
-                                _buildRatingIndicator(
-                                  4,
-                                  '4',
-                                  modalSetState: setModalState,
-                                ),
-                                _buildRatingIndicator(
-                                  5,
-                                  '5',
-                                  modalSetState: setModalState,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, -5),
-                      ),
-                    ],
-                  ),
-                  child: SafeArea(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        _filterTutors();
-                        Navigator.pop(context);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        'Apply Filters',
-                        style: GoogleFonts.nunito(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+              const Icon(
+                Icons.keyboard_arrow_down,
+                size: 16,
+                color: LearnerDesign.ink,
+              ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  Future<void> _pickQuickFilter(int kind) async {
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
+    final options = switch (kind) {
+      0 =>
+        (_subjects.toList()..sort((a, b) {
+          final ap = _userPreferredSubjects.contains(a);
+          final bp = _userPreferredSubjects.contains(b);
+          if (ap != bp) return ap ? -1 : 1;
+          return a.toLowerCase().compareTo(b.toLowerCase());
+        })),
+      1 => _getPriceRanges(context).map((r) => r['label'].toString()).toList(),
+      _ => ['3+', '4+', '5'],
+    };
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: LearnerDesign.canvas,
+      constraints: const BoxConstraints(maxWidth: 560),
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .55,
+          child: Column(
+            children: [
+              Text(
+                (fr
+                    ? ['Matière', 'Prix par séance', 'Note minimale']
+                    : ['Subject', 'Price per session', 'Minimum rating'])[kind],
+                style: LearnerDesign.title(22),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                  children: [
+                    ListTile(
+                      leading: const PrepSkulIcon(PrepSkulGlyph.learn),
+                      title: Text(fr ? 'Tous' : 'Any'),
+                      onTap: () => Navigator.pop(sheetContext, ''),
+                    ),
+                    for (final option in options)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          tileColor: Colors.white,
+                          leading: PrepSkulIcon(
+                            kind == 0
+                                ? PrepSkulGlyph.learn
+                                : kind == 1
+                                ? PrepSkulGlyph.price
+                                : PrepSkulGlyph.rating,
+                          ),
+                          title: Text(
+                            option,
+                            style: LearnerDesign.text(size: 15),
+                          ),
+                          subtitle:
+                              kind == 0 &&
+                                  _userPreferredSubjects.contains(option)
+                              ? Text(
+                                  fr
+                                      ? 'Pour ton parcours'
+                                      : 'From your learning preferences',
+                                  style: LearnerDesign.body(12),
+                                )
+                              : null,
+                          selected: kind == 0
+                              ? option == _selectedSubject
+                              : kind == 1
+                              ? option == _selectedPriceRange
+                              : option ==
+                                    (_minRating == 5
+                                        ? '5'
+                                        : '${_minRating.toInt()}+'),
+                          selectedTileColor: const Color(0xFFE0F2FC),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          onTap: () => Navigator.pop(sheetContext, option),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    safeSetState(() {
+      if (kind == 0) _selectedSubject = selected.isEmpty ? null : selected;
+      if (kind == 1) _selectedPriceRange = selected.isEmpty ? null : selected;
+      if (kind == 2)
+        _minRating = selected.isEmpty
+            ? 0
+            : double.parse(selected.replaceAll('+', ''));
+    });
+    _filterTutors();
   }
 
   Widget _buildAvatarImage(

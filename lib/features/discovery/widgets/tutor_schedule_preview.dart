@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/design/prepskul_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/discovery/utils/schedule_time_utils.dart';
@@ -20,7 +21,7 @@ class TutorSchedulePreview extends StatelessWidget {
     if (days.isEmpty) {
       return Text(
         'Schedule not available',
-        style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
+        style: GoogleFonts.nunito(fontSize: 12, color: AppTheme.textMedium),
       );
     }
 
@@ -32,7 +33,7 @@ class TutorSchedulePreview extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       decoration: BoxDecoration(
-        color: AppTheme.neutral100,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.softBorder),
       ),
@@ -41,15 +42,11 @@ class TutorSchedulePreview extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.schedule_outlined,
-                size: 18,
-                color: AppTheme.textDark,
-              ),
+              const PrepSkulIcon(PrepSkulGlyph.sessions, size: 22),
               const SizedBox(width: 8),
               Text(
                 'Availability',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
@@ -60,7 +57,7 @@ class TutorSchedulePreview extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             daysSummary,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: AppTheme.textDark,
@@ -70,7 +67,7 @@ class TutorSchedulePreview extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             periodsSummary,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: AppTheme.textDark,
@@ -90,7 +87,7 @@ class TutorSchedulePreview extends StatelessWidget {
                     children: [
                       Text(
                         'See complete schedule',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primaryColor,

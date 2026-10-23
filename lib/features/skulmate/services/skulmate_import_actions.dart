@@ -22,6 +22,7 @@ class SkulMateImportActions {
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'jpg', 'jpeg', 'png', 'pptx'],
       allowMultiple: allowMultiple,
+      withData: kIsWeb,
     );
     if (result == null || result.files.isEmpty || !context.mounted) return;
 
@@ -55,7 +56,10 @@ class SkulMateImportActions {
     );
   }
 
-  static Future<void> pickPhotos(BuildContext context, {String? childId}) async {
+  static Future<void> pickPhotos(
+    BuildContext context, {
+    String? childId,
+  }) async {
     if (SkulMateImportPhotosSheet.isOpening) return;
     final images = await SkulMateImportPhotosSheet.show(context);
     if (images == null || images.isEmpty || !context.mounted) return;

@@ -299,7 +299,7 @@ class _StudentHomePromoCarouselState extends State<StudentHomePromoCarousel> {
   _PromoSlide _bookTutorSlide() {
     return _PromoSlide(
       eyebrow: 'FIND A PERSON',
-      title: 'Need a person at the table?',
+      title: 'Need help finding a tutor?',
       description: _isParent
           ? 'Find a tutor, or request one. Live online, or onsite.'
           : 'Find a tutor, or request one. Live online, or onsite.',

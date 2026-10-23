@@ -5,27 +5,27 @@ import 'package:prepskul/core/config/window_env_stub.dart'
     if (dart.library.html) 'package:prepskul/core/config/window_env_web.dart';
 
 /// Centralized App Configuration
-/// 
+///
 /// Switch between production and sandbox with ONE line:
-/// 
+///
 /// ```dart
 /// // In app_config.dart, change this:
 /// static const bool isProduction = false; // true for production, false for sandbox
 /// ```
-/// 
+///
 /// All services automatically use the correct environment based on this flag.
 class AppConfig {
   // ============================================
   // 🔄 CHANGE THIS ONE LINE TO SWITCH ENVIRONMENTS
   // ============================================
   /// Set to `true` for production, `false` for sandbox/development
-  /// 
+  ///
   /// IMPORTANT: For production deployment, set this to `true`
   /// This controls:
   /// - Fapshi API endpoints (live vs sandbox)
   /// - API credentials (production vs development)
   /// - All payment processing
-  /// 
+  ///
   /// ⚠️ Always verify environment variables are Rset correctly:
   /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
   /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAP.eSHI_SANDBOX_API_KEY
@@ -37,22 +37,24 @@ class AppConfig {
   // - enableGroupClasses: true in sandbox/dev; production uses GROUP_CLASSES_ENABLED env
   // - enableSkulMate: true in code; set false for launch if SkulMate is out of UAT scope
   // - Group classes: online-only when enabled; deferred for v1 marketplace launch
-  
+
   // ============================================
   // 🔐 Authentication Feature Flags
   // ============================================
-  
+
   /// Enable/disable Google Sign-In for user authentication
-  /// 
+  ///
   /// Set to `false` until Google Cloud Console verification is complete.
   /// This only affects user authentication, not Google Calendar OAuth.
-  static const bool enableGoogleSignIn = true; // Google Sign-In enabled (uses basic scopes only)
-  
+  static const bool enableGoogleSignIn =
+      true; // Google Sign-In enabled (uses basic scopes only)
+
   /// Enable/disable Phone Sign-In for user authentication
-  /// 
+  ///
   /// Set to `false` until phone verification is fully tested and ready.
   /// Phone login requires additional backend setup for SMS verification.
-  static const bool enablePhoneSignIn = false; // Email and Google are the supported sign-in methods.
+  static const bool enablePhoneSignIn =
+      true; // Existing phone/password accounts remain supported.
 
   /// Enable/disable Phone OTP verification flows.
   ///
@@ -64,7 +66,7 @@ class AppConfig {
   ///
   /// Must stay `true` while Supabase requires email confirmation on sign-up.
   static const bool enableEmailVerification = true;
-  
+
   /// Enable/disable SkulMate (revision games / decks) — marketplace feature.
   ///
   /// Not the same as Primar (kids foundational). See docs/STRUCTURE.md.
@@ -92,27 +94,28 @@ class AppConfig {
   // ============================================
   // Session Configuration
   // ============================================
-  
+
   /// Session duration in minutes
-  /// 
+  ///
   /// Default duration for all video sessions EXCEPT 30-minute trial sessions.
   /// - 30-minute trial sessions always use 30 minutes (constant, handled separately)
   /// - 1-hour trial sessions and all regular sessions use this value
-  /// 
+  ///
   /// Change this value to adjust session length across the entire app.
   /// Example: Set to 60 for 1-hour sessions, 20 for testing, etc.
-  static const int sessionDurationMinutes = 60; // ← Total time for regular sessions
-  
+  static const int sessionDurationMinutes =
+      60; // ← Total time for regular sessions
+
   // ============================================
   // Environment Detection
   // ============================================
-  
+
   /// Get environment from .env file or use isProduction flag
   /// Code-level flag takes precedence over env var
   static bool get _envIsProduction {
     // Code-level flag takes precedence
     if (isProduction) return true;
-    
+
     // Then check env var as override
     try {
       final envValue = dotenv.env['ENVIRONMENT']?.toLowerCase();
@@ -121,20 +124,20 @@ class AppConfig {
     } catch (_) {
       // dotenv not loaded
     }
-    
+
     return false; // Default to sandbox if nothing set
   }
-  
+
   /// Current environment (production or sandbox)
   static bool get isProd => _envIsProduction;
-  
+
   /// Current environment name
   static String get environment => isProd ? 'production' : 'sandbox';
-  
+
   // ============================================
   // API URLs
   // ============================================
-  
+
   /// Base API URL
   static String get apiBaseUrl {
     if (isProd) {
@@ -153,7 +156,7 @@ class AppConfig {
       'psk_mobile_ingest_2026_04_20_f7a1c9e4b2d64a7f9e3c1b5d8a4f2c6',
     );
   }
-  
+
   /// Get effective API base URL.
   ///
   /// IMPORTANT:
@@ -169,9 +172,9 @@ class AppConfig {
       }
       return prodUrl;
     }
-    
+
     String url = apiBaseUrl;
-    
+
     // Check if we're running on a production domain (web platform only)
     if (kIsWeb) {
       try {
@@ -186,11 +189,12 @@ class AppConfig {
             return '';
           }
         })();
-        
+
         if (hostname.isNotEmpty) {
-          final isProductionDomain = hostname.contains('prepskul.com') ||
-                                     hostname.contains('app.prepskul.com') ||
-                                     hostname.contains('www.prepskul.com');
+          final isProductionDomain =
+              hostname.contains('prepskul.com') ||
+              hostname.contains('app.prepskul.com') ||
+              hostname.contains('www.prepskul.com');
 
           // If on production domain, always use production API
           if (isProductionDomain) {
@@ -208,11 +212,12 @@ class AppConfig {
         }
       }
     }
-    
+
     // In dev, allow explicit localhost / emulator API from .env on ALL platforms.
     if (!isProd) {
       final envApiUrl = _safeEnv('API_BASE_URL_DEV', '');
-      final looksLocal = envApiUrl.contains('localhost') ||
+      final looksLocal =
+          envApiUrl.contains('localhost') ||
           envApiUrl.contains('127.0.0.1') ||
           envApiUrl.contains('10.0.2.2');
       if (envApiUrl.isNotEmpty && looksLocal) {
@@ -240,6 +245,20 @@ class AppConfig {
   ///
   /// Override with env **`SKULMATE_HTTP_API_BASE`** (e.g. `http://localhost:3000/api`) for local Next.
   static String get skulMateHttpApiBase {
+    const override = String.fromEnvironment('SKULMATE_HTTP_API_BASE');
+    if (override.isNotEmpty) return override.replaceFirst(RegExp(r'/$'), '');
+    // Local previews use the browser's explicit API override before bundled
+    // production configuration. Hosted clients retain their normal config.
+    if (kIsWeb && ['localhost', '127.0.0.1'].contains(Uri.base.host)) {
+      final local = WindowEnvHelper.getEnv('SKULMATE_HTTP_API_BASE');
+      if (local != null && Uri.tryParse(local)?.host == 'localhost') {
+        return local;
+      }
+      return const String.fromEnvironment(
+        'SKULMATE_LOCAL_API_BASE',
+        defaultValue: 'http://localhost:3000/api',
+      );
+    }
     try {
       final o = _safeEnv('SKULMATE_HTTP_API_BASE', '').trim();
       if (o.isNotEmpty) {
@@ -263,7 +282,7 @@ class AppConfig {
     } catch (_) {}
     return base.replaceAll('://app.prepskul.com', '://www.prepskul.com');
   }
-  
+
   /// App Base URL
   static String get appBaseUrl {
     if (isProd) {
@@ -272,7 +291,7 @@ class AppConfig {
       return _safeEnv('APP_BASE_URL_DEV', 'https://app.prepskul.com');
     }
   }
-  
+
   /// Web Base URL
   static String get webBaseUrl {
     if (isProd) {
@@ -288,29 +307,19 @@ class AppConfig {
   // ============================================
   // Fapshi Payment Configuration
   // ============================================
-  
+
   /// Fapshi environment (sandbox or live)
   static String get fapshiEnvironment => isProd ? 'live' : 'sandbox';
-  
+
   /// Fapshi Base URL
   static String get fapshiBaseUrl {
-    return isProd
-        ? 'https://live.fapshi.com'
-        : 'https://sandbox.fapshi.com';
+    return isProd ? 'https://live.fapshi.com' : 'https://sandbox.fapshi.com';
   }
-  
 
-  
-
-  
-
-  
-
-  
   // ============================================
   // Supabase Configuration
   // ============================================
-  
+
   /// Supabase URL
   static String get supabaseUrl {
     if (isProd) {
@@ -319,7 +328,7 @@ class AppConfig {
       return _safeEnv('SUPABASE_URL_DEV', '');
     }
   }
-  
+
   /// Supabase Anon Key
   static String get supabaseAnonKey {
     if (isProd) {
@@ -328,24 +337,20 @@ class AppConfig {
       return _safeEnv('SUPABASE_ANON_KEY_DEV', '');
     }
   }
-  
 
-  
   // ============================================
   // Firebase Configuration
   // ============================================
-  
+
   /// Firebase Project ID
   static String get firebaseProjectId {
     return _safeEnv('FIREBASE_PROJECT_ID', '');
   }
-  
 
-  
   // ============================================
   // Google Calendar Configuration
   // ============================================
-  
+
   /// Google Calendar OAuth Client ID
   static String get googleCalendarClientId {
     if (isProd) {
@@ -354,22 +359,26 @@ class AppConfig {
       return _safeEnv('GOOGLE_CALENDAR_CLIENT_ID_DEV', '');
     }
   }
-  
 
-  
   /// Google OAuth Redirect URI
   static String get googleOAuthRedirectUri {
     if (isProd) {
-      return _safeEnv('GOOGLE_OAUTH_REDIRECT_URI_PROD', 'https://app.prepskul.com/auth/google/callback');
+      return _safeEnv(
+        'GOOGLE_OAUTH_REDIRECT_URI_PROD',
+        'https://app.prepskul.com/auth/google/callback',
+      );
     } else {
-      return _safeEnv('GOOGLE_OAUTH_REDIRECT_URI_DEV', 'https://app.prepskul.com/auth/google/callback');
+      return _safeEnv(
+        'GOOGLE_OAUTH_REDIRECT_URI_DEV',
+        'https://app.prepskul.com/auth/google/callback',
+      );
     }
   }
-  
+
   // ============================================
   // Fathom AI Configuration
   // ============================================
-  
+
   /// Fathom OAuth Client ID
   static String get fathomClientId {
     if (isProd) {
@@ -378,64 +387,67 @@ class AppConfig {
       return _safeEnv('FATHOM_CLIENT_ID_DEV', '');
     }
   }
-  
 
-  
   /// Fathom Redirect URI
   static String get fathomRedirectUri {
     if (isProd) {
-      return _safeEnv('FATHOM_REDIRECT_URI_PROD', 'https://app.prepskul.com/auth/fathom/callback');
+      return _safeEnv(
+        'FATHOM_REDIRECT_URI_PROD',
+        'https://app.prepskul.com/auth/fathom/callback',
+      );
     } else {
-      return _safeEnv('FATHOM_REDIRECT_URI_DEV', 'https://app.prepskul.com/auth/fathom/callback');
+      return _safeEnv(
+        'FATHOM_REDIRECT_URI_DEV',
+        'https://app.prepskul.com/auth/fathom/callback',
+      );
     }
   }
-  
 
-  
   // ============================================
   // Email Service (Resend)
   // ============================================
-  
 
-  
   /// Resend From Email
   static String get resendFromEmail {
-    return _safeEnv('RESEND_FROM_EMAIL', 'PrepSkul <noreply@mail.prepskul.com>');
+    return _safeEnv(
+      'RESEND_FROM_EMAIL',
+      'PrepSkul <noreply@mail.prepskul.com>',
+    );
   }
-  
+
   /// Resend Reply To Email
   static String get resendReplyTo {
     return _safeEnv('RESEND_REPLY_TO', 'info@prepskul.com');
   }
-  
+
   // ============================================
   // PrepSkul VA Email (for Fathom)
   // ============================================
-  
+
   /// PrepSkul VA Email (added to calendar events for Fathom auto-join)
   static String get prepskulVAEmail {
     return _safeEnv('PREPSKUL_VA_EMAIL', 'prepskul-va@prepskul.com');
   }
-  
+
   // ============================================
   // Feature Flags
   // ============================================
-  
+
   /// Enable Fapshi Payments
   static bool get enableFapshiPayments {
     return _safeEnvBool('ENABLE_FAPSHI_PAYMENTS', true);
   }
-  
+
   /// Enable Fathom Recording
   static bool get enableFathomRecording {
     return _safeEnvBool('ENABLE_FATHOM_RECORDING', true);
   }
-  
+
   /// Enable Google Calendar
   static bool get enableGoogleCalendar {
     return _safeEnvBool('ENABLE_GOOGLE_CALENDAR', true);
   }
-  
+
   /// Enable Email Notifications
   static bool get enableEmailNotifications {
     return _safeEnvBool('ENABLE_EMAIL_NOTIFICATIONS', true);
@@ -469,9 +481,10 @@ class AppConfig {
   /// - `music`: music standard + game streaming scenario.
   /// - `ab`: deterministic A/B per session (speech vs balanced).
   static String get classroomAudioProfileMode {
-    final raw = _safeEnv('CLASSROOM_AUDIO_PROFILE_MODE', 'speech')
-        .trim()
-        .toLowerCase();
+    final raw = _safeEnv(
+      'CLASSROOM_AUDIO_PROFILE_MODE',
+      'speech',
+    ).trim().toLowerCase();
     switch (raw) {
       case 'speech':
       case 'balanced':
@@ -536,11 +549,11 @@ class AppConfig {
     if (isProd) return false;
     return _safeEnvBool('QA_SESSION_JOIN_BYPASS_ENABLED', false);
   }
-  
+
   // ============================================
   // Helper Methods
   // ============================================
-  
+
   /// Safely read environment variable with fallback.
   /// On web, checks window.env (injected at build time) when dotenv is empty.
   static String _safeEnv(String key, String fallback) {
@@ -561,7 +574,7 @@ class AppConfig {
       return fallback;
     }
   }
-  
+
   /// Safely read boolean environment variable
   static bool _safeEnvBool(String key, bool fallback) {
     try {
@@ -572,11 +585,11 @@ class AppConfig {
       return fallback;
     }
   }
-  
+
   // ============================================
   // Debug Info
   // ============================================
-  
+
   /// Print current configuration (for debugging)
   static void printConfig() {
     if (kDebugMode) {
@@ -588,24 +601,14 @@ class AppConfig {
       print('Fapshi Environment: $fapshiEnvironment');
       print('Fapshi Base URL: $fapshiBaseUrl');
       print('Supabase URL: ${supabaseUrl.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
-      print('Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
-      print('Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}');
+      print(
+        'Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}',
+      );
+      print(
+        'Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}',
+      );
       print('Fathom: ${enableFathomRecording ? "✅ Enabled" : "❌ Disabled"}');
       print('═══════════════════════════════════════');
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

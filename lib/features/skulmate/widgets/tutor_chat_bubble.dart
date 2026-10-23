@@ -27,15 +27,25 @@ class TutorChatBubble extends StatelessWidget {
       isUser: isUser,
       maxWidthFactor: maxWidthFactor,
       flatMateResponse: flatMateResponse,
-      child: Text(
-        text,
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 14,
-          height: 1.45,
-          color: isUser ? AppTheme.primaryColor : AppTheme.textDark,
-        ),
+      child: Text.rich(
+        TextSpan(children: _emphasis(text)),
+        style: GoogleFonts.nunito(fontSize: 16, height: 1.5,
+          color: isUser ? AppTheme.primaryColor : AppTheme.textDark),
       ),
     );
+  }
+
+  static List<InlineSpan> _emphasis(String text) {
+    final spans = <InlineSpan>[];
+    final matches = RegExp(r'\*\*(.+?)\*\*').allMatches(text);
+    var offset = 0;
+    for (final match in matches) {
+      spans.add(TextSpan(text: text.substring(offset, match.start)));
+      spans.add(TextSpan(text: match.group(1), style: const TextStyle(fontWeight: FontWeight.w800)));
+      offset = match.end;
+    }
+    spans.add(TextSpan(text: text.substring(offset)));
+    return spans;
   }
 
   @override

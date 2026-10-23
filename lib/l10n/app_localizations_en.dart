@@ -21,7 +21,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onboardingLearnSubtitle => 'No mic button. Interrupt anytime. Type if the phone is shared.';
 
   @override
-  String get onboardingAchieveTitle => 'Need a person at the table?';
+  String get onboardingAchieveTitle => 'Need help finding a tutor?';
 
   @override
   String get onboardingAchieveSubtitle => 'Find a tutor, or request one. Live online, or onsite.';

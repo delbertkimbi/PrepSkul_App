@@ -154,6 +154,13 @@ class SkulMateTutorVoiceService {
       if (_stt.isListening && _alwaysOn && !privacyMute) {
         state.value = TutorVoiceState.recording;
       } else if (!_stt.isListening) {
+        // Browser recognition starts asynchronously after listen() returns.
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        if (!_alwaysOn || privacyMute) return;
+        if (_stt.isListening) {
+          state.value = TutorVoiceState.recording;
+          return;
+        }
         lastError ??= 'speech_not_started';
         privacyMute = true;
         _alwaysOn = false;

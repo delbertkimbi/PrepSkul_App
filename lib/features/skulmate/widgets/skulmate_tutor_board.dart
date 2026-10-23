@@ -16,9 +16,9 @@ class SkulMateTutorBoard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F1E3),
+        color: AppTheme.skyBlueLight,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE4D7C0)),
+        border: Border.all(color: AppTheme.skyBlue.withValues(alpha: .18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -28,7 +28,7 @@ class SkulMateTutorBoard extends StatelessWidget {
             style: GoogleFonts.plusJakartaSans(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: AppTheme.accentPurple,
+              color: AppTheme.primaryColor,
               letterSpacing: 0.2,
             ),
           ),
@@ -92,7 +92,11 @@ class _StepLine extends StatelessWidget {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.architecture_rounded, size: 18, color: AppTheme.primaryColor),
+          Icon(
+            Icons.architecture_rounded,
+            size: 18,
+            color: AppTheme.primaryColor,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

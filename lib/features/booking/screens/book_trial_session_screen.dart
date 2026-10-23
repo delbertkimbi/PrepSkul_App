@@ -9,7 +9,8 @@ import 'package:prepskul/core/services/parent_learners_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
-import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
+import 'package:prepskul/features/booking/services/trial_session_service.dart'
+    hide LogService;
 import 'package:prepskul/features/booking/services/abandoned_booking_service.dart';
 import 'package:prepskul/features/booking/services/availability_service.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
@@ -28,14 +29,15 @@ class BookTrialSessionScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
   final String? rescheduleSessionId; // ID of the session being rescheduled
   final bool isReschedule; // Flag to indicate this is a reschedule request
-  final String? rescheduleReason; // Reason for rescheduling (for date change requests)
+  final String?
+  rescheduleReason; // Reason for rescheduling (for date change requests)
   final DateTime? preselectedDate;
   final String? preselectedTime;
   final bool skipScheduleStep;
   final int? lockTrialDurationMinutes;
 
   const BookTrialSessionScreen({
-    Key? key, 
+    Key? key,
     required this.tutor,
     this.rescheduleSessionId,
     this.isReschedule = false,
@@ -65,17 +67,12 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   List<Widget> get _stepPages {
     if (_isParent) {
-      final pages = <Widget>[
-        _buildWhoIsThisFor(),
-        _buildSubjectAndDuration(),
-      ];
+      final pages = <Widget>[_buildWhoIsThisFor(), _buildSubjectAndDuration()];
       if (!widget.skipScheduleStep) pages.add(_buildDateAndTime());
       pages.add(_buildGoalsAndReview());
       return pages;
     }
-    final pages = <Widget>[
-      _buildSubjectAndDuration(),
-    ];
+    final pages = <Widget>[_buildSubjectAndDuration()];
     if (!widget.skipScheduleStep) pages.add(_buildDateAndTime());
     pages.add(_buildGoalsAndReview());
     return pages;
@@ -105,18 +102,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   final TextEditingController _challengesController = TextEditingController();
 
   // Available time slots (will be loaded from tutor's schedule)
-  List<String> _availableTimeSlots = [
-    '09:00',
-    '10:00',
-    '11:00',
-    '14:00',
-    '15:00',
-    '16:00',
-    '17:00',
-    '18:00',
-    '19:00',
-    '20:00',
-  ];
+  List<String> _availableTimeSlots = [];
+  int _scheduleRequest = 0;
+  bool _scheduleFailed = false;
 
   // Blocked time slots for the selected date (from tutor's existing sessions)
   List<String> _blockedTimeSlots = [];
@@ -127,20 +115,23 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   double _basePrice = 3500.0; // Base price without discount
   bool _isLoadingPrice = false;
   bool _discountApplied = false; // Track if user clicked "Get Discount"
-  Map<int, Map<String, dynamic>> _pricingDetails = {}; // Stores pricing details for each duration
+  Map<int, Map<String, dynamic>> _pricingDetails =
+      {}; // Stores pricing details for each duration
 
   // Location data (prefilled from survey)
   String _selectedLocation = 'online'; // Default to online
   String? _onsiteAddress;
   String? _locationDescription;
-  
+
   // Confetti controller for celebrations
   late ConfettiController _confettiController;
 
   @override
   void initState() {
     super.initState();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 3),
+    );
     if (widget.lockTrialDurationMinutes != null) {
       _selectedDuration = widget.lockTrialDurationMinutes!;
     }
@@ -183,13 +174,15 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       LogService.warning('Could not load parent context: $e');
     }
   }
-  
+
   /// Load original session data when rescheduling
   Future<void> _loadOriginalSessionData() async {
     try {
       if (widget.rescheduleSessionId == null) return;
-      
-      final session = await TrialSessionService.getTrialSessionById(widget.rescheduleSessionId!);
+
+      final session = await TrialSessionService.getTrialSessionById(
+        widget.rescheduleSessionId!,
+      );
       if (session != null && mounted) {
         safeSetState(() {
           // Pre-fill form with original session data
@@ -220,14 +213,14 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   Future<void> _loadTrialPricing() async {
     try {
       safeSetState(() => _isLoadingPrice = true);
-      
+
       // Load detailed pricing for all durations first
       final details = await PricingService.getTrialSessionPricingWithDetails();
-      
+
       // Get price for currently selected duration
       final currentPricing = details[_selectedDuration];
-      final basePrice = currentPricing != null 
-          ? (currentPricing['basePrice'] as double) 
+      final basePrice = currentPricing != null
+          ? (currentPricing['basePrice'] as double)
           : (_selectedDuration == 30 ? 2000.0 : 3500.0);
       // Start with base price (discount will be applied later if user clicks button)
       final initialPrice = basePrice;
@@ -252,80 +245,44 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   /// Load tutor's schedule and blocked time slots
   Future<void> _loadTutorSchedule() async {
+    final request = ++_scheduleRequest;
+    final date = _selectedDate;
+    final previousTime = _selectedTime;
+    safeSetState(() {
+      _isLoadingSchedule = true;
+      _scheduleFailed = false;
+      _availableTimeSlots = [];
+      _selectedTime = null;
+      _conflictMessage = null;
+    });
     try {
-      safeSetState(() => _isLoadingSchedule = true);
-      
-      // Enhanced tutor ID extraction with logging
-      final tutorUserId = widget.tutor['user_id'] as String?;
-      final tutorId = widget.tutor['id'] as String?;
-      final finalTutorId = tutorUserId ?? tutorId;
-      
-      LogService.info('📋 [BOOK_TRIAL] Loading schedule for tutor');
-      LogService.info('📋 [BOOK_TRIAL] Tutor data keys: ${widget.tutor.keys.toList()}');
-      LogService.info('📋 [BOOK_TRIAL] user_id: $tutorUserId');
-      LogService.info('📋 [BOOK_TRIAL] id: $tutorId');
-      LogService.info('📋 [BOOK_TRIAL] Final tutor ID: $finalTutorId');
-      LogService.info('📋 [BOOK_TRIAL] Tutor name: ${widget.tutor['full_name'] ?? widget.tutor['profiles']?['full_name'] ?? 'Unknown'}');
-      
-      if (finalTutorId == null) {
-        LogService.error('❌ [BOOK_TRIAL] No tutor ID found in tutor data');
-        LogService.error('❌ [BOOK_TRIAL] Tutor data: ${widget.tutor}');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: Tutor ID not found. Please try again.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-
-      // Get the day name for the selected date
-      final dayName = DateFormat('EEEE').format(_selectedDate);
-
-      // Get available times for this day (filters out blocked slots)
-      // finalTutorId is guaranteed to be non-null here due to the check above
-      final availableTimes = await AvailabilityService.getAvailableTimesForDay(
-        tutorId: finalTutorId!,
-        day: dayName,
-        date: _selectedDate, // Pass specific date for precise checking
-      );
-
-      // Convert available times to 24-hour format for display
-      final availableSlots24h = availableTimes.map((time) {
-        // Normalize time format
-        try {
-          // ... (existing normalization logic)
-          return time; // Or better normalization
-        } catch (e) {
-          return time;
-        }
-      }).toList();
-
-      // Build conflict message if there are blocked slots
-      String? conflictMsg;
-      // Note: With precise checking, getAvailableTimesForDay already filters blocked slots.
-      // If we want to show specific conflicts, we'd need to call getBlockedTimesForDate separately.
-      // For now, we just show available slots.
-      
-      if (availableTimes.isEmpty) {
-        conflictMsg = 'No available slots for this date.';
-      }
-
-      if (mounted) {
-        safeSetState(() {
-          _conflictMessage = conflictMsg;
-          _availableTimeSlots = availableTimes.isNotEmpty ? availableTimes : [];
-          _isLoadingSchedule = false;
-        });
-      }
+      final tutorId =
+          widget.tutor['user_id'] as String? ?? widget.tutor['id'] as String?;
+      if (tutorId == null) throw StateError('Tutor ID missing');
+      final times = await AvailabilityService.getAvailableTimesForDay(
+        tutorId: tutorId,
+        day: DateFormat('EEEE', 'en').format(date),
+        date: date,
+        durationMinutes: _selectedDuration,
+      ).timeout(const Duration(seconds: 12));
+      if (!mounted || request != _scheduleRequest) return;
+      safeSetState(() {
+        _availableTimeSlots = times;
+        _selectedTime = times.contains(previousTime) ? previousTime : null;
+        _conflictMessage = times.isEmpty
+            ? 'No published times are available on this date. Choose another date or message your tutor.'
+            : null;
+        _isLoadingSchedule = false;
+      });
     } catch (e) {
       LogService.warning('Error loading tutor schedule: $e');
-      if (mounted) {
-        safeSetState(() => _isLoadingSchedule = false);
-      }
-      // Keep default slots on error
+      if (!mounted || request != _scheduleRequest) return;
+      safeSetState(() {
+        _scheduleFailed = true;
+        _isLoadingSchedule = false;
+        _conflictMessage =
+            'We could not check availability. Retry before choosing a time.';
+      });
     }
   }
 
@@ -362,7 +319,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             final streetStr = street != null ? ', ${street.toString()}' : '';
             _onsiteAddress =
                 '${city.toString()}, ${quarter.toString()}$streetStr';
-            LogService.success('Pre-filled trial session address: $_onsiteAddress');
+            LogService.success(
+              'Pre-filled trial session address: $_onsiteAddress',
+            );
           }
 
           // Pre-fill location description if available
@@ -378,10 +337,11 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         });
       }
     } catch (e) {
-      LogService.warning('Could not load survey data for trial session prefill: $e');
+      LogService.warning(
+        'Could not load survey data for trial session prefill: $e',
+      );
     }
   }
-
 
   Future<void> _trackReviewScreenReached() async {
     try {
@@ -397,8 +357,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       // Prepare booking data for tracking
       final bookingData = {
         'tutor_id': finalTutorId,
-        'tutor_name': widget.tutor['full_name'] ?? widget.tutor['name'] ?? 'Tutor',
-        'tutor_avatar_url': widget.tutor['avatar_url'] ?? widget.tutor['profile_photo_url'],
+        'tutor_name':
+            widget.tutor['full_name'] ?? widget.tutor['name'] ?? 'Tutor',
+        'tutor_avatar_url':
+            widget.tutor['avatar_url'] ?? widget.tutor['profile_photo_url'],
         'subject': _selectedSubject,
         'scheduled_date': _selectedDate.toIso8601String(),
         'scheduled_time': _selectedTime,
@@ -408,7 +370,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         'location_description': _locationDescription,
         'trial_fee': _trialFee,
         'is_reschedule': widget.isReschedule,
-        if (widget.rescheduleSessionId != null) 'reschedule_session_id': widget.rescheduleSessionId,
+        if (widget.rescheduleSessionId != null)
+          'reschedule_session_id': widget.rescheduleSessionId,
       };
 
       await AbandonedBookingService.trackReviewScreenReached(
@@ -427,12 +390,12 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     if (_currentStep < _totalSteps - 1) {
       final nextStep = _currentStep + 1;
       safeSetState(() => _currentStep = nextStep);
-      
+
       // Track when user reaches review screen (last step)
       if (nextStep == _totalSteps - 1) {
         _trackReviewScreenReached();
       }
-      
+
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -460,9 +423,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         return _selectedSubject != null;
       case 1:
         if (_isParent) return _selectedSubject != null;
-        return _selectedTime != null;
+        return !_isLoadingSchedule &&
+            !_scheduleFailed &&
+            _selectedTime != null &&
+            _availableTimeSlots.contains(_selectedTime);
       case 2:
-        if (_isParent) return _selectedTime != null;
+        if (_isParent)
+          return !_isLoadingSchedule &&
+              !_scheduleFailed &&
+              _selectedTime != null &&
+              _availableTimeSlots.contains(_selectedTime);
         return _goalController.text.trim().isNotEmpty;
       case 3:
         return _goalController.text.trim().isNotEmpty;
@@ -472,6 +442,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   }
 
   Future<void> _submitTrialRequest() async {
+    if (_isLoadingSchedule ||
+        _scheduleFailed ||
+        !_availableTimeSlots.contains(_selectedTime)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Choose an available time before continuing.'),
+        ),
+      );
+      return;
+    }
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -509,11 +489,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       // This applies to all cases: pending, expired, cancelled, approved unpaid, AND paid sessions that have passed
       if (widget.isReschedule && widget.rescheduleSessionId != null) {
         try {
-          final existingSession = await TrialSessionService.getTrialSessionById(widget.rescheduleSessionId!);
+          final existingSession = await TrialSessionService.getTrialSessionById(
+            widget.rescheduleSessionId!,
+          );
           final paymentStatus = existingSession.paymentStatus.toLowerCase();
-          final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
-          final isTimePassed = SessionDateUtils.isSessionExpired(existingSession);
-          
+          final isPaid =
+              paymentStatus == 'paid' || paymentStatus == 'completed';
+          final isTimePassed = SessionDateUtils.isSessionExpired(
+            existingSession,
+          );
+
           // Determine modification reason based on session state
           String? modificationReason;
           if (existingSession.status == 'pending') {
@@ -524,9 +509,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             // Paid but not yet passed - this shouldn't happen, but handle it
             modificationReason = 'Request to reschedule a paid session';
           } else {
-            modificationReason = 'Request to reschedule a missed/expired session';
+            modificationReason =
+                'Request to reschedule a missed/expired session';
           }
-          
+
           // ALWAYS modify the existing session - never create a new one
           await TrialSessionService.modifyTrialSession(
             sessionId: widget.rescheduleSessionId!,
@@ -536,16 +522,22 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             location: _selectedLocation,
             address: _onsiteAddress,
             locationDescription: _locationDescription,
-            trialGoal: _goalController.text.trim().isNotEmpty ? _goalController.text.trim() : null,
-            learnerChallenges: _challengesController.text.trim().isNotEmpty ? _challengesController.text.trim() : null,
+            trialGoal: _goalController.text.trim().isNotEmpty
+                ? _goalController.text.trim()
+                : null,
+            learnerChallenges: _challengesController.text.trim().isNotEmpty
+                ? _challengesController.text.trim()
+                : null,
             modificationReason: modificationReason,
           );
-          
+
           if (!mounted) return;
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Trial session updated successfully. Waiting for tutor approval.'),
+              content: Text(
+                'Trial session updated successfully. Waiting for tutor approval.',
+              ),
               backgroundColor: Colors.green,
             ),
           );
@@ -558,29 +550,33 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to update session: ${e.toString().replaceFirst('Exception: ', '')}'),
+              content: Text(
+                'Failed to update session: ${e.toString().replaceFirst('Exception: ', '')}',
+              ),
               backgroundColor: Colors.red,
             ),
           );
           return;
         }
       }
-      
+
       // Use the trial goal as-is (don't append reschedule notes to user-facing fields)
       // Reschedule information is handled separately via rescheduleSessionId parameter
-      final trialGoal = _goalController.text.trim().isNotEmpty 
-          ? _goalController.text.trim() 
+      final trialGoal = _goalController.text.trim().isNotEmpty
+          ? _goalController.text.trim()
           : null;
-      
+
       // Enhanced tutor ID extraction with validation
       final tutorUserId = widget.tutor['user_id'] as String?;
       final tutorId = widget.tutor['id'] as String?;
       final finalTutorId = tutorUserId ?? tutorId;
-      
+
       if (finalTutorId == null) {
-        throw Exception('Tutor ID is required but not found in tutor data. Please try again.');
+        throw Exception(
+          'Tutor ID is required but not found in tutor data. Please try again.',
+        );
       }
-      
+
       LogService.info('📋 [BOOK_TRIAL] Creating trial request');
       LogService.info('📋 [BOOK_TRIAL] Tutor ID: $finalTutorId');
       LogService.info('📋 [BOOK_TRIAL] Subject: $_selectedSubject');
@@ -592,16 +588,20 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       // If multiple children selected, store their names in learnerLabels array.
       List<String>? learnerNames;
       String? singleLearnerName;
-      
+
       if (_isParent && !_bookForMeOnly && _selectedLearnerIds.isNotEmpty) {
-        final selectedLearners = _parentLearners.where((l) => _selectedLearnerIds.contains(l['id']?.toString())).toList();
+        final selectedLearners = _parentLearners
+            .where((l) => _selectedLearnerIds.contains(l['id']?.toString()))
+            .toList();
         if (selectedLearners.length > 1) {
-          learnerNames = selectedLearners.map((l) => l['name']?.toString() ?? 'Learner').toList();
+          learnerNames = selectedLearners
+              .map((l) => l['name']?.toString() ?? 'Learner')
+              .toList();
         } else if (selectedLearners.length == 1) {
           singleLearnerName = selectedLearners.first['name']?.toString();
         }
       }
-      
+
       await TrialSessionService.createTrialRequest(
         tutorId: finalTutorId,
         subject: _selectedSubject!,
@@ -612,10 +612,14 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         address: _onsiteAddress,
         locationDescription: _locationDescription,
         trialGoal: trialGoal,
-        learnerChallenges: _challengesController.text.trim().isNotEmpty ? _challengesController.text.trim() : null,
-        overrideTrialFee: _trialFee, // Same price regardless of number of learners
+        learnerChallenges: _challengesController.text.trim().isNotEmpty
+            ? _challengesController.text.trim()
+            : null,
+        overrideTrialFee:
+            _trialFee, // Same price regardless of number of learners
         rescheduleSessionId: widget.rescheduleSessionId,
-        learnerLabel: singleLearnerName, // Single learner name (if one selected)
+        learnerLabel:
+            singleLearnerName, // Single learner name (if one selected)
         learnerLabels: learnerNames, // Multiple learner names (if 2+ selected)
       );
 
@@ -658,10 +662,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         _trialFee = finalPrice;
         _discountApplied = true;
       });
-      
+
       // Trigger confetti celebration
       _confettiController.play();
-      
+
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -672,9 +676,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               Expanded(
                 child: Text(
                   'Discount applied! You saved ${PricingService.formatPrice(_basePrice - finalPrice)}',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -691,7 +693,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     if (hadDiscount) {
       _confettiController.play();
     }
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -713,43 +715,45 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               ),
             ),
           AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                    color: hadDiscount 
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: hadDiscount
                         ? Colors.green.withOpacity(0.1)
                         : Colors.green.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
                     hadDiscount ? Icons.celebration : Icons.check_circle,
-                size: 58,
+                    size: 58,
                     color: hadDiscount ? Colors.orange[600] : Colors.green[600],
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text(
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
                   hadDiscount ? '🎉 Discount Applied!' : 'Trial Request Sent!',
-              style: GoogleFonts.poppins(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Colors.black,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Your trial session request has been sent to ${widget.tutor['full_name']}!',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: Colors.grey[700],
-                height: 1.5,
-              ),
-            ),
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Your trial session request has been sent to ${widget.tutor['full_name']}!',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.grey[700],
+                    height: 1.5,
+                  ),
+                ),
                 // Show discounted price if discount was applied
                 if (hadDiscount) ...[
                   const SizedBox(height: 14),
@@ -822,41 +826,41 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     ),
                   ),
                 ],
-            const SizedBox(height: 22),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
                       _confettiController.stop();
-                  Navigator.pop(context);
-                  Navigator.pop(context);
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/student-nav',
-                    (route) => false,
-                    arguments: NavTabArgs.studentRequests(),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        '/student-nav',
+                        (route) => false,
+                        arguments: NavTabArgs.studentRequests(),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      'View My Requests',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
-                child: Text(
-                  'View My Requests',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
+              ],
             ),
-          ],
-        ),
           ),
         ],
       ),
@@ -867,32 +871,32 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     // Determine title and message based on error
     String title = 'Request Failed';
     String message;
-    
+
     if (errorMessage != null && errorMessage.isNotEmpty) {
       // Use the actual error message from the service
       message = errorMessage;
-      
+
       // Update title based on error type for better UX
       final errorLower = errorMessage.toLowerCase();
-      if (errorLower.contains('already have') || 
+      if (errorLower.contains('already have') ||
           errorLower.contains('already exists') ||
           errorLower.contains('pending trial') ||
           errorLower.contains('approved trial') ||
           errorLower.contains('scheduled trial')) {
         title = 'Cannot Book Trial Session';
-      } else if (errorLower.contains('not authenticated') || 
-                 errorLower.contains('authentication')) {
+      } else if (errorLower.contains('not authenticated') ||
+          errorLower.contains('authentication')) {
         title = 'Authentication Required';
-      } else if (errorLower.contains('network') || 
-                 errorLower.contains('connection') ||
-                 errorLower.contains('timeout')) {
+      } else if (errorLower.contains('network') ||
+          errorLower.contains('connection') ||
+          errorLower.contains('timeout')) {
         title = 'Connection Problem';
       }
     } else {
       // Fallback to generic message if no error message provided
       message = 'Unable to send your trial request. Please try again.';
     }
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -961,7 +965,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.isReschedule ? 'Reschedule Trial Session' : 'Book Trial Session',
+              widget.isReschedule
+                  ? 'Reschedule Trial Session'
+                  : 'Book Trial Session',
               style: onboardDisplay(size: 18),
             ),
             Text(
@@ -987,15 +993,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor.withOpacity(0.1),
                     border: Border(
-                      left: BorderSide(
-                        color: AppTheme.primaryColor,
-                        width: 4,
-                      ),
+                      left: BorderSide(color: AppTheme.primaryColor, width: 4),
                     ),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 24),
+                      Icon(
+                        Icons.info_outline,
+                        color: AppTheme.primaryColor,
+                        size: 24,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -1023,97 +1030,100 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     ],
                   ),
                 ),
-          // Progress indicator
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: (_currentStep + 1) / _totalSteps,
-                backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  AppTheme.primaryColor,
+              // Progress indicator
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
                 ),
-                minHeight: 6,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: (_currentStep + 1) / _totalSteps,
+                    backgroundColor: Colors.grey[200],
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppTheme.primaryColor,
+                    ),
+                    minHeight: 6,
+                  ),
+                ),
               ),
-            ),
-          ),
-          // Content
-          Expanded(
-            child: PageView(
-              controller: _pageController,
-              physics: const NeverScrollableScrollPhysics(),
-              children: _stepPages,
-            ),
-          ),
-          // Navigation buttons
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
+              // Content
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: _stepPages,
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                if (_currentStep > 0)
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _previousStep,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: AppTheme.primaryColor),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+              ),
+              // Navigation buttons
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -5),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    if (_currentStep > 0)
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _previousStep,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: AppTheme.primaryColor),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: Text(
+                            'Back',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
                         ),
                       ),
-                      child: Text(
-                        'Back',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryColor,
+                    if (_currentStep > 0) const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: _canProceed()
+                            ? (_currentStep == _totalSteps - 1
+                                  ? _submitTrialRequest
+                                  : _nextStep)
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          disabledBackgroundColor: Colors.grey[300],
+                        ),
+                        child: Text(
+                          _currentStep == _totalSteps - 1
+                              ? 'Send Request'
+                              : 'Continue',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                if (_currentStep > 0) const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    onPressed: _canProceed()
-                        ? (_currentStep == _totalSteps - 1
-                              ? _submitTrialRequest
-                              : _nextStep)
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      disabledBackgroundColor: Colors.grey[300],
-                    ),
-                    child: Text(
-                      _currentStep == _totalSteps - 1
-                          ? 'Send Request'
-                          : 'Continue',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+                  ],
                 ),
               ),
             ],
@@ -1148,7 +1158,11 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           const SizedBox(height: 24),
           Text(
             'Who is this for?',
-            style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black),
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -1168,7 +1182,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                 color: _bookForMeOnly ? AppTheme.primaryColor : Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: _bookForMeOnly ? AppTheme.primaryColor : Colors.grey[300]!,
+                  color: _bookForMeOnly
+                      ? AppTheme.primaryColor
+                      : Colors.grey[300]!,
                   width: _bookForMeOnly ? 2 : 1,
                 ),
               ),
@@ -1180,9 +1196,20 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: _bookForMeOnly ? Colors.white : Colors.grey[300],
-                      border: Border.all(color: _bookForMeOnly ? Colors.white : Colors.grey[400]!, width: 2),
+                      border: Border.all(
+                        color: _bookForMeOnly
+                            ? Colors.white
+                            : Colors.grey[400]!,
+                        width: 2,
+                      ),
                     ),
-                    child: _bookForMeOnly ? Icon(Icons.check, size: 14, color: AppTheme.primaryColor) : null,
+                    child: _bookForMeOnly
+                        ? Icon(
+                            Icons.check,
+                            size: 14,
+                            color: AppTheme.primaryColor,
+                          )
+                        : null,
                   ),
                   const SizedBox(width: 12),
                   Text(
@@ -1201,7 +1228,11 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             const SizedBox(height: 12),
             Text(
               'Or select one or more children',
-              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
             ),
             const SizedBox(height: 8),
             ..._parentLearners.map((learner) {
@@ -1225,12 +1256,19 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   }),
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
-                      color: selected ? AppTheme.primaryColor.withOpacity(0.15) : Colors.white,
+                      color: selected
+                          ? AppTheme.primaryColor.withOpacity(0.15)
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: selected ? AppTheme.primaryColor : Colors.grey[300]!,
+                        color: selected
+                            ? AppTheme.primaryColor
+                            : Colors.grey[300]!,
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -1241,13 +1279,19 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                           height: 22,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(5),
-                            color: selected ? AppTheme.primaryColor : Colors.grey[300],
+                            color: selected
+                                ? AppTheme.primaryColor
+                                : Colors.grey[300],
                             border: Border.all(
-                              color: selected ? AppTheme.primaryColor : Colors.grey[400]!,
+                              color: selected
+                                  ? AppTheme.primaryColor
+                                  : Colors.grey[400]!,
                               width: 2,
                             ),
                           ),
-                          child: selected ? Icon(Icons.check, size: 14, color: Colors.white) : null,
+                          child: selected
+                              ? Icon(Icons.check, size: 14, color: Colors.white)
+                              : null,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -1265,7 +1309,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                               if (level.isNotEmpty)
                                 Text(
                                   level,
-                                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
                                 ),
                             ],
                           ),
@@ -1282,7 +1329,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                 'Add children in Profile → My children to book for them.',
-                style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                ),
               ),
             ),
         ],
@@ -1297,7 +1347,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     // Reschedule path: if the tutor payload does not include subjects but the original
     // trial session had a subject selected, prefer that so we don't incorrectly claim
     // the tutor has no subjects.
-    if (subjects.isEmpty && _selectedSubject != null && _selectedSubject!.trim().isNotEmpty) {
+    if (subjects.isEmpty &&
+        _selectedSubject != null &&
+        _selectedSubject!.trim().isNotEmpty) {
       subjects = <String>[_selectedSubject!.trim()];
     }
 
@@ -1335,7 +1387,11 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.orange.shade700,
+                        size: 20,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
@@ -1355,14 +1411,17 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   children: subjects.map((subject) {
                     final isSelected = _selectedSubject == subject;
                     return GestureDetector(
-                      onTap: () => safeSetState(() => _selectedSubject = subject),
+                      onTap: () =>
+                          safeSetState(() => _selectedSubject = subject),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
                         ),
                         decoration: BoxDecoration(
-                          color: isSelected ? AppTheme.primaryColor : Colors.white,
+                          color: isSelected
+                              ? AppTheme.primaryColor
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isSelected
@@ -1403,9 +1462,13 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: _buildDurationOption(30, '30 min', '2,000 XAF')),
+                Expanded(
+                  child: _buildDurationOption(30, '30 min', '2,000 XAF'),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: _buildDurationOption(60, '1 hour', '3,500 XAF')),
+                Expanded(
+                  child: _buildDurationOption(60, '1 hour', '3,500 XAF'),
+                ),
               ],
             ),
           ] else ...[
@@ -1415,11 +1478,17 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.2),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.timer_outlined, color: AppTheme.primaryColor, size: 20),
+                  Icon(
+                    Icons.timer_outlined,
+                    color: AppTheme.primaryColor,
+                    size: 20,
+                  ),
                   const SizedBox(width: 10),
                   Text(
                     '${widget.lockTrialDurationMinutes} min trial session',
@@ -1483,9 +1552,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               },
               calendarFormat: CalendarFormat.month,
               pageJumpingEnabled: true,
-              availableCalendarFormats: const {
-                CalendarFormat.month: 'Month',
-              },
+              availableCalendarFormats: const {CalendarFormat.month: 'Month'},
               headerStyle: HeaderStyle(
                 formatButtonVisible: false,
                 titleCentered: true,
@@ -1565,7 +1632,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   children: _availableTimeSlots.map((time) {
                     final isSelected = _selectedTime == time;
                     final formattedTime = _formatTime(time);
-                    final isPastForSelectedDate = _isPastSlotForSelectedDate(time);
+                    final isPastForSelectedDate = _isPastSlotForSelectedDate(
+                      time,
+                    );
                     // Check if this time slot is blocked
                     final isBlocked = _blockedTimeSlots.any((blocked) {
                       // Convert blocked time to match format
@@ -1646,6 +1715,12 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                 ),
 
           // Show conflict message if tutor has other commitments
+          if (_scheduleFailed)
+            TextButton.icon(
+              onPressed: _loadTutorSchedule,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry availability'),
+            ),
           if (_conflictMessage != null && _conflictMessage!.isNotEmpty) ...[
             const SizedBox(height: 16),
             Container(
@@ -1827,55 +1902,65 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             child: Column(
               children: [
                 Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Trial Session Fee',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
-                ),
-                _isLoadingPrice
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Trial Session Fee',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
+                    ),
+                    _isLoadingPrice
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
                               // ALWAYS show original price (strikethrough) at top if discount is available
-                          if (_pricingDetails[_selectedDuration]?['hasDiscount'] == true)
-                            Text(
+                              if (_pricingDetails[_selectedDuration]?['hasDiscount'] ==
+                                  true)
+                                Text(
                                   PricingService.formatPrice(_basePrice),
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.grey[600],
-                                decoration: TextDecoration.lineThrough,
-                              ),
-                            ),
-                              if (_pricingDetails[_selectedDuration]?['hasDiscount'] == true)
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey[600],
+                                    decoration: TextDecoration.lineThrough,
+                                  ),
+                                ),
+                              if (_pricingDetails[_selectedDuration]?['hasDiscount'] ==
+                                  true)
                                 const SizedBox(height: 4),
                               // Show discounted price if discount available (even before clicking), otherwise show base price
-                          Text(
+                              Text(
                                 PricingService.formatPrice(
-                                  _pricingDetails[_selectedDuration]?['hasDiscount'] == true && !_discountApplied
-                                      ? (_pricingDetails[_selectedDuration]?['finalPrice'] as double? ?? _basePrice)
-                                      : _trialFee
+                                  _pricingDetails[_selectedDuration]?['hasDiscount'] ==
+                                              true &&
+                                          !_discountApplied
+                                      ? (_pricingDetails[_selectedDuration]?['finalPrice']
+                                                as double? ??
+                                            _basePrice)
+                                      : _trialFee,
                                 ),
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                                  color: _pricingDetails[_selectedDuration]?['hasDiscount'] == true
-                                      ? Colors.green[700]  // Always green if discount available
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color:
+                                      _pricingDetails[_selectedDuration]?['hasDiscount'] ==
+                                          true
+                                      ? Colors
+                                            .green[700] // Always green if discount available
                                       : AppTheme.primaryColor,
                                 ),
                               ),
                               // Show savings message if discount available
-                              if (_pricingDetails[_selectedDuration]?['hasDiscount'] == true)
+                              if (_pricingDetails[_selectedDuration]?['hasDiscount'] ==
+                                  true)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
@@ -1887,14 +1972,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                                       fontWeight: FontWeight.w600,
                                       color: Colors.green[700],
                                     ),
-                            ),
+                                  ),
+                                ),
+                            ],
                           ),
-                        ],
-                      ),
-              ],
+                  ],
                 ),
                 // Discount button (only show if discount available and not yet applied)
-                if (!_discountApplied && _pricingDetails[_selectedDuration]?['hasDiscount'] == true) ...[
+                if (!_discountApplied &&
+                    _pricingDetails[_selectedDuration]?['hasDiscount'] ==
+                        true) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
@@ -1910,7 +1997,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                       ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.primaryColor,
-                        side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                        side: BorderSide(
+                          color: AppTheme.primaryColor,
+                          width: 1.5,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
@@ -2026,7 +2116,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                             ),
                           ),
                         ],
-                        if (widget.tutor['is_verified'] == true || widget.tutor['status'] == 'approved') ...[
+                        if (widget.tutor['is_verified'] == true ||
+                            widget.tutor['status'] == 'approved') ...[
                           const SizedBox(width: 12),
                           Icon(
                             Icons.verified,
@@ -2047,21 +2138,29 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: subjects.take(5).map((subject) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  subject,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey[700],
-                  ),
-                ),
-              )).toList(),
+              children: subjects
+                  .take(5)
+                  .map(
+                    (subject) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        subject,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ],
         ],
@@ -2071,13 +2170,17 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   Widget _buildDurationOption(int minutes, String label, String fallbackPrice) {
     final isSelected = _selectedDuration == minutes;
-    
+
     // Get pricing details for this duration
     final details = _pricingDetails[minutes];
     final basePrice = details != null ? (details['basePrice'] as double) : null;
-    final finalPrice = details != null ? (details['finalPrice'] as double) : null;
-    final hasDiscount = details != null ? (details['hasDiscount'] as bool) : false;
-    
+    final finalPrice = details != null
+        ? (details['finalPrice'] as double)
+        : null;
+    final hasDiscount = details != null
+        ? (details['hasDiscount'] as bool)
+        : false;
+
     // Determine display price - always use basePrice if available, otherwise fallback
     String displayPrice = fallbackPrice;
     double? actualBasePrice;
@@ -2093,7 +2196,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         // Ignore parsing errors
       }
     }
-    
+
     // Calculate savings if discount exists
     double? savings;
     if (hasDiscount && basePrice != null && finalPrice != null) {
@@ -2104,14 +2207,17 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       onTap: () {
         safeSetState(() {
           _selectedDuration = minutes;
+          _selectedTime = null;
           _discountApplied = false; // Reset discount when changing duration
-          
+
           // Update both base price and trial fee (always start with base price)
           if (details != null) {
             _basePrice = details['basePrice'] as double;
-            _trialFee = details['basePrice'] as double; // Show base price initially
+            _trialFee =
+                details['basePrice'] as double; // Show base price initially
           }
         });
+        _loadTutorSchedule();
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -2138,7 +2244,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             const SizedBox(height: 6),
             // Always show original price (strikethrough) if discount exists, then discounted price
             // Check if there's actually a discount (basePrice > finalPrice) even if flag might be wrong
-            if (basePrice != null && finalPrice != null && basePrice > finalPrice) ...[
+            if (basePrice != null &&
+                finalPrice != null &&
+                basePrice > finalPrice) ...[
               // Original price (strikethrough) - always show when discount exists
               Text(
                 PricingService.formatPrice(basePrice),
@@ -2168,9 +2276,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: Colors.green[600],
+                  ),
                 ),
-              ),
-            ],
+              ],
             ] else if (basePrice != null) ...[
               // No discount - show regular price
               Text(
@@ -2183,9 +2291,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               ),
             ] else ...[
               // Fallback to displayPrice if basePrice is null
-            Text(
-              displayPrice,
-              style: GoogleFonts.poppins(
+              Text(
+                displayPrice,
+                style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
@@ -2228,30 +2336,34 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     if (time.contains('AM') || time.contains('PM')) {
       // Remove duplicate AM/PM if present
       String cleaned = time.trim();
-      if (cleaned.endsWith(' AM AM') || cleaned.endsWith(' PM PM') || 
-          cleaned.endsWith(' AM PM') || cleaned.endsWith(' PM AM')) {
+      if (cleaned.endsWith(' AM AM') ||
+          cleaned.endsWith(' PM PM') ||
+          cleaned.endsWith(' AM PM') ||
+          cleaned.endsWith(' PM AM')) {
         final parts = cleaned.split(' ');
         if (parts.length >= 3) {
           cleaned = '${parts[0]} ${parts[1]}';
         }
       }
-      
+
       // Extract time and AM/PM
-      final timeMatch = RegExp(r'(\d{1,2}:\d{2})\s*(AM|PM)').firstMatch(cleaned);
+      final timeMatch = RegExp(
+        r'(\d{1,2}:\d{2})\s*(AM|PM)',
+      ).firstMatch(cleaned);
       if (timeMatch != null && timeMatch.groupCount >= 2) {
         return '${timeMatch.group(1)} ${timeMatch.group(2)}';
       }
       return cleaned.trim();
     }
-    
+
     // Handle 24-hour format (e.g., "19:00")
     try {
       final parts = time.split(':');
       if (parts.length < 2) return time;
-      
+
       final hour = int.parse(parts[0]);
       final minute = parts[1].split(' ')[0];
-      
+
       if (hour == 0) return '12:$minute AM';
       if (hour < 12) return '$hour:$minute AM';
       if (hour == 12) return '12:$minute PM';
@@ -2266,7 +2378,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     final selected = _selectedDate;
     if (selected == null) return false;
 
-    final isToday = selected.year == now.year &&
+    final isToday =
+        selected.year == now.year &&
         selected.month == now.month &&
         selected.day == now.day;
     if (!isToday) return false;
@@ -2277,7 +2390,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       final normalized = slot.trim().toUpperCase();
 
       if (normalized.contains('AM') || normalized.contains('PM')) {
-        final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)').firstMatch(normalized);
+        final match = RegExp(
+          r'(\d{1,2}):(\d{2})\s*(AM|PM)',
+        ).firstMatch(normalized);
         if (match == null) return false;
         hour = int.parse(match.group(1)!);
         minute = int.parse(match.group(2)!);
@@ -2303,5 +2418,4 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       return false;
     }
   }
-
 }

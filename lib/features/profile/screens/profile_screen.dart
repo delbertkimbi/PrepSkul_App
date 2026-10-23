@@ -82,7 +82,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
       final prefs = await SharedPreferences.getInstance();
-      final cachedProfile = await OfflineCacheService.getCachedUserProfile(userId);
+      final cachedProfile = await OfflineCacheService.getCachedUserProfile(
+        userId,
+      );
 
       // Show local data immediately so opening Profile stays fast offline.
       if (mounted) {
@@ -101,7 +103,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             cachedProfile?['phone_number']?.toString() ??
             user['phone']?.toString() ??
             'Not set';
-        final surveyCompleted = user['surveyCompleted'] == true ||
+        final surveyCompleted =
+            user['surveyCompleted'] == true ||
             prefs.getBool('survey_completed') == true ||
             cachedProfile?['survey_completed'] == true;
         safeSetState(() {
@@ -113,6 +116,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'surveyCompleted': surveyCompleted,
           };
           _profilePhotoUrl = cachedProfile?['avatar_url']?.toString();
+          if (_profilePhotoUrl == null || _profilePhotoUrl!.isEmpty) {
+            final metadata =
+                SupabaseService.client.auth.currentUser?.userMetadata;
+            _profilePhotoUrl =
+                metadata?['avatar_url']?.toString() ??
+                metadata?['picture']?.toString();
+          }
           if (cachedProfile?['survey_data'] is Map) {
             _surveyData = Map<String, dynamic>.from(
               cachedProfile!['survey_data'] as Map,
@@ -129,14 +139,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Load profile data from Supabase
       var profileResponse = await SupabaseService.client
           .from('profiles')
-          .select('avatar_url, full_name, email, phone_number, survey_completed')
+          .select(
+            'avatar_url, full_name, email, phone_number, survey_completed',
+          )
           .eq('id', userId)
           .maybeSingle()
           .timeout(const Duration(seconds: 6));
 
       // If profile doesn't exist, try to create it from stored signup data or auth user
       if (profileResponse == null) {
-        LogService.warning('Profile not found for user $userId, attempting to create...');
+        LogService.warning(
+          'Profile not found for user $userId, attempting to create...',
+        );
         try {
           // Get stored signup data as fallback
           final storedName = prefs.getString('signup_full_name');
@@ -198,7 +212,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Fetch the created profile
           profileResponse = await SupabaseService.client
               .from('profiles')
-              .select('avatar_url, full_name, email, phone_number, survey_completed')
+              .select(
+                'avatar_url, full_name, email, phone_number, survey_completed',
+              )
               .eq('id', userId)
               .maybeSingle()
               .timeout(const Duration(seconds: 6));
@@ -227,6 +243,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // For all users, also check avatar_url in profiles table
       if (photoUrl == null || photoUrl.isEmpty) {
         photoUrl = profileResponse?['avatar_url']?.toString();
+        if (photoUrl == null || photoUrl.isEmpty) {
+          photoUrl =
+              authUser?.userMetadata?['avatar_url']?.toString() ??
+              authUser?.userMetadata?['picture']?.toString();
+        }
       }
 
       // Get phone number from profile response (more reliable)
@@ -237,16 +258,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // Get email with priority: Auth email > profiles.email > stored signup email > onboarding progress > 'Not set'
       final storedEmail = prefs.getString('signup_email');
-      
+
       // Check if email exists in auth but not in profiles - sync it if needed
       String? email = _isRealUserEmail(authEmail)
           ? authEmail
           : _isRealUserEmail(profileResponse?['email']?.toString())
-              ? profileResponse!['email'].toString()
-              : _isRealUserEmail(storedEmail)
-                  ? storedEmail
-                  : null;
-      
+          ? profileResponse!['email'].toString()
+          : _isRealUserEmail(storedEmail)
+          ? storedEmail
+          : null;
+
       // Also check auth user metadata for email (some signup flows store it there)
       final metadataEmail = authUser?.userMetadata?['email']?.toString();
       if (email == null &&
@@ -255,15 +276,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           !PhoneAuthUtils.isPhoneAliasEmail(metadataEmail)) {
         email = metadataEmail;
       }
-      
+
       // For tutors, also check onboarding progress for email (in case it was collected but not synced)
-      if (widget.userType == 'tutor' && (email == null || email.isEmpty || email == 'Not set')) {
+      if (widget.userType == 'tutor' &&
+          (email == null || email.isEmpty || email == 'Not set')) {
         try {
-          final onboardingProgress = await TutorOnboardingProgressService.loadProgress(userId);
+          final onboardingProgress =
+              await TutorOnboardingProgressService.loadProgress(userId);
           if (onboardingProgress != null) {
-            final step0Data = onboardingProgress['step_0'] as Map<String, dynamic>?;
+            final step0Data =
+                onboardingProgress['step_0'] as Map<String, dynamic>?;
             final onboardingEmail = step0Data?['email']?.toString();
-            if (onboardingEmail != null && onboardingEmail.isNotEmpty && onboardingEmail.contains('@')) {
+            if (onboardingEmail != null &&
+                onboardingEmail.isNotEmpty &&
+                onboardingEmail.contains('@')) {
               email = onboardingEmail;
               LogService.debug('Found email in onboarding progress: $email');
             }
@@ -272,10 +298,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           LogService.debug('Error checking onboarding progress for email: $e');
         }
       }
-      
+
       // If we have email from any source but profiles table doesn't have it, update profiles
       final currentProfileEmail = profileResponse?['email']?.toString();
-      final needsEmailSync = email != null &&
+      final needsEmailSync =
+          email != null &&
           email.isNotEmpty &&
           email != 'Not set' &&
           email.contains('@') &&
@@ -284,7 +311,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               currentProfileEmail.isEmpty ||
               currentProfileEmail == 'Not set' ||
               PhoneAuthUtils.isPhoneAliasEmail(currentProfileEmail));
-      
+
       if (needsEmailSync) {
         try {
           await SupabaseService.client
@@ -295,7 +322,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Reload profile response to get updated email
           profileResponse = await SupabaseService.client
               .from('profiles')
-              .select('avatar_url, full_name, email, phone_number, survey_completed')
+              .select(
+                'avatar_url, full_name, email, phone_number, survey_completed',
+              )
               .eq('id', userId)
               .maybeSingle()
               .timeout(const Duration(seconds: 5));
@@ -305,7 +334,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           LogService.warning('Error syncing email to profiles: $e');
         }
       }
-      
+
       // Final fallback — never show internal phone sign-in alias as user email
       email = _displayEmail(email);
 
@@ -357,8 +386,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           fullName == 'User' ||
           fullName == 'Student') {
         // Extract name from email as last resort
-        if (authEmail != null &&
-            !PhoneAuthUtils.isPhoneAliasEmail(authEmail)) {
+        if (authEmail != null && !PhoneAuthUtils.isPhoneAliasEmail(authEmail)) {
           final emailName = authEmail.split('@')[0];
           if (emailName.isNotEmpty &&
               emailName != 'user' &&
@@ -394,13 +422,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Map<String, dynamic>? surveyData;
       try {
         if (widget.userType == 'student' || widget.userType == 'learner') {
-          surveyData = await SurveyRepository.getStudentSurvey(userId).timeout(
-            const Duration(seconds: 5),
-          );
+          surveyData = await SurveyRepository.getStudentSurvey(
+            userId,
+          ).timeout(const Duration(seconds: 5));
         } else if (widget.userType == 'parent') {
-          surveyData = await SurveyRepository.getParentSurvey(userId).timeout(
-            const Duration(seconds: 5),
-          );
+          surveyData = await SurveyRepository.getParentSurvey(
+            userId,
+          ).timeout(const Duration(seconds: 5));
         }
       } catch (surveyError, stackTrace) {
         LogService.warning('Error loading survey data: $surveyError');
@@ -411,7 +439,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (!mounted) return;
 
-      final surveyCompleted = profileResponse?['survey_completed'] == true ||
+      final surveyCompleted =
+          profileResponse?['survey_completed'] == true ||
           user['surveyCompleted'] == true ||
           prefs.getBool('survey_completed') == true;
 
@@ -489,7 +518,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         authEmail.contains('@') &&
         !PhoneAuthUtils.isPhoneAliasEmail(authEmail)) {
       final emailName = authEmail.split('@').first;
-      if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
+      if (emailName.isNotEmpty &&
+          emailName != 'user' &&
+          emailName != 'student') {
         return emailName
             .split('.')
             .map(
@@ -504,8 +535,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return widget.userType == 'parent'
         ? 'Parent'
         : widget.userType == 'tutor'
-            ? 'Tutor'
-            : 'Student';
+        ? 'Tutor'
+        : 'Student';
   }
 
   Future<void> _handleLogout() async {
@@ -537,10 +568,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirm == true && mounted) {
       await AuthService.logout();
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/auth-method-selection',
-        (route) => false,
-      );
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil('/auth-method-selection', (route) => false);
     }
   }
 
@@ -551,199 +581,185 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Scaffold(
         backgroundColor: OnboardPalette.cream,
         appBar: AppBar(
-          automaticallyImplyLeading: false, // No back button in bottom nav
+          automaticallyImplyLeading: true,
           backgroundColor: OnboardPalette.cream,
           surfaceTintColor: OnboardPalette.cream,
           elevation: 0,
-          title: Text(
-            t.profileTitle,
-            style: onboardDisplay(size: 22),
-          ),
+          title: Text(t.profileTitle, style: onboardDisplay(size: 22)),
         ),
-      body: _isLoading
-          ? ShimmerLoading.profileScreen()
-          : RefreshIndicator(
-              onRefresh: _loadUserInfo,
-              color: AppTheme.primaryColor,
-              child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
-                children: [
-                  // Paper profile hero
-                  Container(
-                    width: double.infinity,
-                    color: OnboardPalette.cream,
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                          horizontal: 16,
-                        ),
-                        child: Column(
-                          children: [
-                            // Profile Photo Section
-                            GestureDetector(
-                              onTap: () async {
-                                final result = await Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => EditProfileScreen(
-                                      userType: widget.userType,
-                                    ),
-                                  ),
-                                );
-                                if (result == true) {
-                                  _loadUserInfo();
-                                }
-                              },
-                              child: Stack(
-                                children: [
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: AppTheme.primaryColor,
-                                        width: 2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.15),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: CircleAvatar(
-                                      radius: 36,
-                                      backgroundColor: AppTheme.skyBlueLight,
-                                      backgroundImage:
-                                          _profilePhotoUrl != null &&
-                                              _profilePhotoUrl!.isNotEmpty
-                                          ? NetworkImage(_profilePhotoUrl!)
-                                          : null,
-                                      child:
-                                          _profilePhotoUrl == null ||
-                                              _profilePhotoUrl!.isEmpty
-                                          ? Icon(
-                                              PhosphorIcons.user,
-                                              size: 32,
-                                              color: AppTheme.primaryColor,
-                                            )
-                                          : null,
-                                    ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(5),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: AppTheme.primaryColor,
-                                          width: 2,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                              0.1,
-                                            ),
-                                            blurRadius: 3,
-                                            offset: const Offset(0, 1),
+        body: _isLoading
+            ? ShimmerLoading.profileScreen()
+            : RefreshIndicator(
+                onRefresh: _loadUserInfo,
+                color: AppTheme.primaryColor,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    children: [
+                      // Paper profile hero
+                      Container(
+                        width: double.infinity,
+                        color: OnboardPalette.cream,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 16,
+                            ),
+                            child: Column(
+                              children: [
+                                // Profile Photo Section
+                                GestureDetector(
+                                  onTap: () async {
+                                    final result = await Navigator.of(context)
+                                        .push(
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                EditProfileScreen(
+                                                  userType: widget.userType,
+                                                ),
                                           ),
-                                        ],
+                                        );
+                                    if (result == true) {
+                                      _loadUserInfo();
+                                    }
+                                  },
+                                  child: Stack(
+                                    children: [
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: AppTheme.primaryColor,
+                                            width: 2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(
+                                                0.15,
+                                              ),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                        ),
+                                        child: CircleAvatar(
+                                          radius: 36,
+                                          backgroundColor:
+                                              AppTheme.skyBlueLight,
+                                          foregroundImage:
+                                              _profilePhotoUrl != null &&
+                                                  _profilePhotoUrl!.isNotEmpty
+                                              ? NetworkImage(_profilePhotoUrl!)
+                                              : null,
+                                          onForegroundImageError:
+                                              _profilePhotoUrl != null &&
+                                                  _profilePhotoUrl!.isNotEmpty
+                                              ? (error, stack) {}
+                                              : null,
+                                          child: Icon(
+                                            PhosphorIcons.user,
+                                            size: 32,
+                                            color: AppTheme.primaryColor,
+                                          ),
+                                        ),
                                       ),
-                                      child: Icon(
-                                        PhosphorIcons.camera,
-                                        color: AppTheme.primaryColor,
-                                        size: 14,
+                                      Positioned(
+                                        bottom: 0,
+                                        right: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: AppTheme.primaryColor,
+                                              width: 2,
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withOpacity(
+                                                  0.1,
+                                                ),
+                                                blurRadius: 3,
+                                                offset: const Offset(0, 1),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Icon(
+                                            PhosphorIcons.camera,
+                                            color: AppTheme.primaryColor,
+                                            size: 14,
+                                          ),
+                                        ),
                                       ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                // Name (Full name) - Less bold
+                                Text(
+                                  _userInfo?['fullName']?.toString() ?? 'User',
+                                  style: onboardDisplay(size: 18),
+                                ),
+                                const SizedBox(height: 6),
+                                // Role Badge
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: AppTheme.primaryColor,
+                                      width: 2,
+                                    ),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x381E3A8A),
+                                        offset: Offset(0, 3),
+                                        blurRadius: 0,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    widget.userType.toUpperCase(),
+                                    style: onboardFont(
+                                      size: 10,
+                                      weight: FontWeight.w800,
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            // Name (Full name) - Less bold
-                            Text(
-                              _userInfo?['fullName']?.toString() ?? 'User',
-                              style: onboardDisplay(
-                                size: 18,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            // Role Badge
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: AppTheme.primaryColor,
-                                  width: 2,
                                 ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x381E3A8A),
-                                    offset: Offset(0, 3),
-                                    blurRadius: 0,
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                widget.userType.toUpperCase(),
-                                style: onboardFont(
-                                  size: 10,
-                                  weight: FontWeight.w800,
-                                ),
-                              ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
 
-                  // Quick Info Cards (Neumorphic style)
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
-                      vertical: 10,
-                    ),
-                    child: widget.userType == 'tutor' &&
-                            ResponsiveHelper.isDesktop(context)
-                        ? TutorZRow(
-                            rowIndex: 0,
-                            primary: _buildNeumorphicInfoCard(
-                              icon: PhosphorIcons.envelope,
-                              label: 'Email',
-                              value:
-                                  _userInfo?['email']?.toString() ?? 'Not set',
-                            ),
-                            secondary: _buildNeumorphicInfoCard(
-                              icon: PhosphorIcons.phone,
-                              label: 'Phone',
-                              value: _formatPhoneNumber(
-                                _userInfo?['phone']?.toString() ?? 'Not set',
+                      // Quick Info Cards (Neumorphic style)
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal:
+                              ResponsiveHelper.responsiveHorizontalPadding(
+                                context,
                               ),
-                            ),
-                          )
-                        : Row(
-                            children: [
-                              Expanded(
-                                child: _buildNeumorphicInfoCard(
+                          vertical: 10,
+                        ),
+                        child:
+                            widget.userType == 'tutor' &&
+                                ResponsiveHelper.isDesktop(context)
+                            ? TutorZRow(
+                                rowIndex: 0,
+                                primary: _buildNeumorphicInfoCard(
                                   icon: PhosphorIcons.envelope,
                                   label: 'Email',
-                                  value: _userInfo?['email']?.toString() ??
+                                  value:
+                                      _userInfo?['email']?.toString() ??
                                       'Not set',
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: _buildNeumorphicInfoCard(
+                                secondary: _buildNeumorphicInfoCard(
                                   icon: PhosphorIcons.phone,
                                   label: 'Phone',
                                   value: _formatPhoneNumber(
@@ -751,274 +767,322 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         'Not set',
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  
-                  // Survey Completion Card (if not completed)
-                  if ((widget.userType == 'student' ||
-                       widget.userType == 'learner' ||
-                       widget.userType == 'parent') &&
-                      _userInfo?['surveyCompleted'] == false) ...[
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
-                      ),
-                      child: _buildSurveyCompletionCard(),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  if (AppConfig.enableSkulMate &&
-                      (widget.userType == 'student' ||
-                          widget.userType == 'learner')) ...[
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal:
-                            ResponsiveHelper.responsiveHorizontalPadding(
-                          context,
-                        ),
-                      ),
-                      child: const SkulMateProfileRevisionCard(),
-                    ),
-                  ],
-
-                  // Settings Section (Neumorphic style)
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
-                    ),
-                    child: TutorConstrainedCard(
-                      maxWidth: widget.userType == 'tutor' &&
-                              ResponsiveHelper.isDesktop(context)
-                          ? 720
-                          : double.infinity,
-                      child: _buildNeumorphicSection(
-                        title: t.profileSettings,
-                        icon: PhosphorIcons.gear,
-                        child: Column(
-                        children: [
-                          _buildNeumorphicSettingsItem(
-                            icon: PhosphorIcons.pencil,
-                            title: t.profileEditProfile,
-                            subtitle: t.profileEditProfileSubtitle,
-                            onTap: () async {
-                              final result = await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => EditProfileScreen(
-                                    userType: widget.userType,
-                                  ),
-                                ),
-                              );
-                              if (result == true) {
-                                _loadUserInfo();
-                              }
-                            },
-                          ),
-                          const SizedBox(height: 10),
-                          if (widget.userType == 'parent') ...[
-                            _buildNeumorphicSettingsItem(
-                              icon: PhosphorIcons.users,
-                              title: 'My children',
-                              subtitle: 'Manage who you book for',
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => const MyChildrenScreen(),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          if (widget.userType == 'tutor') ...[
-                            _buildNeumorphicSettingsItem(
-                              icon: PhosphorIcons.graduationCap,
-                              title: t.profileEditTutorInfo,
-                              subtitle: t.profileEditTutorInfoSubtitle,
-                              onTap: () async {
-                                // Fetch complete tutor profile data before navigating
-                                Map<String, dynamic>? tutorProfileData;
-                                try {
-                                  final user = await AuthService.getCurrentUser();
-                                  final userId = user['userId'] as String;
-                                  final tutorResponse = await SupabaseService.client
-                                      .from('tutor_profiles')
-                                      .select('*')
-                                      .eq('user_id', userId)
-                                      .maybeSingle();
-                                  tutorProfileData = tutorResponse;
-                                } catch (e) {
-                                  LogService.warning('Error fetching tutor profile: $e');
-                                }
-                                
-                                final result = await Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => TutorOnboardingScreen(
-                                      basicInfo: {
-                                        'needsImprovement': true,
-                                        'existingData': tutorProfileData ?? {},
-                                      },
+                              )
+                            : Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildNeumorphicInfoCard(
+                                      icon: PhosphorIcons.envelope,
+                                      label: 'Email',
+                                      value:
+                                          _userInfo?['email']?.toString() ??
+                                          'Not set',
                                     ),
                                   ),
-                                );
-                                if (result == true) {
-                                  _loadUserInfo();
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            _buildNeumorphicSettingsItem(
-                              icon: PhosphorIcons.eye,
-                              title: t.profilePreviewProfile,
-                              subtitle: t.profilePreviewProfileSubtitle,
-                              onTap: () {
-                                if (_tutorProfile != null) {
-                                  // Merge basic info with tutor profile to ensure completeness
-                                  final mergedProfile = Map<String, dynamic>.from(_tutorProfile!);
-                                  if (mergedProfile['full_name'] == null) {
-                                    mergedProfile['full_name'] = _userInfo?['fullName'];
-                                  }
-                                  // Ensure verified status is visual
-                                  if (mergedProfile['status'] == 'verified' || mergedProfile['status'] == 'approved') {
-                                     mergedProfile['is_verified'] = true;
-                                  }
-                                  
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => ProfilePreviewScreen(
-                                        tutor: mergedProfile,
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildNeumorphicInfoCard(
+                                      icon: PhosphorIcons.phone,
+                                      label: 'Phone',
+                                      value: _formatPhoneNumber(
+                                        _userInfo?['phone']?.toString() ??
+                                            'Not set',
                                       ),
                                     ),
-                                  );
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Tutor profile not loaded yet')),
-                                  );
-                                }
-                              },
+                                  ),
+                                ],
+                              ),
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      // Survey Completion Card (if not completed)
+                      if ((widget.userType == 'student' ||
+                              widget.userType == 'learner' ||
+                              widget.userType == 'parent') &&
+                          _userInfo?['surveyCompleted'] == false) ...[
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal:
+                                ResponsiveHelper.responsiveHorizontalPadding(
+                                  context,
+                                ),
+                          ),
+                          child: _buildSurveyCompletionCard(),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Settings Section (Neumorphic style)
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal:
+                              ResponsiveHelper.responsiveHorizontalPadding(
+                                context,
+                              ),
+                        ),
+                        child: TutorConstrainedCard(
+                          maxWidth:
+                              widget.userType == 'tutor' &&
+                                  ResponsiveHelper.isDesktop(context)
+                              ? 720
+                              : double.infinity,
+                          child: _buildNeumorphicSection(
+                            title: t.profileSettings,
+                            icon: PhosphorIcons.gear,
+                            child: Column(
+                              children: [
+                                _buildNeumorphicSettingsItem(
+                                  icon: PhosphorIcons.pencil,
+                                  title: t.profileEditProfile,
+                                  subtitle: t.profileEditProfileSubtitle,
+                                  onTap: () async {
+                                    final result = await Navigator.of(context)
+                                        .push(
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                EditProfileScreen(
+                                                  userType: widget.userType,
+                                                ),
+                                          ),
+                                        );
+                                    if (result == true) {
+                                      _loadUserInfo();
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                if (widget.userType == 'parent') ...[
+                                  _buildNeumorphicSettingsItem(
+                                    icon: PhosphorIcons.users,
+                                    title: 'My children',
+                                    subtitle: 'Manage who you book for',
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              const MyChildrenScreen(),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                if (widget.userType == 'tutor') ...[
+                                  _buildNeumorphicSettingsItem(
+                                    icon: PhosphorIcons.graduationCap,
+                                    title: t.profileEditTutorInfo,
+                                    subtitle: t.profileEditTutorInfoSubtitle,
+                                    onTap: () async {
+                                      // Fetch complete tutor profile data before navigating
+                                      Map<String, dynamic>? tutorProfileData;
+                                      try {
+                                        final user =
+                                            await AuthService.getCurrentUser();
+                                        final userId = user['userId'] as String;
+                                        final tutorResponse =
+                                            await SupabaseService.client
+                                                .from('tutor_profiles')
+                                                .select('*')
+                                                .eq('user_id', userId)
+                                                .maybeSingle();
+                                        tutorProfileData = tutorResponse;
+                                      } catch (e) {
+                                        LogService.warning(
+                                          'Error fetching tutor profile: $e',
+                                        );
+                                      }
+
+                                      final result = await Navigator.of(context)
+                                          .push(
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  TutorOnboardingScreen(
+                                                    basicInfo: {
+                                                      'needsImprovement': true,
+                                                      'existingData':
+                                                          tutorProfileData ??
+                                                          {},
+                                                    },
+                                                  ),
+                                            ),
+                                          );
+                                      if (result == true) {
+                                        _loadUserInfo();
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildNeumorphicSettingsItem(
+                                    icon: PhosphorIcons.eye,
+                                    title: t.profilePreviewProfile,
+                                    subtitle: t.profilePreviewProfileSubtitle,
+                                    onTap: () {
+                                      if (_tutorProfile != null) {
+                                        // Merge basic info with tutor profile to ensure completeness
+                                        final mergedProfile =
+                                            Map<String, dynamic>.from(
+                                              _tutorProfile!,
+                                            );
+                                        if (mergedProfile['full_name'] ==
+                                            null) {
+                                          mergedProfile['full_name'] =
+                                              _userInfo?['fullName'];
+                                        }
+                                        // Ensure verified status is visual
+                                        if (mergedProfile['status'] ==
+                                                'verified' ||
+                                            mergedProfile['status'] ==
+                                                'approved') {
+                                          mergedProfile['is_verified'] = true;
+                                        }
+
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                ProfilePreviewScreen(
+                                                  tutor: mergedProfile,
+                                                ),
+                                          ),
+                                        );
+                                      } else {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Tutor profile not loaded yet',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildMyLinkItem(),
+                                  const SizedBox(height: 12),
+                                ],
+                                _buildNeumorphicSettingsItem(
+                                  icon: PhosphorIcons.bell,
+                                  title: t.profileNotifications,
+                                  subtitle: t.profileNotificationsSubtitle,
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const NotificationPreferencesScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                _buildNeumorphicSettingsItem(
+                                  icon: PhosphorIcons.translate,
+                                  title: t.profileLanguage,
+                                  subtitle: t.profileLanguageSubtitle,
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const LanguageSettingsScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                _buildNeumorphicSettingsItem(
+                                  icon: PhosphorIcons.question,
+                                  title: t.profileHelpSupport,
+                                  subtitle: t.profileHelpSupportSubtitle,
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            const HelpSupportScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 12),
-                            _buildMyLinkItem(),
-                            const SizedBox(height: 12),
-                          ],
-                          _buildNeumorphicSettingsItem(
-                            icon: PhosphorIcons.bell,
-                            title: t.profileNotifications,
-                            subtitle: t.profileNotificationsSubtitle,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const NotificationPreferencesScreen(),
-                                ),
-                              );
-                            },
                           ),
-                          const SizedBox(height: 12),
-                          _buildNeumorphicSettingsItem(
-                            icon: PhosphorIcons.translate,
-                            title: t.profileLanguage,
-                            subtitle: t.profileLanguageSubtitle,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const LanguageSettingsScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          _buildNeumorphicSettingsItem(
-                            icon: PhosphorIcons.question,
-                            title: t.profileHelpSupport,
-                            subtitle: t.profileHelpSupportSubtitle,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const HelpSupportScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
                         ),
                       ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                  // Logout Button (Neumorphic style)
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
-                    ),
-                    child: TutorConstrainedCard(
-                      maxWidth: widget.userType == 'tutor' &&
-                              ResponsiveHelper.isDesktop(context)
-                          ? 420
-                          : double.infinity,
-                      alignRight: widget.userType == 'tutor' &&
-                          ResponsiveHelper.isDesktop(context),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceColor,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.white.withOpacity(0.7),
-                              blurRadius: 10,
-                              offset: const Offset(-4, -4),
-                              spreadRadius: 0,
-                            ),
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 10,
-                              offset: const Offset(4, 4),
-                              spreadRadius: 0,
-                            ),
-                          ],
+                      // Logout Button (Neumorphic style)
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal:
+                              ResponsiveHelper.responsiveHorizontalPadding(
+                                context,
+                              ),
                         ),
-                        child: InkWell(
-                          onTap: _handleLogout,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                PhosphorIcons.signOut,
-                                color: Colors.red,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                t.profileLogout,
-                                style: GoogleFonts.nunito(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.red,
+                        child: TutorConstrainedCard(
+                          maxWidth:
+                              widget.userType == 'tutor' &&
+                                  ResponsiveHelper.isDesktop(context)
+                              ? 420
+                              : double.infinity,
+                          alignRight:
+                              widget.userType == 'tutor' &&
+                              ResponsiveHelper.isDesktop(context),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceColor,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.7),
+                                  blurRadius: 10,
+                                  offset: const Offset(-4, -4),
+                                  spreadRadius: 0,
                                 ),
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 10,
+                                  offset: const Offset(4, 4),
+                                  spreadRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: InkWell(
+                              onTap: _handleLogout,
+                              borderRadius: BorderRadius.circular(16),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    PhosphorIcons.signOut,
+                                    color: Colors.red,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    t.profileLogout,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.red,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 40),
-                ],
+                      const SizedBox(height: 40),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            ),
       ),
     );
   }
@@ -1033,10 +1097,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: AppTheme.softBorder,
-          width: 1,
-        ),
+        border: Border.all(color: AppTheme.softBorder, width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -1059,10 +1120,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 6),
           Text(
             label,
-            style: GoogleFonts.nunito(
-              fontSize: 10,
-              color: AppTheme.textMedium,
-            ),
+            style: GoogleFonts.nunito(fontSize: 10, color: AppTheme.textMedium),
           ),
           const SizedBox(height: 2),
           Text(
@@ -1091,10 +1149,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey[200]!,
-          width: 1,
-        ),
+        border: Border.all(color: Colors.grey[200]!, width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -1147,7 +1202,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       title: title,
       subtitle: subtitle,
       onTap: onTap,
-      trailing: Icon(PhosphorIcons.caretRight, color: AppTheme.textLight, size: 18),
+      trailing: Icon(
+        PhosphorIcons.caretRight,
+        color: AppTheme.textLight,
+        size: 18,
+      ),
     );
   }
 
@@ -1212,10 +1271,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: AppTheme.softBorder,
-              width: 1,
-            ),
+            border: Border.all(color: AppTheme.softBorder, width: 1),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.04),
@@ -1348,7 +1404,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               learningGoals = decoded;
             } else {
               // Fallback to comma-separated if not a JSON list
-              learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+              learningGoals = goalsData
+                  .split(',')
+                  .map((s) => s.trim())
+                  .toList();
             }
           } catch (e) {
             // Fallback to comma-separated string if JSON parsing fails
@@ -1421,10 +1480,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
 
           // Subjects & Skills Group
-          if ((subjects != null && subjects.isNotEmpty) || 
+          if ((subjects != null && subjects.isNotEmpty) ||
               (skills != null && skills.isNotEmpty)) ...[
-          // Subjects
-          if (subjects != null && subjects.isNotEmpty) ...[
+            // Subjects
+            if (subjects != null && subjects.isNotEmpty) ...[
               Row(
                 children: [
                   Container(
@@ -1440,48 +1499,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-            Text(
-              'Subjects',
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textMedium,
+                  Text(
+                    'Subjects',
+                    style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textMedium,
                       letterSpacing: 0.2,
-              ),
-            ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
-            Wrap(
+              Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: subjects.map((s) {
-                return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
                       color: Colors.grey[50],
                       borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: Colors.grey[200]!,
-                        width: 1,
+                      border: Border.all(color: Colors.grey[200]!, width: 1),
                     ),
-                  ),
-                  child: Text(
+                    child: Text(
                       s.toString(),
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
+                      style: GoogleFonts.nunito(
+                        fontSize: 12,
                         color: AppTheme.textDark,
-                      fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
+                  );
+                }).toList(),
+              ),
               const SizedBox(height: 10),
-          ],
+            ],
 
-          // Skills
-          if (skills != null && skills.isNotEmpty) ...[
+            // Skills
+            if (skills != null && skills.isNotEmpty) ...[
               Row(
                 children: [
                   Container(
@@ -1497,43 +1556,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-            Text(
-              'Skills',
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textMedium,
+                  Text(
+                    'Skills',
+                    style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textMedium,
                       letterSpacing: 0.2,
-              ),
-            ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
-            Wrap(
+              Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: skills.map((s) {
-                return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
                       color: Colors.grey[50],
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.grey[200]!,
-                        width: 1,
-                      ),
-                  ),
-                  child: Text(
-                      s.toString(),
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
-                        color: AppTheme.textDark,
-                      fontWeight: FontWeight.w500,
+                      border: Border.all(color: Colors.grey[200]!, width: 1),
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
+                    child: Text(
+                      s.toString(),
+                      style: GoogleFonts.nunito(
+                        fontSize: 12,
+                        color: AppTheme.textDark,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
               const SizedBox(height: 12),
             ],
           ],
@@ -1555,18 +1614,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-            Text(
-              'Learning Goals',
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textMedium,
+                Text(
+                  'Learning Goals',
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMedium,
                     letterSpacing: 0.2,
                   ),
                 ),
               ],
             ),
-                const SizedBox(height: 6),
+            const SizedBox(height: 6),
             Builder(
               builder: (context) {
                 final List<dynamic> goalsList = learningGoals ?? [];
@@ -1583,44 +1642,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   itemCount: goalsList.length,
                   itemBuilder: (context, index) {
                     final goal = goalsList[index];
-              String goalText;
-              if (goal is String) {
-                goalText = goal;
-              } else if (goal is List) {
-                goalText = goal.map((item) => item.toString()).join(', ');
-              } else {
-                goalText = goal.toString().replaceAll(RegExp(r'[\[\]]'), '');
-              }
-              goalText = goalText.trim();
-              if (goalText.startsWith('[') && goalText.endsWith(']')) {
-                goalText = goalText.substring(1, goalText.length - 1);
-              }
+                    String goalText;
+                    if (goal is String) {
+                      goalText = goal;
+                    } else if (goal is List) {
+                      goalText = goal.map((item) => item.toString()).join(', ');
+                    } else {
+                      goalText = goal.toString().replaceAll(
+                        RegExp(r'[\[\]]'),
+                        '',
+                      );
+                    }
+                    goalText = goalText.trim();
+                    if (goalText.startsWith('[') && goalText.endsWith(']')) {
+                      goalText = goalText.substring(1, goalText.length - 1);
+                    }
                     return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
                           margin: const EdgeInsets.only(top: 4, right: 6),
                           width: 4,
                           height: 4,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        goalText,
-                        style: GoogleFonts.nunito(
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            goalText,
+                            style: GoogleFonts.nunito(
                               fontSize: 12,
-                          color: AppTheme.textDark,
+                              color: AppTheme.textDark,
                               height: 1.3,
                               fontWeight: FontWeight.w400,
-                        ),
+                            ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                          ),
+                        ),
+                      ],
                     );
                   },
                 );
@@ -1646,15 +1708,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-            Text(
-              'Learning Styles',
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textMedium,
+                Text(
+                  'Learning Styles',
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMedium,
                     letterSpacing: 0.2,
-              ),
-            ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 6),
@@ -1663,14 +1725,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               runSpacing: 6,
               children: learningStyles.map((s) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey[50],
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.grey[200]!,
-                      width: 1,
-                    ),
+                    border: Border.all(color: Colors.grey[200]!, width: 1),
                   ),
                   child: Text(
                     s.toString(),
@@ -1703,12 +1765,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                'Complete your onboarding survey to see your learning information here.',
+                      'Complete your onboarding survey to see your learning information here.',
                       textAlign: TextAlign.center,
-                style: GoogleFonts.nunito(
+                      style: GoogleFonts.nunito(
                         fontSize: 13,
-                  color: AppTheme.textMedium,
-                ),
+                        color: AppTheme.textMedium,
+                      ),
                     ),
                   ],
                 ),
@@ -1875,11 +1937,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // Header with icon and label
         Row(
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: AppTheme.primaryColor,
-            ),
+            Icon(icon, size: 16, color: AppTheme.primaryColor),
             const SizedBox(width: 8),
             Text(
               label,
@@ -1893,7 +1951,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        
+
         // Content
         if (value != null)
           Text(
@@ -1968,6 +2026,4 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ],
     );
   }
-
 }
-

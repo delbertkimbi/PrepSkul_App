@@ -8,11 +8,14 @@ import 'package:prepskul/features/skulmate/widgets/skulmate_surface_styles.dart'
 class SkulMateInThreadSurface extends StatefulWidget {
   final PracticeSurface surface;
   final Future<void> Function(bool correct) onOutcome;
+  final Future<void> Function(bool correct, List<int?> answers)?
+  onVerifiedOutcome;
 
   const SkulMateInThreadSurface({
     super.key,
     required this.surface,
     required this.onOutcome,
+    this.onVerifiedOutcome,
   });
 
   @override
@@ -22,6 +25,7 @@ class SkulMateInThreadSurface extends StatefulWidget {
 
 class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
   int _index = 0;
+  final List<int?> _answers = [];
   int? _picked;
   bool _revealed = false;
   bool _done = false;
@@ -52,16 +56,16 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
         children: [
           Text(
             widget.surface.title,
-            style: GoogleFonts.plusJakartaSans(
+            style: GoogleFonts.nunito(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: AppTheme.accentPurple,
+              color: AppTheme.primaryColor,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             blank ?? question,
-            style: GoogleFonts.plusJakartaSans(
+            style: GoogleFonts.nunito(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               height: 1.35,
@@ -123,11 +127,18 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
             ),
           if (_saving) const LinearProgressIndicator(),
           if (_saveError != null) ...[
-            Text(french ? 'Progression non enregistrée. Réessayez.' : 'Progress was not saved. Please retry.'),
-            TextButton(onPressed: _saving ? null : _saveResult,
-              child: Text(french ? 'Réessayer' : 'Retry')),
+            Text(
+              french
+                  ? 'Progression non enregistrée. Réessayez.'
+                  : 'Progress was not saved. Please retry.',
+            ),
+            TextButton(
+              onPressed: _saving ? null : _saveResult,
+              child: Text(french ? 'Réessayer' : 'Retry'),
+            ),
           ],
-          if (_done) Text(french ? 'Progression enregistrée' : 'Progress saved'),
+          if (_done)
+            Text(french ? 'Progression enregistrée' : 'Progress saved'),
         ],
       ),
     );
@@ -145,6 +156,7 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
 
   Future<void> _finish(bool correct) async {
     if (!mounted || _done || _saving) return;
+    _answers.add(_picked);
     _allCorrect = _allCorrect && correct;
     if (_index < widget.surface.items.length - 1) {
       setState(() {
@@ -159,9 +171,19 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
 
   Future<void> _saveResult() async {
     if (_saving || _done) return;
-    setState(() { _saving = true; _saveError = null; });
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
     try {
-      await widget.onOutcome(_allCorrect);
+      if (widget.onVerifiedOutcome != null) {
+        await widget.onVerifiedOutcome!(
+          _allCorrect,
+          List.unmodifiable(_answers),
+        );
+      } else {
+        await widget.onOutcome(_allCorrect);
+      }
       if (mounted) setState(() => _done = true);
     } catch (_) {
       if (mounted) setState(() => _saveError = 'save_failed');

@@ -29,6 +29,7 @@ import '../../features/tutor/widgets/tutor_navigation_shell.dart';
 import '../../features/sessions/services/live_session_overlay_controller.dart';
 import 'main_navigation_scope.dart';
 import 'nav_tab_args.dart';
+import 'learner_experience_shell.dart';
 
 class MainNavigation extends StatefulWidget {
   final String userRole;
@@ -302,6 +303,9 @@ class _MainNavigationState extends State<MainNavigation>
   @override
   Widget build(BuildContext context) {
     final isTutor = widget.userRole == 'tutor';
+    if (!isTutor && AppConfig.enableSkulMate) {
+      return LearnerExperienceShell(userRole: widget.userRole, legacyInitialTab: widget.initialTab);
+    }
     final userType = widget.userRole == 'parent' ? 'parent' : 'student';
 
     final screens = isTutor ? _wrappedTutorTabs() : _getStudentScreens(userType);

@@ -96,6 +96,17 @@ void main() {
       expect(voice.lastError, isNotNull);
     },
   );
+  test('browser start event can arrive after listen returns', () async {
+    recognizer.starts = false;
+    final start = voice.startAlwaysOn(locale: 'en', onUtterance: (_) {});
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    recognizer.listening = true;
+    recognizer.statusCallback?.call('listening');
+    await start;
+    expect(voice.state.value, TutorVoiceState.recording);
+    expect(voice.privacyMute, isFalse);
+    expect(voice.lastError, isNull);
+  });
   test('unavailable recognition has a recoverable error', () async {
     recognizer.available = false;
     await voice.startAlwaysOn(locale: 'en', onUtterance: (_) {});

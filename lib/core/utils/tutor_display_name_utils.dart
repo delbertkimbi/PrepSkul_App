@@ -40,7 +40,7 @@ class TutorDisplayNameUtils {
 
     // Require at least one token that looks like a name part (not all digits/symbols).
     final hasNameToken = words.any(
-      (w) => RegExp(r"^[A-Za-z][A-Za-z'\-]{1,}$").hasMatch(w),
+      (w) => RegExp(r"^[\p{L}][\p{L}'’\-]{1,}$", unicode: true).hasMatch(w),
     );
     return hasNameToken;
   }
@@ -183,12 +183,26 @@ class TutorDisplayNameUtils {
         ? subjects.first.toString().trim()
         : null;
 
+    // Discovery also returns flattened rows; do not discard their stored name.
+    final nested = tutor['profiles'];
+    final candidates = [
+      profile?['full_name'],
+      if (nested is Map) nested['full_name'],
+      tutor['full_name'],
+      tutor['display_name'],
+    ];
+    for (final value in candidates) {
+      final candidate = value?.toString().trim();
+      if (!isInvalidStoredName(candidate, subject: firstSubject))
+        return candidate!;
+    }
     final fromProfile = profile?['full_name']?.toString().trim();
     if (!isInvalidStoredName(fromProfile, subject: firstSubject)) {
       return fromProfile!;
     }
 
-    final ps = tutor['personal_statement']?.toString() ??
+    final ps =
+        tutor['personal_statement']?.toString() ??
         tutor['bio']?.toString() ??
         tutor['motivation']?.toString();
     final fromBio = extractNameFromBio(ps);
@@ -197,9 +211,8 @@ class TutorDisplayNameUtils {
     final fromEmail = nameFromEmail(profile?['email']?.toString());
     if (fromEmail != null) return fromEmail;
 
-    final userId = tutor['user_id']?.toString() ??
-        tutor['id']?.toString() ??
-        '';
+    final userId =
+        tutor['user_id']?.toString() ?? tutor['id']?.toString() ?? '';
     if (userId.length >= 4) {
       return 'Tutor ${userId.substring(0, 4).toUpperCase()}';
     }

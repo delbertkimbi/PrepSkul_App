@@ -1,3 +1,4 @@
+import 'package:prepskul/core/design/learner_action.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/navigation/nav_tab_args.dart';
@@ -43,7 +44,7 @@ class BookTutorFlowScreen extends StatefulWidget {
 class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   final PageController _pageController = PageController();
   int _currentStep = 0;
-  
+
   // Survey context (for better subject UX)
   Map<String, dynamic>? _surveyData;
   List<String> _userSubjects = [];
@@ -52,12 +53,16 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   // Parent context for multi-learner bookings
   bool _isParent = false;
   List<Map<String, dynamic>> _parentLearners = [];
-  bool _parentContextLoaded = false; // Wait for this before showing flow to avoid frequency flash
-  Set<String> _selectedLearnerIds = {}; // Selected learner IDs (children + optionally parent)
-  bool _hasLevelMismatch = false; // Track if selected learners have different education levels
-  
+  bool _parentContextLoaded =
+      false; // Wait for this before showing flow to avoid frequency flash
+  Set<String> _selectedLearnerIds =
+      {}; // Selected learner IDs (children + optionally parent)
+  bool _hasLevelMismatch =
+      false; // Track if selected learners have different education levels
+
   // Always show "Who is this for?" step for parents (so child selection comes before frequency)
-  bool get _shouldShowWhoIsThisFor => _isParent; // Show for all parents, not just 2+ learners
+  bool get _shouldShowWhoIsThisFor =>
+      _isParent; // Show for all parents, not just 2+ learners
   // Steps: [Who?] + Subjects + Frequency + Days + Times + Location + [Flexible?] + Review
   int get _totalSteps {
     final base = 6; // Frequency, Days, Times, Location, (Flexible), Review
@@ -71,16 +76,19 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   // Booking data collected through the flow
   int? _selectedFrequency; // Sessions per week
-  DateTime? _reviewStepReachedAt; // Track when review step was reached for timing check
+  DateTime?
+  _reviewStepReachedAt; // Track when review step was reached for timing check
   List<String> _selectedDays = []; // e.g., ["Monday", "Wednesday"]
   Map<String, String> _selectedTimes = {}; // e.g., {"Monday": "3:00 PM"}
   String? _selectedLocation; // online, onsite, hybrid
   String? _onsiteAddress;
   String? _locationDescription; // Brief description for onsite/hybrid
   Map<String, String> _sessionLocations = {}; // {"Monday-3:00 PM": "onsite"}
-  Map<String, Map<String, String?>> _locationDetails = {}; // {"Monday-3:00 PM": {"address": "...", "coordinates": "..."}}
+  Map<String, Map<String, String?>> _locationDetails =
+      {}; // {"Monday-3:00 PM": {"address": "...", "coordinates": "..."}}
   String? _selectedPaymentPlan; // monthly, biweekly, weekly
-  double? _estimatedTransportationCost; // Estimated transportation cost for onsite sessions
+  double?
+  _estimatedTransportationCost; // Estimated transportation cost for onsite sessions
   bool _agreedToTerms = false;
   bool _agreedToSafeguarding = false;
 
@@ -111,9 +119,14 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   }
 
   /// Load user type and parent learners for "Who is this for?" step
+  String? _parentContextError;
+
   Future<void> _loadParentContext() async {
+    if (mounted) safeSetState(() => _parentContextError = null);
     try {
-      final profile = await AuthService.getUserProfile();
+      final profile = await AuthService.getUserProfile().timeout(
+        const Duration(seconds: 8),
+      );
       final userType = profile?['user_type'] as String?;
       final isParent = userType == 'parent';
       if (!isParent || !mounted) {
@@ -126,7 +139,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         if (mounted) safeSetState(() => _parentContextLoaded = true);
         return;
       }
-      final list = await ParentLearnersService.getLearners(parentId);
+      final list = await ParentLearnersService.getLearners(
+        parentId,
+      ).timeout(const Duration(seconds: 8));
       if (mounted) {
         safeSetState(() {
           _isParent = true;
@@ -136,7 +151,11 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       }
     } catch (e) {
       LogService.warning('Could not load parent context: $e');
-      if (mounted) safeSetState(() => _parentContextLoaded = true);
+      if (mounted)
+        safeSetState(
+          () => _parentContextError =
+              'Could not load booking details. Please try again.',
+        );
     }
   }
 
@@ -150,7 +169,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
     // Otherwise fetch from database
     try {
-      final userProfile = await AuthService.getUserProfile();
+      final userProfile = await AuthService.getUserProfile().timeout(
+        const Duration(seconds: 8),
+      );
       if (userProfile == null) return;
 
       final userType = userProfile['user_type'] as String?;
@@ -216,15 +237,16 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     if (!_canProceed()) {
       // Show error message for location step if address is missing
       final stepOffset = _shouldShowWhoIsThisFor ? 1 : 0;
-      final locationStep = 4 + stepOffset; // Location at index 4 (non-parent) or 5 (parent)
-      if (_currentStep == locationStep && 
+      final locationStep =
+          4 + stepOffset; // Location at index 4 (non-parent) or 5 (parent)
+      if (_currentStep == locationStep &&
           _selectedLocation == 'onsite' &&
           (_onsiteAddress == null || _onsiteAddress!.trim().isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               'Please enter your address to continue with onsite sessions',
-              style: GoogleFonts.poppins(),
+              style: GoogleFonts.nunito(),
             ),
             backgroundColor: Colors.red[600],
             behavior: SnackBarBehavior.floating,
@@ -234,19 +256,24 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       }
       return;
     }
-    
+
     // Calculate next step - skip flexible session selector if location is not hybrid
     int nextStep = _currentStep + 1;
     final stepOffset = _shouldShowWhoIsThisFor ? 1 : 0;
-    final flexibleStep = 5 + stepOffset; // Flexible at index 5 (non-parent) or 6 (parent)
-    final reviewStep = 6 + stepOffset;   // Review at index 6 (non-parent) or 7 (parent)
-    final wasSkipping = nextStep == flexibleStep && _selectedLocation != 'hybrid';
+    final flexibleStep =
+        5 + stepOffset; // Flexible at index 5 (non-parent) or 6 (parent)
+    final reviewStep =
+        6 + stepOffset; // Review at index 6 (non-parent) or 7 (parent)
+    final wasSkipping =
+        nextStep == flexibleStep && _selectedLocation != 'hybrid';
     if (wasSkipping) {
       // Skip flexible step if not hybrid, go directly to review
       nextStep = reviewStep;
-      LogService.info('📍 Skipping flexible step ($flexibleStep) - location is $_selectedLocation, going to review ($reviewStep)');
+      LogService.info(
+        '📍 Skipping flexible step ($flexibleStep) - location is $_selectedLocation, going to review ($reviewStep)',
+      );
     }
-    
+
     if (nextStep < _totalSteps) {
       LogService.info(
         '📍 Booking flow next: current=$_currentStep target=$nextStep '
@@ -269,14 +296,18 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       int prevStep = _currentStep - 1;
       final stepOffset = _shouldShowWhoIsThisFor ? 1 : 0;
       final flexibleStep = 5 + stepOffset;
-      final locationStep = 4 + stepOffset; // Location is at index 4 (non-parent) or 5 (parent)
-      final wasSkipping = prevStep == flexibleStep && _selectedLocation != 'hybrid';
+      final locationStep =
+          4 + stepOffset; // Location is at index 4 (non-parent) or 5 (parent)
+      final wasSkipping =
+          prevStep == flexibleStep && _selectedLocation != 'hybrid';
       if (wasSkipping) {
         // Skip flexible step if not hybrid, go back to location
         prevStep = locationStep;
-        LogService.info('📍 Skipping flexible step ($flexibleStep) on back - location is $_selectedLocation, going to location ($locationStep)');
+        LogService.info(
+          '📍 Skipping flexible step ($flexibleStep) on back - location is $_selectedLocation, going to location ($locationStep)',
+        );
       }
-      
+
       LogService.info(
         '📍 Booking flow back: current=$_currentStep target=$prevStep '
         'location=$_selectedLocation total=$_totalSteps',
@@ -307,9 +338,14 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   double _getProgressValue() {
     // Adjust progress to account for skipped flexible step
-    final flexibleStep = _shouldShowWhoIsThisFor ? 6 : 5; // Flexible at index 5 (non-parent) or 6 (parent)
-    final effectiveSteps = _selectedLocation == 'hybrid' ? _totalSteps : _totalSteps - 1;
-    final effectiveStep = _currentStep > flexibleStep && _selectedLocation != 'hybrid'
+    final flexibleStep = _shouldShowWhoIsThisFor
+        ? 6
+        : 5; // Flexible at index 5 (non-parent) or 6 (parent)
+    final effectiveSteps = _selectedLocation == 'hybrid'
+        ? _totalSteps
+        : _totalSteps - 1;
+    final effectiveStep =
+        _currentStep > flexibleStep && _selectedLocation != 'hybrid'
         ? _currentStep - 1
         : _currentStep;
     return (effectiveStep + 1) / effectiveSteps;
@@ -342,7 +378,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         // For online or hybrid/flexible, no address needed upfront
         return true;
       case 5: // Flexible Session Location Selector (only for hybrid)
-        if (_selectedLocation != 'hybrid') return true; // Skip validation if not hybrid
+        if (_selectedLocation != 'hybrid')
+          return true; // Skip validation if not hybrid
         if (_sessionLocations.length != _selectedDays.length) return false;
         // If any session is onsite, all onsite sessions must have a non-empty address
         for (final e in _sessionLocations.entries) {
@@ -356,7 +393,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         if (_selectedPaymentPlan == null) return false;
         if (_reviewStepReachedAt == null) return false;
         if (!_agreedToTerms || !_agreedToSafeguarding) return false;
-        final timeSinceReview = DateTime.now().difference(_reviewStepReachedAt!);
+        final timeSinceReview = DateTime.now().difference(
+          _reviewStepReachedAt!,
+        );
         return timeSinceReview.inSeconds >= 1;
       default:
         return false;
@@ -366,7 +405,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   /// Build PageView children dynamically based on location selection
   List<Widget> _buildPageViewChildren() {
     final children = <Widget>[];
-    
+
     // Step 0: Who is this for? (only for parents)
     if (_shouldShowWhoIsThisFor) {
       children.add(_buildWhoIsThisFor());
@@ -381,7 +420,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         tutor: widget.tutor,
         initialFrequency: _selectedFrequency,
         showMultiLearnerHint: _isParent && _parentLearners.length == 1,
-        learnerCount: _isParent ? _selectedLearnerIds.length : null, // Pass learner count to adapt pricing
+        learnerCount: _isParent
+            ? _selectedLearnerIds.length
+            : null, // Pass learner count to adapt pricing
         onFrequencySelected: (frequency) {
           safeSetState(() {
             _selectedFrequency = frequency;
@@ -448,7 +489,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 });
               },
             ),
-            if (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') ...[
+            if (_selectedLocation == 'onsite' ||
+                _selectedLocation == 'hybrid') ...[
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -457,17 +499,27 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                    border: Border.all(
+                      color: AppTheme.primaryColor.withOpacity(0.3),
+                    ),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.info_outline, size: 20, color: AppTheme.primaryColor),
+                      Icon(
+                        Icons.info_outline,
+                        size: 20,
+                        color: AppTheme.primaryColor,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           'If you book a tutor for onsite sessions, you\'ll be required to complete identity verification (KYC) when booking your first onsite session—after the tutor accepts your request and before payment.',
-                          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textDark, height: 1.4),
+                          style: GoogleFonts.nunito(
+                            fontSize: 12,
+                            color: AppTheme.textDark,
+                            height: 1.4,
+                          ),
                         ),
                       ),
                     ],
@@ -502,7 +554,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               child: Center(
                 child: Text(
                   'Loading review...',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 12,
                     color: Colors.grey[600],
                   ),
@@ -531,18 +583,19 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         learnerCount: _isParent ? _selectedLearnerIds.length : null,
         initialAgreedToTerms: _agreedToTerms,
         initialAgreedToSafeguarding: _agreedToSafeguarding,
-        onAgreementsChanged: ({
-          required bool agreedToTerms,
-          required bool agreedToSafeguarding,
-        }) {
-          safeSetState(() {
-            _agreedToTerms = agreedToTerms;
-            _agreedToSafeguarding = agreedToSafeguarding;
-          });
-        },
+        onAgreementsChanged:
+            ({
+              required bool agreedToTerms,
+              required bool agreedToSafeguarding,
+            }) {
+              safeSetState(() {
+                _agreedToTerms = agreedToTerms;
+                _agreedToSafeguarding = agreedToSafeguarding;
+              });
+            },
       ),
     );
-    
+
     return children;
   }
 
@@ -555,8 +608,14 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       if (id == 'parent') {
         names.add('Me (Parent)');
       } else {
-        final list = _parentLearners.where((l) => (l['id']?.toString() ?? '') == id).toList();
-        names.add(list.isNotEmpty ? (list.first['name']?.toString() ?? 'Learner') : 'Learner');
+        final list = _parentLearners
+            .where((l) => (l['id']?.toString() ?? '') == id)
+            .toList();
+        names.add(
+          list.isNotEmpty
+              ? (list.first['name']?.toString() ?? 'Learner')
+              : 'Learner',
+        );
       }
     }
     return names;
@@ -584,16 +643,24 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         children: [
           Text(
             'Subjects for each learner',
-            style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textDark),
+            style: GoogleFonts.nunito(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Select the subject(s) each person will be tutored in. The tutor will see this when reviewing your request.',
-            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+            style: GoogleFonts.nunito(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 24),
           if (learnerNames.length == 1) ...[
-            _buildSubjectChipsForLearner(learnerNames[0], tutorSubjects, recommended),
+            _buildSubjectChipsForLearner(
+              learnerNames[0],
+              tutorSubjects,
+              recommended,
+            ),
           ] else ...[
             ...learnerNames.map((name) {
               return Padding(
@@ -603,10 +670,18 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                   children: [
                     Text(
                       name,
-                      style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.primaryColor),
+                      style: GoogleFonts.nunito(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryColor,
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    _buildSubjectChipsForLearner(name, tutorSubjects, recommended),
+                    _buildSubjectChipsForLearner(
+                      name,
+                      tutorSubjects,
+                      recommended,
+                    ),
                   ],
                 ),
               );
@@ -620,11 +695,23 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   List<String> _getTutorSubjectList() {
     final raw = widget.tutor['subjects'] ?? widget.tutor['specializations'];
     if (raw is List && raw.isNotEmpty) {
-      return raw.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+      return raw
+          .map((e) => e?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
     }
     return [
-      'Mathematics', 'English', 'Physics', 'Chemistry', 'Biology', 'French',
-      'Computer Science', 'Economics', 'Geography', 'History', 'ICT',
+      'Mathematics',
+      'English',
+      'Physics',
+      'Chemistry',
+      'Biology',
+      'French',
+      'Computer Science',
+      'Economics',
+      'Geography',
+      'History',
+      'ICT',
     ];
   }
 
@@ -634,8 +721,10 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     List<String> recommendedSubjects,
   ) {
     final selected = _learnerSubjects[learnerName] ?? [];
-    final controller =
-        _otherSubjectControllers.putIfAbsent(learnerName, () => TextEditingController());
+    final controller = _otherSubjectControllers.putIfAbsent(
+      learnerName,
+      () => TextEditingController(),
+    );
 
     final recommendedSet = recommendedSubjects.toSet();
     final orderedTutorSubjects = [
@@ -655,7 +744,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         if (recommendedSubjects.isNotEmpty) ...[
           Text(
             'Recommended (from your onboarding subjects)',
-            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[700]),
+            style: GoogleFonts.nunito(fontSize: 12, color: Colors.grey[700]),
           ),
           const SizedBox(height: 10),
         ],
@@ -681,7 +770,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                     child: Text(
                       subject,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: isSelected ? Colors.white : AppTheme.textDark,
@@ -707,7 +796,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               selectedColor: AppTheme.primaryColor,
               checkmarkColor: Colors.white,
               side: BorderSide(
-                color: isSelected ? AppTheme.primaryColor : Colors.grey.withOpacity(0.25),
+                color: isSelected
+                    ? AppTheme.primaryColor
+                    : Colors.grey.withOpacity(0.25),
               ),
             );
           }).toList(),
@@ -715,7 +806,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         const SizedBox(height: 14),
         Text(
           'Other subject',
-          style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[700]),
+          style: GoogleFonts.nunito(fontSize: 12, color: Colors.grey[700]),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -723,8 +814,14 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
             hintText: 'Add a subject not listed…',
-            hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[500]),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            hintStyle: GoogleFonts.nunito(
+              fontSize: 12,
+              color: Colors.grey[500],
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: Colors.grey.withOpacity(0.25)),
@@ -735,7 +832,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primaryColor.withOpacity(0.6)),
+              borderSide: BorderSide(
+                color: AppTheme.primaryColor.withOpacity(0.6),
+              ),
             ),
             suffixIcon: IconButton(
               tooltip: 'Add',
@@ -773,14 +872,18 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   Widget _buildWhoIsThisFor() {
     // Build list of selectable options: children first, then parent last
     final selectableOptions = <Map<String, dynamic>>[];
-    
+
     // Add all children first
-    selectableOptions.addAll(_parentLearners.map((learner) => {
-      'id': learner['id']?.toString() ?? '',
-      'name': learner['name']?.toString() ?? 'Learner',
-      'isParent': false,
-    }));
-    
+    selectableOptions.addAll(
+      _parentLearners.map(
+        (learner) => {
+          'id': learner['id']?.toString() ?? '',
+          'name': learner['name']?.toString() ?? 'Learner',
+          'isParent': false,
+        },
+      ),
+    );
+
     // Add parent as an option last (for cases where parent is booking for themselves)
     // This allows parents to book sessions for themselves if needed
     selectableOptions.add({
@@ -788,7 +891,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       'name': 'Me (Parent)',
       'isParent': true,
     });
-    
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -796,7 +899,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         children: [
           Text(
             'Select who will attend these sessions',
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: Colors.black,
@@ -805,12 +908,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           const SizedBox(height: 8),
           Text(
             'You can select one or more children',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.nunito(fontSize: 14, color: Colors.grey[600]),
           ),
-          
+
           // Level compatibility message (non-blocking)
           if (_hasLevelMismatch) ...[
             const SizedBox(height: 16),
@@ -828,7 +928,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                   Expanded(
                     child: Text(
                       'The selected children have different education levels. The tutor will adapt the sessions accordingly.',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: 12,
                         color: Colors.orange[900],
                       ),
@@ -838,9 +938,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               ),
             ),
           ],
-          
+
           const SizedBox(height: 24),
-          
+
           // List of selectable options (parent + children)
           ListView.builder(
             shrinkWrap: true,
@@ -851,7 +951,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               final optionId = option['id'] as String;
               final optionName = option['name'] as String;
               final isSelected = _selectedLearnerIds.contains(optionId);
-              
+
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: GestureDetector(
@@ -871,10 +971,14 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppTheme.primaryColor.withOpacity(0.1) : Colors.grey[50],
+                      color: isSelected
+                          ? AppTheme.primaryColor.withOpacity(0.1)
+                          : Colors.grey[50],
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : Colors.grey[300]!,
                         width: isSelected ? 2 : 1,
                       ),
                     ),
@@ -885,22 +989,32 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                           width: 24,
                           height: 24,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(6), // Rounded square
-                            color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+                            borderRadius: BorderRadius.circular(
+                              6,
+                            ), // Rounded square
+                            color: isSelected
+                                ? AppTheme.primaryColor
+                                : Colors.transparent,
                             border: Border.all(
-                              color: isSelected ? AppTheme.primaryColor : Colors.grey[400]!,
+                              color: isSelected
+                                  ? AppTheme.primaryColor
+                                  : Colors.grey[400]!,
                               width: 2,
                             ),
                           ),
                           child: isSelected
-                              ? const Icon(Icons.check, size: 16, color: Colors.white)
+                              ? const Icon(
+                                  Icons.check,
+                                  size: 16,
+                                  color: Colors.white,
+                                )
                               : null,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             optionName,
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 16,
                               fontWeight: FontWeight.w500,
                               color: Colors.black,
@@ -922,8 +1036,10 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   /// Check if selected learners have different education levels
   void _checkLevelCompatibility() {
     // Filter out 'parent' ID and get only selected children
-    final selectedChildIds = _selectedLearnerIds.where((id) => id != 'parent').toList();
-    
+    final selectedChildIds = _selectedLearnerIds
+        .where((id) => id != 'parent')
+        .toList();
+
     if (selectedChildIds.isEmpty || selectedChildIds.length < 2) {
       safeSetState(() {
         _hasLevelMismatch = false;
@@ -976,7 +1092,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               const SizedBox(height: 16),
               Text(
                 'Sending request...',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Colors.black,
@@ -993,33 +1109,39 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       final pricing = PricingService.calculateFromTutorData(widget.tutor);
       final perSession = pricing['perSession'] as double;
       final sessionsPerMonth = _selectedFrequency! * 4;
-      
+
       // Apply multi-learner discounts if parent selected multiple children
       List<String>? learnerLabels;
       double monthlyTotal;
       if (_isParent && _selectedLearnerIds.isNotEmpty) {
         // Filter out 'parent' ID and get only selected children
-        final selectedChildIds = _selectedLearnerIds.where((id) => id != 'parent').toList();
+        final selectedChildIds = _selectedLearnerIds
+            .where((id) => id != 'parent')
+            .toList();
         final selectedLearners = _parentLearners
             .where((l) => selectedChildIds.contains(l['id']?.toString()))
             .toList();
-        
+
         // Build learner labels: include parent name if selected, then children names
         final labels = <String>[];
         if (_selectedLearnerIds.contains('parent')) {
-          final userProfile = await AuthService.getUserProfile();
+          final userProfile = await AuthService.getUserProfile().timeout(
+            const Duration(seconds: 8),
+          );
           final parentName = userProfile?['full_name'] as String? ?? 'Parent';
           labels.add(parentName);
         }
-        labels.addAll(selectedLearners.map((l) => l['name']?.toString() ?? 'Learner'));
-        
+        labels.addAll(
+          selectedLearners.map((l) => l['name']?.toString() ?? 'Learner'),
+        );
+
         // Count total learners (parent + children)
         final totalLearnerCount = labels.length;
-        
+
         // Only set learnerLabels if multiple learners (parent + children or multiple children)
         if (totalLearnerCount > 1) {
           learnerLabels = labels;
-          
+
           // Calculate total with multi-learner discounts
           final baseMonthlyTotal = perSession * sessionsPerMonth;
           monthlyTotal = await PricingService.calculateMultiLearnerMonthlyTotal(
@@ -1043,18 +1165,23 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       // Use pre-calculated transportation cost (calculated when location was selected)
       // If not calculated yet, calculate now
       double? estimatedTransportationCost = _estimatedTransportationCost;
-      if (estimatedTransportationCost == null && (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid')) {
-        if (_selectedLocation == 'onsite' && _onsiteAddress != null && _onsiteAddress!.isNotEmpty) {
+      if (estimatedTransportationCost == null &&
+          (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid')) {
+        if (_selectedLocation == 'onsite' &&
+            _onsiteAddress != null &&
+            _onsiteAddress!.isNotEmpty) {
           // Single onsite address - calculate once
           final tutorHomeAddress = widget.tutor['home_address'] as String?;
           final tutorCity = widget.tutor['city'] as String?;
-          
-          estimatedTransportationCost = await TransportationCostService.calculateTransportationCost(
-            tutorHomeAddress: tutorHomeAddress,
-            onsiteAddress: _onsiteAddress!,
-            tutorCity: tutorCity,
-          );
-        } else if (_selectedLocation == 'hybrid' && _locationDetails.isNotEmpty) {
+
+          estimatedTransportationCost =
+              await TransportationCostService.calculateTransportationCost(
+                tutorHomeAddress: tutorHomeAddress,
+                onsiteAddress: _onsiteAddress!,
+                tutorCity: tutorCity,
+              );
+        } else if (_selectedLocation == 'hybrid' &&
+            _locationDetails.isNotEmpty) {
           // Hybrid: Calculate for each onsite session, then average
           // For now, use first onsite address as estimate (will be recalculated per session)
           String? firstOnsiteAddress;
@@ -1067,16 +1194,17 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               }
             }
           }
-          
+
           if (firstOnsiteAddress != null && firstOnsiteAddress.isNotEmpty) {
             final tutorHomeAddress = widget.tutor['home_address'] as String?;
             final tutorCity = widget.tutor['city'] as String?;
-            
-            estimatedTransportationCost = await TransportationCostService.calculateTransportationCost(
-              tutorHomeAddress: tutorHomeAddress,
-              onsiteAddress: firstOnsiteAddress,
-              tutorCity: tutorCity,
-            );
+
+            estimatedTransportationCost =
+                await TransportationCostService.calculateTransportationCost(
+                  tutorHomeAddress: tutorHomeAddress,
+                  onsiteAddress: firstOnsiteAddress,
+                  tutorCity: tutorCity,
+                );
           }
         }
       }
@@ -1097,8 +1225,12 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         learnerLabels: learnerLabels,
         learnerSubjects: _learnerSubjects.isNotEmpty ? _learnerSubjects : null,
         estimatedTransportationCost: estimatedTransportationCost,
-        sessionLocations: _selectedLocation == 'hybrid' ? _sessionLocations : null,
-        locationDetails: _selectedLocation == 'hybrid' ? _locationDetails : null,
+        sessionLocations: _selectedLocation == 'hybrid'
+            ? _sessionLocations
+            : null,
+        locationDetails: _selectedLocation == 'hybrid'
+            ? _locationDetails
+            : null,
         agreedToTermsAt: _agreedToTerms ? nowUtc : null,
         agreedToSafeguardingAt: _agreedToSafeguarding ? nowUtc : null,
       );
@@ -1150,13 +1282,19 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       final errorString = e.toString();
       if (errorString.contains('EXISTING_BOOKING_REQUEST')) {
         // Extract request ID from error message
-        final requestIdMatch = RegExp(r'requestId=([a-f0-9-]+)').firstMatch(errorString);
+        final requestIdMatch = RegExp(
+          r'requestId=([a-f0-9-]+)',
+        ).firstMatch(errorString);
         final requestId = requestIdMatch?.group(1);
-        
+
         // Extract message (everything after the second colon)
-        final messageMatch = RegExp(r'EXISTING_BOOKING_REQUEST:requestId=[^:]+:(.+)').firstMatch(errorString);
-        final message = messageMatch?.group(1) ?? 'You already have an existing booking with this tutor.';
-        
+        final messageMatch = RegExp(
+          r'EXISTING_BOOKING_REQUEST:requestId=[^:]+:(.+)',
+        ).firstMatch(errorString);
+        final message =
+            messageMatch?.group(1) ??
+            'You already have an existing booking with this tutor.';
+
         _showExistingBookingDialog(message, requestId);
       } else {
         // Use ErrorHandlerService with retry for transient errors (network, timeout)
@@ -1175,21 +1313,15 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       context: context,
       barrierDismissible: true,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(
-              Icons.info_outline,
-              color: AppTheme.primaryColor,
-              size: 24,
-            ),
+            Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'Existing Booking',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
@@ -1200,7 +1332,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         ),
         content: Text(
           message,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 12,
             height: 1.5,
             color: Colors.grey.shade700,
@@ -1211,7 +1343,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             onPressed: () => Navigator.pop(context),
             child: Text(
               'OK',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 color: Colors.grey.shade700,
                 fontWeight: FontWeight.w600,
               ),
@@ -1222,7 +1354,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               onPressed: () async {
                 Navigator.pop(context); // Close dialog
                 Navigator.pop(context); // Close booking flow screen
-                
+
                 // Navigate to student navigation with requests tab and highlight the request
                 if (mounted) {
                   Navigator.pushNamedAndRemoveUntil(
@@ -1242,9 +1374,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               ),
               child: Text(
                 'View Session',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
               ),
             ),
         ],
@@ -1276,7 +1406,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             const SizedBox(height: 20),
             Text(
               'Request Sent!',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
                 color: Colors.black,
@@ -1286,7 +1416,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             Text(
               'Your booking request has been sent to ${widget.tutor['full_name']}!',
               textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 12,
                 color: Colors.grey[700],
                 height: 1.5,
@@ -1317,7 +1447,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 ),
                 child: Text(
                   'View My Requests',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
@@ -1365,7 +1495,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 child: LinearProgressIndicator(
                   value: _getProgressValue(),
                   backgroundColor: Colors.grey[200],
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppTheme.primaryColor,
+                  ),
                 ),
               )
             : null,
@@ -1380,87 +1512,73 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const CircularProgressIndicator(color: AppTheme.primaryColor),
+                  if (_parentContextError == null)
+                    const SizedBox(
+                      width: 240,
+                      child: LinearProgressIndicator(
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
                   const SizedBox(height: 16),
                   Text(
-                    'Loading…',
-                    style: GoogleFonts.poppins(
+                    _parentContextError ?? 'Preparing your booking…',
+                    style: GoogleFonts.nunito(
                       fontSize: 14,
                       color: Colors.grey[600],
                     ),
                   ),
+                  if (_parentContextError != null)
+                    TextButton.icon(
+                      onPressed: _loadParentContext,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Try again'),
+                    ),
                 ],
               ),
             ),
       bottomNavigationBar: _parentContextLoaded
           ? Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _currentStep > 0 ? _previousStep : () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: AppTheme.primaryColor),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, -5),
                   ),
-                  child: Text(
-                    'Back',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryColor,
+                ],
+              ),
+              child: SafeArea(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: LearnerAction(
+                        label: 'Back',
+                        secondary: true,
+                        onPressed: _currentStep > 0
+                            ? _previousStep
+                            : () => Navigator.pop(context),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: LearnerAction(
+                        label: _currentStep == _totalSteps - 1
+                            ? 'Send request'
+                            : 'Continue',
+                        onPressed: _canProceed()
+                            ? (_currentStep == _totalSteps - 1
+                                  ? _submitBookingRequest
+                                  : _nextStep)
+                            : null,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: _canProceed()
-                      ? (_currentStep == _totalSteps - 1
-                            ? _submitBookingRequest
-                            : _nextStep)
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    disabledBackgroundColor: Colors.grey[300],
-                  ),
-                  child: Text(
-                    _currentStep == _totalSteps - 1
-                        ? 'Send Request'
-                        : 'Continue',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      )
+            )
           : null,
     );
   }

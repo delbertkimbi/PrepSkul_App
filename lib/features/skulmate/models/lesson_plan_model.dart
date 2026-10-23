@@ -16,7 +16,7 @@ class LessonPlanStep {
     this.status = 'pending',
   });
 
-  bool get isCompleted => status == 'completed' || status == 'skipped';
+  bool get isCompleted => status == 'completed';
   bool get isInteractive => type == 'drill' || type == 'quiz';
   bool get isContentOnly =>
       type == 'overview' || type == 'concepts' || type == 'recap';
@@ -47,13 +47,13 @@ class LessonPlanStep {
   }
 
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'title': title,
-        if (body != null) 'body': body,
-        if (bullets.isNotEmpty) 'bullets': bullets,
-        if (gameType != null) 'gameType': gameType,
-        'status': status,
-      };
+    'type': type,
+    'title': title,
+    if (body != null) 'body': body,
+    if (bullets.isNotEmpty) 'bullets': bullets,
+    if (gameType != null) 'gameType': gameType,
+    'status': status,
+  };
 }
 
 /// Persisted lesson path from skulmate_lessons.
@@ -81,13 +81,9 @@ class LessonPlan {
     return steps[currentStep];
   }
 
-  bool get isComplete =>
-      steps.isNotEmpty && steps.every((s) => s.isCompleted);
+  bool get isComplete => steps.isNotEmpty && steps.every((s) => s.isCompleted);
 
-  LessonPlan copyWith({
-    List<LessonPlanStep>? steps,
-    int? currentStep,
-  }) {
+  LessonPlan copyWith({List<LessonPlanStep>? steps, int? currentStep}) {
     return LessonPlan(
       id: id,
       topic: topic,
@@ -102,9 +98,9 @@ class LessonPlan {
     final rawSteps = json['steps'];
     final steps = rawSteps is List
         ? rawSteps
-            .whereType<Map>()
-            .map((e) => LessonPlanStep.fromJson(Map<String, dynamic>.from(e)))
-            .toList()
+              .whereType<Map>()
+              .map((e) => LessonPlanStep.fromJson(Map<String, dynamic>.from(e)))
+              .toList()
         : <LessonPlanStep>[];
 
     return LessonPlan(

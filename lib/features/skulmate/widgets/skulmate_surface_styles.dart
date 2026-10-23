@@ -13,26 +13,20 @@ class SkulMateSurfaceStyles {
   static const double homeCardRadius = 18;
 
   static List<BoxShadow> _softShadow({bool compact = false}) => [
-        BoxShadow(
-          color: AppTheme.textDark.withValues(alpha: compact ? 0.04 : 0.05),
-          blurRadius: compact ? 4 : 6,
-          offset: Offset(0, compact ? 1 : 2),
-        ),
-      ];
+    BoxShadow(
+      color: AppTheme.textDark.withValues(alpha: compact ? 0.04 : 0.05),
+      blurRadius: compact ? 4 : 6,
+      offset: Offset(0, compact ? 1 : 2),
+    ),
+  ];
 
   /// Standard card — white, hairline border, gentle lift (matches game cards).
-  static BoxDecoration homeCard({
-    double? radius,
-    bool compact = false,
-  }) {
+  static BoxDecoration homeCard({double? radius, bool compact = false}) {
     final r = radius ?? homeCardRadius;
     return BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(r),
-      border: Border.all(color: AppTheme.primaryColor, width: 2),
-      boxShadow: const [
-        BoxShadow(color: Color(0x381E3A8A), offset: Offset(0, 3), blurRadius: 0),
-      ],
+      border: Border.all(color: const Color(0xFFE7E9ED)),
     );
   }
 
@@ -44,8 +38,7 @@ class SkulMateSurfaceStyles {
     Color? color,
     double radius = 14,
     bool compact = false,
-  }) =>
-      homeCard(radius: radius, compact: compact);
+  }) => homeCard(radius: radius, compact: compact);
 
   static Color get surfaceFill => AppTheme.surfaceColor;
 
@@ -54,11 +47,9 @@ class SkulMateSurfaceStyles {
   static List<BoxShadow> homeCardShadow({bool compact = false}) =>
       _softShadow(compact: compact);
 
-  static BoxDecoration heroGradient({
-    double radius = 22,
-    List<Color>? colors,
-  }) {
-    final c = colors ??
+  static BoxDecoration heroGradient({double radius = 22, List<Color>? colors}) {
+    final c =
+        colors ??
         <Color>[
           AppTheme.primaryDark,
           AppTheme.primaryColor,
@@ -117,9 +108,7 @@ class SkulMateSurfaceStyles {
     return BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(
-        color: AppTheme.primaryColor.withValues(alpha: 0.12),
-      ),
+      border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.12)),
       boxShadow: homeCardShadow(),
     );
   }
@@ -127,8 +116,7 @@ class SkulMateSurfaceStyles {
   static BoxDecoration heroNeumorphic({
     double radius = 22,
     List<Color>? colors,
-  }) =>
-      heroGradient(radius: radius, colors: colors);
+  }) => heroGradient(radius: radius, colors: colors);
 
   static List<BoxShadow> appBarSoftLift() => _softShadow(compact: true);
 
@@ -179,9 +167,7 @@ class SkulMateSurfaceStyles {
       elevation: enabled ? 2 : 0,
       shadowColor: AppTheme.softYellow.withValues(alpha: 0.45),
       padding: const EdgeInsets.symmetric(vertical: 14),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     );
   }
 
@@ -233,9 +219,7 @@ class SkulMateSurfaceStyles {
       backgroundColor: AppTheme.primaryColor,
       foregroundColor: Colors.white,
       minimumSize: Size.fromHeight(minHeight),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     );
   }
 
@@ -245,9 +229,7 @@ class SkulMateSurfaceStyles {
       backgroundColor: Colors.white,
       side: BorderSide(color: AppTheme.neutral200),
       minimumSize: Size.fromHeight(minHeight),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     );
   }
 }

@@ -27,6 +27,7 @@ class SkulMateSessionCache {
               'move': t.move,
               'surface': t.surface?.toJson(),
               'board': t.board?.toJson(),
+              'imageUrl': t.imageUrl,
             },
           )
           .toList(),
@@ -36,6 +37,11 @@ class SkulMateSessionCache {
       final userId = SupabaseService.client.auth.currentUser?.id;
       if (userId != null) {
         await prefs.setString('skulmate_tutor_active_$userId', sessionId);
+        final ids =
+            prefs.getStringList('skulmate_tutor_sessions_$userId') ?? [];
+        ids.remove(sessionId);
+        ids.insert(0, sessionId);
+        await prefs.setStringList('skulmate_tutor_sessions_$userId', ids);
       }
     } catch (_) {}
   }
@@ -61,6 +67,7 @@ class SkulMateSessionCache {
           id: map['id'] as String?,
           isUser: map['isUser'] as bool? ?? false,
           text: map['text'] as String? ?? '',
+          imageUrl: map['imageUrl'] as String?,
           speak: map['speak'] as bool? ?? false,
           escalate: map['escalate'] as bool? ?? false,
           move: map['move'] as String?,
@@ -79,6 +86,29 @@ class SkulMateSessionCache {
     } catch (_) {
       return [];
     }
+  }
+
+  static Future<List<Map<String, String>>> savedSessions() async {
+    String? uid;
+    try {
+      uid = SupabaseService.client.auth.currentUser?.id;
+    } catch (_) {
+      return [];
+    }
+    if (uid == null) return [];
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList('skulmate_tutor_sessions_$uid') ?? [];
+    final active = await activeSessionId();
+    if (active != null && !ids.contains(active)) ids.insert(0, active);
+    final result = <Map<String, String>>[];
+    for (final id in ids) {
+      final turns = await loadTurns(id);
+      if (turns.isEmpty) continue;
+      final title =
+          turns.where((t) => t.isUser).firstOrNull?.text ?? turns.first.text;
+      result.add({'id': id, 'title': title});
+    }
+    return result;
   }
 
   static Future<String?> activeSessionId() async {

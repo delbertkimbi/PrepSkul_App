@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/language_service.dart';
@@ -16,6 +17,45 @@ class LessonPlanService {
   static const String _endpoint = '/skulmate/lesson-plan';
 
   static String get _apiBaseUrl => AppConfig.skulMateHttpApiBase;
+
+  static Future<List<LessonPlan>> readCached() async {
+    try {
+      final uid = SupabaseService.client.auth.currentUser?.id;
+      if (uid == null) return [];
+      final prefs = await SharedPreferences.getInstance();
+      final rows =
+          jsonDecode(prefs.getString('learning_paths_v1_$uid') ?? '[]') as List;
+      return rows
+          .map((row) => LessonPlan.fromJson(Map<String, dynamic>.from(row)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Only the signed-in learner's saved paths; errors must remain visible.
+  static Future<List<LessonPlan>> listSaved() async {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId == null) {
+      throw StateError('Please sign in to see your learning path.');
+    }
+    final rows = await SupabaseService.client
+        .from('skulmate_lessons')
+        .select('id, topic, steps, current_step, source_game_id, child_id')
+        .eq('user_id', userId)
+        .isFilter('child_id', null)
+        .order('updated_at', ascending: false)
+        .limit(8)
+        .timeout(const Duration(seconds: 12));
+    final plans = rows.map((row) => LessonPlan.fromJson(row)).toList();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('learning_paths_v1_$userId', jsonEncode(rows));
+    } catch (_) {
+      /* Storage failure must not discard a successful server read. */
+    }
+    return plans;
+  }
 
   /// Generate a new lesson plan via API and return the persisted row.
   static Future<LessonPlan> createLessonPlan({
@@ -43,120 +83,53 @@ class LessonPlanService {
     final url = '$_apiBaseUrl$_endpoint';
     LogService.info('🗺️ [Path] Creating lesson plan: $url');
 
-    try {
-      final response = await SkulMateService.postJson(
-        url: url,
-        token: token,
-        body: body,
+    final response = await SkulMateService.postJson(
+      url: url,
+      token: token,
+      body: body,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        _decodeJson(response.body)?['error']?.toString() ??
+            'Could not save your learning path. Please try again.',
       );
-
-      if (response.statusCode != 200) {
-        final decoded = _decodeJson(response.body);
-        final message =
-            decoded?['error']?.toString() ?? 'Failed to create lesson path';
-        LogService.warning(
-          '🗺️ [Path] API failed ($message), using local fallback',
-        );
-        return _localFallback(_resolveTopic(topic, text));
-      }
-
-      final decoded = _decodeJson(response.body);
-      final lessonJson = decoded?['lesson'];
-      if (lessonJson is! Map<String, dynamic>) {
-        LogService.warning('🗺️ [Path] Invalid response, using local fallback');
-        return _localFallback(_resolveTopic(topic, text));
-      }
-
-      return LessonPlan.fromJson(lessonJson);
-    } catch (e) {
-      LogService.warning('🗺️ [Path] Request failed ($e), using local fallback');
-      return _localFallback(_resolveTopic(topic, text));
     }
-  }
-
-  static String _resolveTopic(String? topic, String? text) {
-    final raw = (topic ?? text ?? 'Lesson').trim();
-    return raw.isEmpty ? 'Lesson' : raw;
+    final lessonJson = _decodeJson(response.body)?['lesson'];
+    if (lessonJson is! Map<String, dynamic> || lessonJson['id'] == null) {
+      throw StateError('The learning path was not saved. Please try again.');
+    }
+    return LessonPlan.fromJson(lessonJson);
   }
 
   /// Mark step complete and advance current_step in Supabase.
   static Future<LessonPlan> completeStep({
     required LessonPlan lesson,
     required int stepIndex,
+    String? sessionId,
+    String? turnId,
   }) async {
-    if (stepIndex < 0 || stepIndex >= lesson.steps.length) return lesson;
-
-    final updatedSteps = lesson.steps
-        .asMap()
-        .entries
-        .map((e) => e.key == stepIndex
-            ? e.value.copyWith(status: 'completed')
-            : e.value)
-        .toList();
-
-    var nextStep = stepIndex + 1;
-    if (nextStep >= updatedSteps.length) {
-      nextStep = updatedSteps.length - 1;
-    }
-
-    // Ephemeral local plan — skip DB when API could not persist.
-    if (lesson.id.startsWith('local-')) {
-      return lesson.copyWith(steps: updatedSteps, currentStep: nextStep);
-    }
-
-    final userId = SupabaseService.client.auth.currentUser?.id;
-    if (userId == null) {
-      return lesson.copyWith(steps: updatedSteps, currentStep: nextStep);
-    }
-
-    final now = DateTime.now().toUtc().toIso8601String();
-    try {
-      await SupabaseService.client.from('skulmate_lessons').update({
-        'steps': updatedSteps.map((s) => s.toJson()).toList(),
-        'current_step': nextStep,
-        'updated_at': now,
-      }).eq('id', lesson.id).eq('user_id', userId);
-    } catch (e) {
-      LogService.warning('LessonPlanService.completeStep: $e');
-    }
-
-    return lesson.copyWith(steps: updatedSteps, currentStep: nextStep);
-  }
-
-  static LessonPlan _localFallback(String topic) {
-    final isFrench = LanguageService.languageCode == 'fr';
-    return LessonPlan(
-      id: 'local-${DateTime.now().millisecondsSinceEpoch}',
-      topic: topic,
-      steps: [
-        LessonPlanStep(
-          type: 'overview',
-          title: isFrench ? 'Aperçu' : 'Overview',
-          body: isFrench
-              ? 'Voici ce que nous allons couvrir sur $topic.'
-              : 'Here is what we will cover for $topic.',
-        ),
-        LessonPlanStep(
-          type: 'concepts',
-          title: isFrench ? 'Idées clés' : 'Key ideas',
-          body: isFrench
-              ? 'Lisez les points essentiels avant de pratiquer.'
-              : 'Review the essential points before you practice.',
-        ),
-        LessonPlanStep(
-          type: 'drill',
-          title: isFrench ? 'Pratique' : 'Practice',
-          gameType: 'flashcards',
-        ),
-        LessonPlanStep(
-          type: 'recap',
-          title: isFrench ? 'Récap' : 'Recap',
-          body: isFrench
-              ? 'Révisez ce que vous avez appris.'
-              : 'Review what you learned.',
-        ),
-      ],
+    final token = SupabaseService.client.auth.currentSession?.accessToken;
+    if (token == null) throw StateError('Sign in to save your path.');
+    final response = await SkulMateService.postJson(
+      url: '$_apiBaseUrl/skulmate/lesson-progress',
+      token: token,
+      body: {
+        'lessonId': lesson.id,
+        'stepIndex': stepIndex,
+        if (sessionId != null) 'sessionId': sessionId,
+        if (turnId != null) 'turnId': turnId,
+        'acknowledged': lesson.steps[stepIndex].isContentOnly,
+      },
     );
+    final json = _decodeJson(response.body);
+    if (response.statusCode != 200 ||
+        json?['lesson'] is! Map<String, dynamic>) {
+      throw StateError(
+        json?['error']?.toString() ??
+            'Your path could not be saved. Please retry.',
+      );
+    }
+    return LessonPlan.fromJson(json!['lesson'] as Map<String, dynamic>);
   }
 
   static Future<LessonPlan?> fetchLesson(String lessonId) async {

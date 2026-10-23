@@ -1,6 +1,12 @@
+import 'package:prepskul/core/widgets/mascot_state.dart';
 import 'dart:async';
+import 'package:prepskul/core/design/prepskul_icon.dart';
+import '../services/learning_activity_store.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import '../widgets/mate_access_bar.dart';
 
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/design/learner_design.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -21,21 +27,33 @@ import '../services/skulmate_tutor_session_service.dart';
 import '../services/skulmate_tutor_voice_service.dart';
 import '../services/learner_context_service.dart';
 import '../widgets/skulmate_home_top_bar.dart';
-import '../widgets/skulmate_hero_mascot.dart';
 import '../widgets/skulmate_in_thread_surface.dart';
 import '../widgets/skulmate_mascot_media_widget.dart';
 import '../widgets/skulmate_tutor_board.dart';
 import '../widgets/skulmate_surface_styles.dart';
 import '../widgets/skulmate_tutor_composer.dart';
-import '../widgets/skulmate_typography.dart';
-import '../widgets/skulmate_voice_pill.dart';
 import '../widgets/tutor_chat_bubble.dart';
 
 /// SkulMate tab — voice + chat tutor. Learners and parents are both students.
 class SkulMateHomeScreen extends StatefulWidget {
+  final VoidCallback? onExit;
   final String? childId;
+  final String? initialMessage;
+  final bool startFresh;
+  final String? lessonId;
+  final int? lessonStep;
+  final Future<void> Function(String sessionId, String turnId)? onPracticeSaved;
 
-  const SkulMateHomeScreen({super.key, this.childId});
+  const SkulMateHomeScreen({
+    super.key,
+    this.startFresh = false,
+    this.childId,
+    this.onExit,
+    this.initialMessage,
+    this.onPracticeSaved,
+    this.lessonId,
+    this.lessonStep,
+  });
 
   @override
   State<SkulMateHomeScreen> createState() => _SkulMateHomeScreenState();
@@ -49,6 +67,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   final List<TutorTurn> _turns = [];
 
   String? _sessionId;
+  bool _pendingNewSession = false;
   Map<String, dynamic>? _learnerContext;
   String? _failedInput;
   String? _retrySessionId;
@@ -76,16 +95,22 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   bool _voiceOut = true;
   String? _error;
   bool _alwaysStarted = false;
+  bool _arrivalGreeting = true;
+  Timer? _arrivalTimer;
 
   @override
   void initState() {
     super.initState();
+    _arrivalTimer = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted) safeSetState(() => _arrivalGreeting = false);
+    });
+    _pendingNewSession = widget.startFresh;
     _voice.state.addListener(_onVoiceState);
     WidgetsBinding.instance.addObserver(this);
     SkulMateHomeRefreshBus.tick.addListener(_onRefresh);
     SkulMateTutorIntakeBus.pending.addListener(_onIntake);
     _applyStatusBarStyle();
-    if (!kIsWeb) unawaited(_voice.prepare());
+    unawaited(ConnectivityService().initialize());
     unawaited(_bootstrap());
     unawaited(_loadLearnerContext());
     SkulMateStreakReminderService.recordActivityAndReschedule();
@@ -170,6 +195,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   void dispose() {
     _voice.state.removeListener(_onVoiceState);
     _reactionTimer?.cancel();
+    _arrivalTimer?.cancel();
     unawaited(_voice.endSession());
     SkulMateHomeRefreshBus.tick.removeListener(_onRefresh);
     SkulMateTutorIntakeBus.pending.removeListener(_onIntake);
@@ -203,11 +229,34 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   }
 
   Future<void> _bootstrap() async {
+    if (!_pendingNewSession &&
+        widget.initialMessage == null &&
+        widget.lessonId == null &&
+        widget.childId == null) {
+      final cachedId = await SkulMateSessionCache.activeSessionId();
+      if (cachedId != null) {
+        final cached = await SkulMateSessionCache.loadTurns(cachedId);
+        if (mounted && _turns.isEmpty && cached.isNotEmpty) {
+          safeSetState(() {
+            _sessionId = cachedId;
+            _turns.addAll(cached);
+          });
+        }
+      }
+    }
+    await ConnectivityService().initialize();
+    if (!mounted || !ConnectivityService().isOnline) return;
     try {
       final opened = await SkulMateTutorSessionService.openSession(
         childId: widget.childId,
+        forceNew: _pendingNewSession || widget.initialMessage != null,
+        lessonId: widget.lessonId,
+        lessonStep: widget.lessonStep,
       );
       await _applyOpened(opened);
+      if (mounted && widget.initialMessage != null) {
+        await _sendText(widget.initialMessage!);
+      }
     } catch (e) {
       if (mounted) {
         safeSetState(() {
@@ -221,6 +270,20 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   }
 
   Future<void> _startNew() async {
+    _pendingNewSession = true;
+    _sessionId = null;
+    await _voice.endSession();
+    if (!ConnectivityService().isOnline) {
+      if (mounted)
+        safeSetState(() {
+          _sessionId = null;
+          _turns.clear();
+          _busy = false;
+          _error = null;
+          _composer.clear();
+        });
+      return;
+    }
     try {
       safeSetState(() {
         _busy = true;
@@ -245,6 +308,31 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   }
 
   Future<void> _openExisting(String sessionId) async {
+    _pendingNewSession = false;
+    await _voice.endSession();
+    final cached = await SkulMateSessionCache.loadTurns(sessionId);
+    if (!mounted) return;
+    if (cached.isNotEmpty)
+      safeSetState(() {
+        _sessionId = sessionId;
+        _turns
+          ..clear()
+          ..addAll(cached);
+        _busy = false;
+        _error = null;
+      });
+    if (!ConnectivityService().isOnline) {
+      if (cached.isEmpty) {
+        safeSetState(() {
+          _busy = false;
+          _error = Localizations.localeOf(context).languageCode == 'fr'
+              ? 'Cette séance n’est pas enregistrée sur cet appareil. Reconnecte-toi pour l’ouvrir.'
+              : 'This session is not saved on this device. Reconnect to open it.';
+          _retrySessionId = sessionId;
+        });
+      }
+      return;
+    }
     try {
       safeSetState(() {
         _busy = true;
@@ -293,6 +381,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     }
     if (!mounted) return;
     safeSetState(() {
+      _pendingNewSession = false;
       _sessionId = id;
       _demo = false;
       _busy = false;
@@ -311,6 +400,14 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   Future<void> _sendText(String raw, {bool addUserTurn = true}) async {
     final text = raw.trim();
     if (text.isEmpty || _busy) return;
+    if (!ConnectivityService().isOnline) {
+      safeSetState(
+        () => _error = Localizations.localeOf(context).languageCode == 'fr'
+            ? 'Le tutorat en direct nécessite une connexion. Ton message reste dans le champ.'
+            : 'Live tutoring needs a connection. Your message is still in the composer.',
+      );
+      return;
+    }
     final sessionId = _sessionId;
     if (sessionId == null) await _bootstrap();
     final id = _sessionId;
@@ -348,6 +445,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
         text: result.message,
         surface: result.surface,
         board: result.board,
+        imageUrl: result.imageUrl,
         speak: result.speak,
         escalate: result.escalate,
         move: result.move,
@@ -359,6 +457,11 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
         _error = null;
         _failedInput = null;
       });
+      await SkulMateSessionCache.saveTurns(sessionId: id, turns: _turns);
+      await LearningActivityStore.record(
+        'conversation',
+        concept: widget.initialMessage,
+      );
       _scrollSoon();
       if (result.speak) {
         unawaited(_speakThenListen(result.message));
@@ -410,6 +513,7 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
               text: result.message,
               surface: result.surface,
               board: result.board,
+              imageUrl: result.imageUrl,
               speak: result.speak,
               escalate: result.escalate,
               move: result.move,
@@ -520,6 +624,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
   @override
   Widget build(BuildContext context) {
     final copy = SkulMateCopy.of(context);
+    final speaking = _voice.state.value == TutorVoiceState.speaking;
+    final recording = _recording;
     final latestReply = _turns.where((turn) => !turn.isUser).lastOrNull;
     final visibleTurns = _showTranscript
         ? _turns
@@ -530,67 +636,93 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SkulMateSurfaceStyles.lightStatusBarOverlay,
       child: Scaffold(
-        backgroundColor: OnboardPalette.cream,
+        backgroundColor: LearnerDesign.canvas,
         body: SafeArea(
-          bottom: false,
+          bottom: true,
           child: Column(
             children: [
-              SkulMateHomeTopBar(
-                childId: widget.childId,
-                activeSessionId: _sessionId,
-                onSelectSession: (id) => unawaited(_openExisting(id)),
-                onNewSession: () => unawaited(_startNew()),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 20, 8),
-                child: Row(
-                  children: [
-                    ValueListenableBuilder<TutorVoiceState>(
-                      valueListenable: _voice.state,
-                      builder: (_, state, __) => SkulMateHeroMascot(
-                        state:
-                            _reaction ??
-                            switch (state) {
-                              TutorVoiceState.thinking =>
-                                SkulMateMascotState.thinking,
-                              TutorVoiceState.speaking =>
-                                SkulMateMascotState.speaking,
-                              TutorVoiceState.recording =>
-                                SkulMateMascotState.listening,
-                              TutorVoiceState.idle =>
-                                SkulMateMascotState.neutral,
-                            },
+              if (widget.initialMessage != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      BackButton(color: AppTheme.primaryColor),
+                      Text(
+                        copy.isFrench ? 'Avec Mate' : 'With Mate',
+                        style: LearnerDesign.display(size: 23),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        Localizations.localeOf(context).languageCode == 'fr'
-                            ? 'Ton espace pour apprendre'
-                            : 'Your learning desk',
-                        style: SkulMateTypography.heroTitle(),
-                      ),
-                    ),
-                    ValueListenableBuilder<TutorVoiceState>(
-                      valueListenable: _voice.state,
-                      builder: (_, state, __) =>
-                          SkulMateVoicePill(state: state),
-                    ),
-                    IconButton(
-                      tooltip: _voiceOut
-                          ? copy.tutorMuteMate
-                          : copy.tutorMateReads,
-                      onPressed: _toggleVoiceOut,
-                      icon: Icon(
-                        _voiceOut
-                            ? PhosphorIcons.speakerHigh
-                            : PhosphorIcons.speakerSlash,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
+                )
+              else
+                SkulMateHomeTopBar(
+                  onBack: widget.onExit == null
+                      ? null
+                      : () {
+                          unawaited(_voice.endSession());
+                          widget.onExit!();
+                        },
+                  childId: widget.childId,
+                  activeSessionId: _sessionId,
+                  onSelectSession: (id) => unawaited(_openExisting(id)),
+                  onNewSession: () => unawaited(_startNew()),
                 ),
-              ),
+              MateAccessBar(unavailable: _error != null),
+              if (_turns.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                  child: Row(
+                    children: [
+                      AliveMate(
+                        state: _reaction == SkulMateMascotState.success
+                            ? MascotState.success
+                            : _reaction == SkulMateMascotState.tryAgain
+                            ? MascotState.tryAgain
+                            : recording
+                            ? MascotState.listening
+                            : null,
+                        mood: speaking
+                            ? Mood.talk
+                            : _busy
+                            ? Mood.thinking
+                            : recording
+                            ? Mood.encourage
+                            : _arrivalGreeting
+                            ? Mood.wave
+                            : Mood.happy,
+                        size: 64,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          speaking
+                              ? (copy.isFrench
+                                    ? 'Mate explique'
+                                    : 'Mate is explaining')
+                              : _busy
+                              ? (copy.isFrench ? 'Je réfléchis…' : 'Thinking…')
+                              : recording
+                              ? (copy.isFrench
+                                    ? 'Je t’écoute'
+                                    : 'Listening to you')
+                              : (copy.isFrench ? 'À toi' : 'Your turn'),
+                          style: LearnerDesign.display(size: 23),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: _voiceOut
+                            ? copy.tutorMuteMate
+                            : copy.tutorMateReads,
+                        onPressed: _toggleVoiceOut,
+                        icon: Icon(
+                          _voiceOut
+                              ? PhosphorIcons.speakerHigh
+                              : PhosphorIcons.speakerSlash,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, viewport) => ListView(
@@ -630,29 +762,81 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                           ),
                         ),
                       for (final turn in visibleTurns) ...[
-                        TutorChatBubble.text(
-                          isUser: turn.isUser,
-                          text: turn.text,
-                        ),
-                        if (turn.board != null && turn.board!.steps.isNotEmpty)
-                          SkulMateTutorBoard(board: turn.board!),
+                        if (turn.board != null &&
+                            turn.board!.steps.isNotEmpty &&
+                            !turn.board!.steps.every(
+                              (step) =>
+                                  step.kind == 'prompt' &&
+                                  turn.text
+                                      .replaceAll(RegExp(r'\s+'), ' ')
+                                      .trim()
+                                      .startsWith(
+                                        step.text
+                                            .replaceAll(RegExp(r'\s+'), ' ')
+                                            .trim(),
+                                      ),
+                            ))
+                          SkulMateTutorBoard(
+                            board: turn.board!,
+                            imageUrl: turn.imageUrl,
+                          ),
+                        if (_showTranscript ||
+                            turn.isUser ||
+                            turn.text.length < 280)
+                          TutorChatBubble.text(
+                            isUser: turn.isUser,
+                            text: turn.text,
+                          )
+                        else
+                          ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            title: Text(
+                              turn.text.split(RegExp(r'(?<=[.!?])\s+')).first,
+                              style: LearnerDesign.text(size: 16),
+                            ),
+                            subtitle: Text(
+                              Localizations.localeOf(context).languageCode ==
+                                      'fr'
+                                  ? 'Lire l’explication complète'
+                                  : 'Read the full explanation',
+                              style: LearnerDesign.body(12),
+                            ),
+                            children: [
+                              TutorChatBubble.text(
+                                isUser: false,
+                                text: turn.text,
+                              ),
+                            ],
+                          ),
                         if (turn.surface != null)
                           SkulMateInThreadSurface(
                             key: ValueKey('practice-${turn.id}'),
                             surface: turn.surface!,
-                            onOutcome: (correct) async {
+                            onOutcome: (_) async {},
+                            onVerifiedOutcome: (correct, answers) async {
                               _reactToAnswer(correct);
-                              if (_sessionId == null) return;
-                              await SkulMateTutorSessionService.recordOutcome(
-                                sessionId: _sessionId!,
-                                correct: correct,
-                                childId: widget.childId,
-                                turnId: turn.id,
-                                conceptId: turn.surface?.conceptId,
-                                surfaceType: turn.surface?.gameType,
-                                hintUsed:
-                                    turn.surface?.gameType == 'flashcards',
-                              );
+                              if (_sessionId == null || turn.id == null) {
+                                throw Exception('Session unavailable');
+                              }
+                              final independentSuccess =
+                                  await SkulMateTutorSessionService.recordOutcome(
+                                    sessionId: _sessionId!,
+                                    correct: correct,
+                                    answers: answers,
+                                    childId: widget.childId,
+                                    turnId: turn.id,
+                                    conceptId: turn.surface?.conceptId,
+                                    surfaceType: turn.surface?.gameType,
+                                    hintUsed:
+                                        turn.surface?.gameType == 'flashcards',
+                                  );
+                              if (independentSuccess &&
+                                  widget.onPracticeSaved != null) {
+                                await widget.onPracticeSaved!(
+                                  _sessionId!,
+                                  turn.id!,
+                                );
+                              }
                             },
                           ),
                         if (turn.escalate)
@@ -675,9 +859,27 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                           _buildFollowUp(copy),
                       ],
                       if (_busy)
-                        TutorChatBubble.text(
-                          isUser: false,
-                          text: copy.tutorThinking,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  copy.isFrench
+                                      ? 'Mate prépare ton explication…'
+                                      : 'Mate is preparing your explanation…',
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       if (_error != null) _buildConnectionNotice(copy),
                     ],
@@ -721,103 +923,63 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
 
   Widget _buildEmptyStart(SkulMateCopy copy) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        const SizedBox(height: 16),
+        ExcludeSemantics(child: prepMate(mood: Mood.wave, size: 112)),
+        const SizedBox(height: 12),
         Text(
-          copy.tutorStartTitle,
-          style: SkulMateTypography.heroTitle().copyWith(fontSize: 25),
+          copy.isFrench
+              ? 'On apprend quoi ensemble ?'
+              : 'Let’s figure it out together.',
+          style: LearnerDesign.title(26),
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 390),
-          child: Text(
-            copy.tutorStartBody,
-            style: GoogleFonts.nunito(
-              color: AppTheme.textMedium,
-              fontSize: 15,
-              height: 1.5,
-            ),
-          ),
+        Text(
+          _learningTrackLabel ??
+              (copy.isFrench
+                  ? 'Parle-moi, ou écris ta question.'
+                  : 'Talk to me, or type your question.'),
+          style: LearnerDesign.body(15),
+          textAlign: TextAlign.center,
         ),
-        if (_learningTrackLabel case final track?) ...[
-          const SizedBox(height: 18),
-          _LearnerContextLine(
-            title: copy.tutorContextTitle,
-            detail: track,
-            footnote: copy.tutorContextReady,
-          ),
-        ],
         const SizedBox(height: 22),
-        Text(
-          copy.tutorStartChoices,
-          style: GoogleFonts.nunito(
-            color: AppTheme.textDark,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 10),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final columns = constraints.maxWidth >= 560 ? 2 : 1;
-            const gap = 9.0;
-            final cardWidth = columns == 1
-                ? constraints.maxWidth
-                : (constraints.maxWidth - gap) / columns;
-            return Wrap(
-              spacing: gap,
-              runSpacing: gap,
-              children: [
-                SizedBox(
-                  width: cardWidth,
-                  child: _StudyAction(
-                    icon: PhosphorIcons.lightbulb,
-                    title: copy.tutorActionExplainTitle,
-                    subtitle: copy.tutorActionExplainBody,
-                    onTap: () =>
-                        unawaited(_sendText(_starterMessage(copy, 'explain'))),
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _StudyAction(
-                    icon: PhosphorIcons.notePencil,
-                    title: copy.tutorActionQuestionTitle,
-                    subtitle: copy.tutorActionQuestionBody,
-                    onTap: () =>
-                        unawaited(_sendText(_starterMessage(copy, 'question'))),
-                  ),
-                ),
-                SizedBox(
-                  width: cardWidth,
-                  child: _StudyAction(
-                    icon: PhosphorIcons.lightning,
-                    title: copy.tutorActionPracticeTitle,
-                    subtitle: copy.tutorActionPracticeBody,
-                    onTap: () =>
-                        unawaited(_sendText(_starterMessage(copy, 'practice'))),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 8),
-        TextButton.icon(
-          onPressed: _busy
-              ? null
-              : () => safeSetState(() => _attachOpen = !_attachOpen),
-          icon: const Icon(PhosphorIcons.paperclip, size: 18),
-          label: Text(copy.tutorActionMaterial),
-          style: TextButton.styleFrom(
-            foregroundColor: AppTheme.primaryColor,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            textStyle: GoogleFonts.nunito(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
+        FilledButton.icon(
+          onPressed: _busy ? null : () => unawaited(_toggleMic()),
+          icon: const PrepSkulIcon(PrepSkulGlyph.voice),
+          label: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Text(
+              _recording
+                  ? (copy.isFrench ? 'J’écoute…' : 'Listening…')
+                  : (copy.isFrench ? 'Parler à Mate' : 'Talk to Mate'),
             ),
           ),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ActionChip(
+              avatar: const PrepSkulIcon(PrepSkulGlyph.learn, size: 22),
+              label: Text(copy.isFrench ? 'Comprendre' : 'Explain it'),
+              onPressed: _busy
+                  ? null
+                  : () =>
+                        unawaited(_sendText(_starterMessage(copy, 'explain'))),
+            ),
+            ActionChip(
+              avatar: const PrepSkulIcon(PrepSkulGlyph.practice, size: 22),
+              label: Text(copy.isFrench ? 'M’entraîner' : 'Practise'),
+              onPressed: _busy
+                  ? null
+                  : () =>
+                        unawaited(_sendText(_starterMessage(copy, 'practice'))),
+            ),
+          ],
         ),
       ],
     );
@@ -918,155 +1080,6 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                   style: TextButton.styleFrom(
                     foregroundColor: AppTheme.primaryColor,
                     padding: const EdgeInsets.symmetric(horizontal: 0),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StudyAction extends StatelessWidget {
-  const _StudyAction({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppTheme.skyBlueLight.withValues(alpha: 0.48),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 72),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppTheme.primaryColor.withValues(alpha: 0.09),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, size: 19, color: AppTheme.primaryColor),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.nunito(
-                        color: AppTheme.textDark,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.nunito(
-                        color: AppTheme.textMedium,
-                        fontSize: 11,
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Icon(
-                PhosphorIcons.arrowUpRight,
-                size: 17,
-                color: AppTheme.primaryColor,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LearnerContextLine extends StatelessWidget {
-  const _LearnerContextLine({
-    required this.title,
-    required this.detail,
-    required this.footnote,
-  });
-
-  final String title;
-  final String detail;
-  final String footnote;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 11, 14, 11),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(PhosphorIcons.sparkle, size: 19, color: AppTheme.skyBlue),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.nunito(
-                    color: Colors.white.withValues(alpha: 0.76),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  detail,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.nunito(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  footnote,
-                  style: GoogleFonts.nunito(
-                    color: Colors.white.withValues(alpha: 0.76),
-                    fontSize: 11,
-                    height: 1.3,
                   ),
                 ),
               ],

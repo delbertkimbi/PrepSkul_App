@@ -104,7 +104,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         
                         _buildRoleCard(
                           title: 'Parent',
-                          description: 'I’m studying too. Mate tutors me, and I can request a person.',
+                          description: 'I’m studying too. Mate tutors me, and I can request a tutor.',
                           icon: Icons.family_restroom_outlined,
                           value: 'parent',
                         ),

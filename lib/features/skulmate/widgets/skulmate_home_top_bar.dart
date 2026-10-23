@@ -1,170 +1,204 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
-import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/design/learner_design.dart';
+import 'package:prepskul/core/design/prepskul_icon.dart';
+import '../screens/mate_learning_progress_screen.dart';
+import '../services/skulmate_session_cache.dart';
 
-import '../l10n/skulmate_copy.dart';
-import '../screens/challenges_screen.dart';
-import '../screens/friends_screen.dart';
-import '../screens/skulmate_games_screen.dart';
-import '../screens/skulmate_progress_screen.dart';
-import '../screens/leaderboard_screen.dart';
-import 'skulmate_history_sheet.dart';
-
-/// Gizmo-style top pills: History (left) · More menu (right).
 class SkulMateHomeTopBar extends StatelessWidget {
   final String? childId;
   final String? activeSessionId;
   final ValueChanged<String>? onSelectSession;
   final VoidCallback? onNewSession;
-
+  final VoidCallback? onBack;
   const SkulMateHomeTopBar({
     super.key,
     this.childId,
     this.activeSessionId,
     this.onSelectSession,
     this.onNewSession,
+    this.onBack,
   });
-
   @override
   Widget build(BuildContext context) {
-    final copy = SkulMateCopy.of(context);
-
+    final fr = Localizations.localeOf(context).languageCode == 'fr';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(8, 4, 12, 4),
       child: Row(
         children: [
-          _PillButton(
-            icon: PhosphorIcons.clockCounterClockwise,
-            label: copy.history,
-            onTap: () => SkulMateHistorySheet.show(
-              context,
-              childId: childId,
-              activeSessionId: activeSessionId,
-              onSelectSession: onSelectSession,
-              onNewSession: onNewSession,
-            ),
-          ),
+          if (onBack != null) BackButton(onPressed: onBack),
+          const SizedBox(width: 4),
+          Text('Mate', style: LearnerDesign.title(24)),
           const Spacer(),
-          PopupMenuButton<String>(
-            offset: const Offset(0, 44),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+          IconButton(
+            tooltip: fr ? 'Ma série d’apprentissage' : 'Learning streak',
+            icon: const PrepSkulIcon(PrepSkulGlyph.streak),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const MateLearningProgressScreen(),
+              ),
             ),
-            onSelected: (value) => _onMenuSelected(context, value),
-            itemBuilder: (context) => [
-              _menuItem(PhosphorIcons.gridFour, copy.myGames, 'library'),
-              _menuItem(
-                PhosphorIcons.chartLineUp,
-                copy.myProgressTitle,
-                'progress',
-              ),
-              _menuItem(
-                PhosphorIcons.trophy,
-                copy.isFrench ? 'Classement' : 'Leaderboard',
-                'leaderboard',
-              ),
-              _menuItem(PhosphorIcons.users, copy.friendsTitle, 'friends'),
-              _menuItem(
-                PhosphorIcons.gameController,
-                copy.challengesTitle,
-                'challenges',
-              ),
-            ],
-            child: _PillButton(
-              icon: PhosphorIcons.dotsThree,
-              label: copy.more,
-              onTap: null,
-            ),
+          ),
+          IconButton(
+            tooltip: fr ? 'Menu des séances' : 'Session menu',
+            icon: const Icon(Icons.menu_rounded, color: LearnerDesign.ink),
+            onPressed: () => _openSessions(context, fr),
           ),
         ],
       ),
     );
   }
 
-  PopupMenuItem<String> _menuItem(IconData icon, String label, String value) {
-    return PopupMenuItem(
-      value: value,
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppTheme.primaryColor),
-          const SizedBox(width: 12),
-          Text(label, style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-
-  void _onMenuSelected(BuildContext context, String value) {
-    switch (value) {
-      case 'library':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => SkulMateGamesScreen(childId: childId),
-          ),
-        );
-      case 'progress':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => SkulMateProgressScreen(childId: childId),
-          ),
-        );
-      case 'leaderboard':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
-        );
-      case 'friends':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const FriendsScreen()),
-        );
-      case 'challenges':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ChallengesScreen()),
-        );
-    }
-  }
-}
-
-class _PillButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  const _PillButton({required this.icon, required this.label, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final child = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 20, color: AppTheme.primaryColor),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.primaryColor,
+  void _openSessions(BuildContext context, bool fr) {
+    final sessions = SkulMateSessionCache.savedSessions();
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: fr ? 'Fermer les séances' : 'Close sessions',
+      barrierColor: Colors.black38,
+      transitionDuration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 220),
+      transitionBuilder: (_, animation, __, child) => SlideTransition(
+        position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+            .animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
             ),
-          ),
-        ],
-      ),
-    );
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
         child: child,
+      ),
+      pageBuilder: (drawerContext, _, __) => Align(
+        alignment: Alignment.centerRight,
+        child: SizedBox(
+          width: MediaQuery.sizeOf(context).width.clamp(0, 360).toDouble(),
+          height: double.infinity,
+          child: Material(
+            color: LearnerDesign.canvas,
+            child: SafeArea(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 8, 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            fr ? 'Mes séances' : 'Your sessions',
+                            style: LearnerDesign.title(24),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: fr ? 'Fermer' : 'Close',
+                          onPressed: () => Navigator.pop(drawerContext),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: LearnerDesign.ink,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.all(16),
+                        ),
+                        icon: const PrepSkulIcon(PrepSkulGlyph.learn),
+                        label: Text(fr ? 'Nouvelle séance' : 'New session'),
+                        onPressed: () {
+                          Navigator.pop(drawerContext);
+                          onNewSession?.call();
+                        },
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            fr ? 'Séances précédentes' : 'Past sessions',
+                            style: LearnerDesign.title(19),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            fr
+                                ? 'Enregistrées sur cet appareil'
+                                : 'Saved on this device',
+                            style: LearnerDesign.body(13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: FutureBuilder<List<Map<String, String>>>(
+                      future: sessions,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done)
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        if (snapshot.hasError)
+                          return Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Text(
+                              fr
+                                  ? 'Impossible de lire les séances enregistrées.'
+                                  : 'Could not read saved sessions.',
+                              style: LearnerDesign.body(),
+                            ),
+                          );
+                        final rows = snapshot.data ?? [];
+                        if (rows.isEmpty)
+                          return Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Text(
+                              fr
+                                  ? 'Ta prochaine séance apparaîtra ici.'
+                                  : 'Your next session will appear here.',
+                              style: LearnerDesign.body(),
+                            ),
+                          );
+                        return ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          itemCount: rows.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (_, index) {
+                            final row = rows[index];
+                            return ListTile(
+                              selected: row['id'] == activeSessionId,
+                              selectedTileColor: LearnerDesign.sky,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              leading: const PrepSkulIcon(PrepSkulGlyph.learn),
+                              title: Text(
+                                row['title']!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: LearnerDesign.text(size: 15),
+                              ),
+                              onTap: () {
+                                Navigator.pop(drawerContext);
+                                onSelectSession?.call(row['id']!);
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

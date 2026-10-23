@@ -23,8 +23,8 @@ class TutorSessionSummary {
             DateTime.now().toIso8601String(),
       ),
       preview: json['preview'] as String?,
-      accountRole: json['accountRole'] as String? ??
-          json['account_role'] as String?,
+      accountRole:
+          json['accountRole'] as String? ?? json['account_role'] as String?,
     );
   }
 }
@@ -35,6 +35,7 @@ class TutorTurn {
   final String text;
   final PracticeSurface? surface;
   final TutorBoard? board;
+  final String? imageUrl;
   final bool speak;
   final bool escalate;
   final String? move;
@@ -45,6 +46,7 @@ class TutorTurn {
     required this.text,
     this.surface,
     this.board,
+    this.imageUrl,
     this.speak = false,
     this.escalate = false,
     this.move,
@@ -85,9 +87,9 @@ class TutorBoard {
   }
 
   Map<String, dynamic> toJson() => {
-        'title': title,
-        'steps': steps.map((s) => s.toJson()).toList(),
-      };
+    'title': title,
+    'steps': steps.map((s) => s.toJson()).toList(),
+  };
 }
 
 class PracticeSurface {
@@ -116,11 +118,11 @@ class PracticeSurface {
   }
 
   Map<String, dynamic> toJson() => {
-        'gameType': gameType,
-        'title': title,
-        'conceptId': conceptId,
-        'items': items,
-      };
+    'gameType': gameType,
+    'title': title,
+    'conceptId': conceptId,
+    'items': items,
+  };
 }
 
 PracticeSurface? practiceSurfaceFromPayload(dynamic raw) {
@@ -207,9 +209,11 @@ class TutorTurnResult {
           ? TutorBoard.fromJson(Map<String, dynamic>.from(boardRaw))
           : null,
       escalate: json['escalate'] as bool? ?? false,
-      displayKind: (json['display'] is Map
-              ? (json['display'] as Map)['kind']
-              : json['displayKind']) as String?,
+      displayKind:
+          (json['display'] is Map
+                  ? (json['display'] as Map)['kind']
+                  : json['displayKind'])
+              as String?,
       imageUrl: json['imageUrl'] as String?,
       uniqueImage: json['display'] is Map
           ? (json['display'] as Map)['uniqueImage'] as String?

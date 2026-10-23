@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:prepskul/core/design/learner_action.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -14,7 +16,8 @@ import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/features/sessions/services/session_profile_service.dart';
 import 'package:prepskul/features/sessions/services/connection_quality_service.dart';
 import 'package:prepskul/features/sessions/services/agora_service.dart';
-import 'package:prepskul/features/sessions/widgets/agora_video_view.dart' as agora_widget;
+import 'package:prepskul/features/sessions/widgets/agora_video_view.dart'
+    as agora_widget;
 import 'package:prepskul/features/sessions/widgets/classroom_offline_banner.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -51,15 +54,16 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
   bool _showPermissionDialog = false;
   String? _errorMessage;
   bool _permissionDeniedPermanently = false;
-  
+
   Map<String, dynamic>? _userProfile;
 
   Map<String, dynamic>? _sessionContext;
+
   /// True after the first roster fetch attempt (success or empty).
   bool _sessionContextResolved = false;
   DeviceReadinessSnapshot? _deviceSnapshot;
   bool _isProbingDevices = false;
-  
+
   // Permission states
   bool _cameraPermissionRequested = false;
   bool _micPermissionRequested = false;
@@ -72,6 +76,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
 
   // Live camera preview (pre-join)
   final AgoraService _agoraService = AgoraService();
+
   /// True after user taps Join; [dispose] must not release the shared engine —
   /// the call screen reuses it. Only release when the user backs out / cancels.
   bool _handedOffEngineToSession = false;
@@ -83,6 +88,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
 
   /// Talking indicator — isolated from full-screen rebuilds ([ValueNotifier] vs [setState]).
   final ValueNotifier<bool> _localSpeakingVN = ValueNotifier<bool>(false);
+
   /// Normalized microphone level (0–1) from [AgoraService.preJoinMicLevelStream] for web-friendly wave.
   final ValueNotifier<double> _preJoinMicLevelVN = ValueNotifier<double>(0);
   StreamSubscription<Set<int>>? _speakingSubscription;
@@ -91,16 +97,17 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
   double _preJoinMicWaveVisualLevel = 0;
   DateTime _preJoinMicWaveHoldUntil = DateTime.fromMillisecondsSinceEpoch(0);
 
-  late final Listenable _preJoinMicVisualListenable =
-      Listenable.merge([_localSpeakingVN, _preJoinMicLevelVN]);
+  late final Listenable _preJoinMicVisualListenable = Listenable.merge([
+    _localSpeakingVN,
+    _preJoinMicLevelVN,
+  ]);
 
   final ConnectivityService _connectivity = ConnectivityService();
   StreamSubscription<bool>? _lobbyConnectivitySubscription;
   Timer? _lobbyOfflineDebounce;
   bool _lobbyOfflineDialogOpen = false;
   bool _lobbyConnectivityOnline = true;
-  static const Duration _kLobbyOfflineDebounce =
-      Duration(milliseconds: 900);
+  static const Duration _kLobbyOfflineDebounce = Duration(milliseconds: 900);
 
   @override
   void initState() {
@@ -111,16 +118,21 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     _loadSessionContext();
     _probeDevices();
     _checkPermissionStatus();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _runConnectionTestIfReady());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _runConnectionTestIfReady(),
+    );
     _speakingSubscription = _agoraService.speakingStream.listen((uids) {
       final speaking = uids.contains(0);
       if (_localSpeakingVN.value != speaking) _localSpeakingVN.value = speaking;
     });
-    _preJoinMicLevelSubscription =
-        _agoraService.preJoinMicLevelStream.listen((raw) {
-      _smoothedPreJoinMicLevel += 0.42 * (raw.clamp(0.0, 1.0) - _smoothedPreJoinMicLevel);
+    _preJoinMicLevelSubscription = _agoraService.preJoinMicLevelStream.listen((
+      raw,
+    ) {
+      _smoothedPreJoinMicLevel +=
+          0.42 * (raw.clamp(0.0, 1.0) - _smoothedPreJoinMicLevel);
       final v = _smoothedPreJoinMicLevel.clamp(0.0, 1.0);
-      if ((_preJoinMicLevelVN.value - v).abs() > 0.02 || (v < 0.03 && _preJoinMicLevelVN.value > 0)) {
+      if ((_preJoinMicLevelVN.value - v).abs() > 0.02 ||
+          (v < 0.03 && _preJoinMicLevelVN.value > 0)) {
         _preJoinMicLevelVN.value = v < 0.03 ? 0 : v;
       }
     });
@@ -160,8 +172,9 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
       if (!mounted) return;
       setState(() => _lobbyConnectivityOnline = bootOnline);
 
-      _lobbyConnectivitySubscription =
-          _connectivity.connectivityStream.listen((online) {
+      _lobbyConnectivitySubscription = _connectivity.connectivityStream.listen((
+        online,
+      ) {
         if (!mounted) return;
         setState(() => _lobbyConnectivityOnline = online);
         if (!online) {
@@ -231,9 +244,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
 
   /// Start lobby RTC: camera preview when enabled, otherwise audio-only (**mic level**) path.
   Future<void> _startPreviewIfNeeded() async {
-    if (!_permissionsGranted ||
-        _previewStarted ||
-        _previewStartInProgress) {
+    if (!_permissionsGranted || _previewStarted || _previewStartInProgress) {
       return;
     }
     _previewStartInProgress = true;
@@ -264,11 +275,12 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
       }
     } catch (e) {
       LogService.warning('[PREVIEW] Pre-join lobby media failed: $e');
-      final msg = e.toString().contains('CORS') || e.toString().contains('origin')
+      final msg =
+          e.toString().contains('CORS') || e.toString().contains('origin')
           ? 'Could not connect to the server. If you\'re on localhost, the API may need to allow your origin (CORS). Try again or use the app from the same domain as the API.'
           : (!wantCameraPreview || _voiceOnlyLesson)
-              ? 'Microphone check could not start. Check your connection and try again.'
-              : 'Camera could not start. Check your connection and try again.';
+          ? 'Microphone check could not start. Check your connection and try again.'
+          : 'Camera could not start. Check your connection and try again.';
       if (mounted) {
         setState(() {
           _previewStartScheduled = false;
@@ -437,17 +449,20 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           _runConnectionTestIfReady();
           _startPreviewIfNeeded(); // Start preview on web so user sees camera feed
         });
-        LogService.success('✅ Permissions will be requested by browser when joining');
+        LogService.success(
+          '✅ Permissions will be requested by browser when joining',
+        );
       } else {
         if (defaultTargetPlatform == TargetPlatform.android) {
           final status = await _cameraMicPermissionService.request();
           final ready = _lessonMediaPermissionsGranted(status);
-        setState(() {
-          _cameraPermissionRequested = true;
-          _micPermissionRequested = true;
-          _notificationPermissionRequested = true;
+          setState(() {
+            _cameraPermissionRequested = true;
+            _micPermissionRequested = true;
+            _notificationPermissionRequested = true;
             _permissionsGranted = ready;
-            _permissionDeniedPermanently = AppConfig.enableSessionCameraPublishing
+            _permissionDeniedPermanently =
+                AppConfig.enableSessionCameraPublishing
                 ? status.anyDeniedPermanently
                 : (status.microphone == PermissionState.deniedPermanently);
             _showPermissionDialog = !ready;
@@ -456,8 +471,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           if (!ready) {
             setState(() {
               if (_voiceOnlyLesson) {
-                _errorMessage = status.microphone ==
-                        PermissionState.deniedPermanently
+                _errorMessage =
+                    status.microphone == PermissionState.deniedPermanently
                     ? 'Microphone permission is blocked. Enable it in Settings to join.'
                     : 'Allow microphone permission to join this lesson.';
               } else {
@@ -467,7 +482,9 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
               }
             });
           } else {
-            WidgetsBinding.instance.addPostFrameCallback((_) => _startPreviewIfNeeded());
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _startPreviewIfNeeded(),
+            );
           }
         } else {
           // For other platforms, rely on platform prompt when joining.
@@ -476,9 +493,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             _micPermissionRequested = true;
             _notificationPermissionRequested = true;
             _permissionsGranted = true;
-          _showPermissionDialog = false;
-        });
-        LogService.success('✅ Permissions will be requested by platform when joining');
+            _showPermissionDialog = false;
+          });
+          LogService.success(
+            '✅ Permissions will be requested by platform when joining',
+          );
         }
       }
     } catch (e) {
@@ -500,7 +519,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
 
   /// Run connection test when permissions are granted (optional pre-lesson check).
   void _runConnectionTestIfReady() {
-    if (!_permissionsGranted || _connectionTested || _isTestingConnection || !mounted) return;
+    if (!_permissionsGranted ||
+        _connectionTested ||
+        _isTestingConnection ||
+        !mounted)
+      return;
     _runConnectionTest();
   }
 
@@ -532,8 +555,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     }
   }
 
-  bool get _voiceOnlyLesson =>
-      !AppConfig.enableSessionCameraPublishing;
+  bool get _voiceOnlyLesson => !AppConfig.enableSessionCameraPublishing;
 
   bool _lessonMediaPermissionsGranted(CameraMicPermissionStatus status) {
     if (_voiceOnlyLesson) {
@@ -591,10 +613,10 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
       _handedOffEngineToSession = false;
       LogService.error('[PREVIEW] Error joining session: $e');
       if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to join session. Please try again.';
-      });
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to join session. Please try again.';
+        });
       }
     }
   }
@@ -605,7 +627,9 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     String name = 'Loading...';
     if (_userProfile != null) {
       final profileName = _userProfile!['full_name'] as String?;
-      if (profileName != null && profileName.isNotEmpty && profileName != 'User') {
+      if (profileName != null &&
+          profileName.isNotEmpty &&
+          profileName != 'User') {
         name = profileName;
       } else {
         name = widget.userRole == 'tutor' ? 'Tutor' : 'Learner';
@@ -618,28 +642,28 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
 
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-      backgroundColor: OnboardPalette.cream,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (!_lobbyConnectivityOnline)
-                  const ClassroomOfflineBanner(
-                    message:
-                        'No internet — connect to preview AV and join the lesson.',
+        backgroundColor: OnboardPalette.cream,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!_lobbyConnectivityOnline)
+                    const ClassroomOfflineBanner(
+                      message:
+                          'No internet — connect to preview AV and join the lesson.',
+                    ),
+                  Expanded(
+                    child: isMobile
+                        ? _buildMobileLayout(name, avatarUrl)
+                        : _buildDesktopLayout(name, avatarUrl),
                   ),
-                Expanded(
-                  child: isMobile
-                      ? _buildMobileLayout(name, avatarUrl)
-                      : _buildDesktopLayout(name, avatarUrl),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          if (_showPermissionDialog) _buildPermissionDialog(),
-        ],
+            if (_showPermissionDialog) _buildPermissionDialog(),
+          ],
         ),
       ),
     );
@@ -683,7 +707,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                 _voiceOnlyLesson
                     ? 'Allow microphone'
                     : 'Allow camera and microphone',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 24,
                   fontWeight: FontWeight.w600,
                   color: Colors.grey[900],
@@ -696,7 +720,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                 _voiceOnlyLesson
                     ? 'This lesson connects by voice — we need microphone access so you and your tutor can hear each other. Camera stays off.'
                     : 'To join the video session, we need access to your camera and microphone. This allows you to see and hear others in the call.',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   color: Colors.grey[600],
                 ),
@@ -705,12 +729,24 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
               const SizedBox(height: 32),
               // Permission list
               if (!_voiceOnlyLesson) ...[
-                _buildPermissionItem(Icons.videocam, 'Camera', 'To show your video to others'),
+                _buildPermissionItem(
+                  Icons.videocam,
+                  'Camera',
+                  'To show your video to others',
+                ),
                 const SizedBox(height: 12),
               ],
-              _buildPermissionItem(Icons.mic, 'Microphone', 'To let others hear you'),
+              _buildPermissionItem(
+                Icons.mic,
+                'Microphone',
+                'To let others hear you',
+              ),
               const SizedBox(height: 12),
-              _buildPermissionItem(Icons.notifications, 'Notifications', 'To notify you about calls'),
+              _buildPermissionItem(
+                Icons.notifications,
+                'Notifications',
+                'To notify you about calls',
+              ),
               const SizedBox(height: 32),
               // Buttons
               Row(
@@ -724,7 +760,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                       },
                       child: Text(
                         'Cancel',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey[600],
@@ -738,8 +774,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                       onPressed: _isLoading
                           ? null
                           : (_permissionDeniedPermanently
-                              ? _openAppSettings
-                              : _requestPermissions),
+                                ? _openAppSettings
+                                : _requestPermissions),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -753,14 +789,16 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           : Text(
                               _permissionDeniedPermanently
                                   ? 'Open Settings'
                                   : 'Allow',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white,
@@ -789,7 +827,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             children: [
               Text(
                 title,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.grey[900],
@@ -797,7 +835,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
               ),
               Text(
                 description,
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 12,
                   color: Colors.grey[600],
                 ),
@@ -850,13 +888,15 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                               if (_cameraEnabled) {
                                 if (_previewStarted) {
                                   await _agoraService.setPreJoinCameraEnabled(
-                                      true);
+                                    true,
+                                  );
                                 } else {
                                   await _startPreviewIfNeeded();
                                 }
                               } else {
                                 await _agoraService.setPreJoinCameraEnabled(
-                                    false);
+                                  false,
+                                );
                               }
                               if (mounted) setState(() {});
                             },
@@ -902,7 +942,10 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 10,
+                      horizontal: 20,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.92),
                     ),
@@ -924,13 +967,15 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                               if (_cameraEnabled) {
                                 if (_previewStarted) {
                                   await _agoraService.setPreJoinCameraEnabled(
-                                      true);
+                                    true,
+                                  );
                                 } else {
                                   await _startPreviewIfNeeded();
                                 }
                               } else {
                                 await _agoraService.setPreJoinCameraEnabled(
-                                    false);
+                                  false,
+                                );
                               }
                               if (mounted) setState(() {});
                             },
@@ -948,7 +993,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
         Expanded(
           flex: 1,
           child: Container(
-          color: Colors.white,
+            color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: _buildJoinOptions(prioritizeJoinAboveFold: true),
           ),
@@ -961,7 +1006,9 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
   /// Uses smaller font and card on mobile (web and app).
   Widget _buildVAAwarenessBlock() {
     final isMobile = MediaQuery.of(context).size.width < 768;
-    final padding = isMobile ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8) : const EdgeInsets.symmetric(horizontal: 14, vertical: 12);
+    final padding = isMobile
+        ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+        : const EdgeInsets.symmetric(horizontal: 14, vertical: 12);
     final iconSize = isMobile ? 16.0 : 18.0;
     final bodyFontSize = isMobile ? 11.0 : 12.0;
     final linkFontSize = isMobile ? 11.0 : 12.0;
@@ -979,7 +1026,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.shield_outlined, color: AppTheme.primaryColor, size: iconSize),
+              Icon(
+                Icons.shield_outlined,
+                color: AppTheme.primaryColor,
+                size: iconSize,
+              ),
               SizedBox(width: isMobile ? 8 : 10),
               Expanded(
                 child: Column(
@@ -987,7 +1038,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                   children: [
                     Text(
                       "PrepSkul VA monitors lesson quality and safety in the background.",
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontSize: bodyFontSize,
                         fontWeight: FontWeight.w500,
                         color: Colors.grey[800],
@@ -999,12 +1050,15 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                       onTap: () async {
                         final uri = Uri.parse(AppConfig.vaDocumentationUrl);
                         if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
+                          );
                         }
                       },
                       child: Text(
                         "About PrepSkul's VA",
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: linkFontSize,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primaryColor,
@@ -1039,7 +1093,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
         children: [
           Text(
             lesson,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: AppTheme.primaryDark,
@@ -1048,16 +1102,12 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           const SizedBox(height: 4),
           Row(
             children: [
-              Icon(
-                Icons.schedule_rounded,
-                size: 14,
-                color: Colors.grey[700],
-              ),
+              Icon(Icons.schedule_rounded, size: 14, color: Colors.grey[700]),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   _lessonScheduleLine(),
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 12,
                     color: Colors.grey[700],
                     height: 1.35,
@@ -1070,7 +1120,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             const SizedBox(height: 8),
             Text(
               'Tip: this screen loads booking details from PrepSkul when you start the lesson from your schedule.',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 11,
                 color: Colors.grey[600],
                 height: 1.35,
@@ -1089,8 +1139,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     final connLabel = _isTestingConnection
         ? 'Checking...'
         : _connectionQuality == null
-            ? 'Pending'
-            : _connectionQuality!;
+        ? 'Pending'
+        : _connectionQuality!;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1104,7 +1154,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
         children: [
           Text(
             'Pre-class readiness',
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: Colors.grey[800],
@@ -1140,8 +1190,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                 detail: !_micEnabled
                     ? 'Mic is off'
                     : micSignal
-                        ? 'Sound picked up'
-                        : 'Speak — wave shows on mic',
+                    ? 'Sound picked up'
+                    : 'Speak — wave shows on mic',
               );
             },
           ),
@@ -1164,10 +1214,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     final color = !tested
         ? Colors.grey[500]!
         : connReady
-            ? AppTheme.success
-            : (_connectionQuality == 'fair'
-                ? AppTheme.softYellow
-                : AppTheme.error);
+        ? AppTheme.success
+        : (_connectionQuality == 'fair' ? AppTheme.softYellow : AppTheme.error);
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Column(
@@ -1180,8 +1228,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                 !tested
                     ? Icons.wifi_tethering_outlined
                     : (connReady
-                        ? Icons.check_circle_rounded
-                        : Icons.signal_cellular_alt),
+                          ? Icons.check_circle_rounded
+                          : Icons.signal_cellular_alt),
                 size: 16,
                 color: color,
               ),
@@ -1189,12 +1237,18 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
               Expanded(
                 child: Text(
                   'Network',
-                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[800]),
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    color: Colors.grey[800],
+                  ),
                 ),
               ),
               Text(
                 connLabel,
-                style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey[600]),
+                style: GoogleFonts.nunito(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                ),
               ),
             ],
           ),
@@ -1202,7 +1256,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             const SizedBox(height: 6),
             Text(
               'You can still join — this is guidance, not a hard block. Move closer to Wi‑Fi or wait a few seconds and retest.',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 11,
                 height: 1.35,
                 color: AppTheme.neutral600,
@@ -1215,13 +1269,16 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
               child: TextButton(
                 onPressed: _runConnectionTest,
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 4),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 0,
+                    horizontal: 4,
+                  ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: Text(
                   tested ? 'Retest connectivity' : 'Run network check',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.nunito(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.primaryColor,
@@ -1252,7 +1309,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           Expanded(
             child: Text(
               label,
-              style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[800]),
+              style: GoogleFonts.nunito(fontSize: 12, color: Colors.grey[800]),
             ),
           ),
           Flexible(
@@ -1261,7 +1318,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
-              style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey[600]),
+              style: GoogleFonts.nunito(fontSize: 11, color: Colors.grey[600]),
             ),
           ),
         ],
@@ -1273,34 +1330,9 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
   /// readiness, VA, and connection scroll underneath so Join is visible without digging.
   Widget _buildJoinOptions({required bool prioritizeJoinAboveFold}) {
     Widget joinButton() {
-      return ElevatedButton(
+      return LearnerAction(
+        label: _isLoading ? 'Joining…' : 'Join session',
         onPressed: _permissionsGranted && !_isLoading ? _joinSession : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primaryColor,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          elevation: 2,
-          shadowColor: AppTheme.primaryColor.withOpacity(0.3),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-        child: _isLoading
-            ? const SizedBox(
-                height: 18,
-                width: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Text(
-                'Join',
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
       );
     }
 
@@ -1310,7 +1342,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
       children: [
         Text(
           'Ready to join?',
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: prioritizeJoinAboveFold ? 18 : 20,
             fontWeight: FontWeight.w600,
           ),
@@ -1320,38 +1352,39 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           _voiceOnlyLesson
               ? 'This lesson uses audio only — check your microphone, then join.'
               : 'Check your camera and mic, then join.',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            color: Colors.grey[600],
-          ),
+          style: GoogleFonts.nunito(fontSize: 13, color: Colors.grey[600]),
         ),
       ],
     );
 
     Widget errorBannerWidget() => Container(
-          padding: const EdgeInsets.all(10),
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: AppTheme.softYellowLight.withOpacity(0.55),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.softYellow),
+      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.softYellowLight.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.softYellow),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: AppTheme.softYellow,
+            size: 18,
           ),
-          child: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: AppTheme.softYellow, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _errorMessage!,
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppTheme.primaryDark,
-                  ),
-                ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: GoogleFonts.nunito(
+                fontSize: 11,
+                color: AppTheme.primaryDark,
               ),
-            ],
+            ),
           ),
-        );
+        ],
+      ),
+    );
 
     final trailingActions = <Widget>[
       TextButton(
@@ -1363,10 +1396,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
         ),
         child: Text(
           'Cancel',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            color: Colors.grey[700],
-          ),
+          style: GoogleFonts.nunito(fontSize: 14, color: Colors.grey[700]),
         ),
       ),
       if (!_permissionsGranted)
@@ -1379,7 +1409,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           ),
           child: Text(
             'Grant permissions',
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 13,
               color: AppTheme.primaryColor,
             ),
@@ -1440,7 +1470,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
 
   /// Preview area: live camera when engine ready and preview started; profile when off or not ready.
   /// Keep the same video view in the tree once preview has started so mute/unmute doesn't lose the view.
-  Widget _buildPreviewContent(String name, String? avatarUrl, {bool isMobile = false}) {
+  Widget _buildPreviewContent(
+    String name,
+    String? avatarUrl, {
+    bool isMobile = false,
+  }) {
     final engine = _agoraService.engine;
     if (engine == null || !_previewStarted) {
       return Container(
@@ -1461,7 +1495,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                       Text(
                         _previewError!,
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           color: AppTheme.neutral700,
                           fontSize: 14,
                         ),
@@ -1470,18 +1504,23 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                   ),
                 )
               : _previewStartScheduled && _cameraEnabled
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(color: AppTheme.primaryColor),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Starting camera...',
-                          style: GoogleFonts.poppins(color: Colors.grey[600], fontSize: 14),
-                        ),
-                      ],
-                    )
-                  : _buildProfilePreview(name, avatarUrl, isMobile: isMobile),
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(
+                      color: AppTheme.primaryColor,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Starting camera...',
+                      style: GoogleFonts.nunito(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                )
+              : _buildProfilePreview(name, avatarUrl, isMobile: isMobile),
         ),
       );
     }
@@ -1508,18 +1547,24 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
         if (!_cameraEnabled)
           Container(
             color: AppTheme.softBackground,
-            child: Center(child: _buildProfilePreview(name, avatarUrl, isMobile: isMobile)),
+            child: Center(
+              child: _buildProfilePreview(name, avatarUrl, isMobile: isMobile),
+            ),
           ),
       ],
     );
   }
 
   /// Build profile preview (avatar + name, used when camera off or preview not ready)
-  Widget _buildProfilePreview(String name, String? avatarUrl, {bool isMobile = false}) {
+  Widget _buildProfilePreview(
+    String name,
+    String? avatarUrl, {
+    bool isMobile = false,
+  }) {
     final size = isMobile ? 120.0 : 150.0;
     final fontSize = isMobile ? 36.0 : 48.0;
     final nameFontSize = isMobile ? 18.0 : 20.0;
-    
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -1529,10 +1574,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Colors.grey[800],
-            border: Border.all(
-              color: Colors.grey[600]!,
-              width: 3,
-            ),
+            border: Border.all(color: Colors.grey[600]!, width: 3),
           ),
           child: avatarUrl != null && avatarUrl.isNotEmpty
               ? ClipOval(
@@ -1547,7 +1589,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                     errorWidget: (context, url, error) => Center(
                       child: Text(
                         _getInitials(name),
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: fontSize,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -1559,7 +1601,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
               : Center(
                   child: Text(
                     _getInitials(name),
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: fontSize,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -1573,7 +1615,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           child: Text(
             name,
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: nameFontSize,
               fontWeight: FontWeight.w600,
               color: Colors.grey[800],
@@ -1664,11 +1706,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                 alignment: Alignment.center,
                 clipBehavior: Clip.none,
                 children: [
-                  Icon(
-                    icon,
-                    color: isActive ? deepBlue : Colors.red,
-                    size: 24,
-                  ),
+                  Icon(icon, color: isActive ? deepBlue : Colors.red, size: 24),
                   if (showSpeakingWave)
                     Positioned(
                       bottom: 9,
@@ -1701,10 +1739,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
         const SizedBox(height: 8),
         Text(
           label,
-          style: GoogleFonts.poppins(
-            color: Colors.grey[800],
-            fontSize: 12,
-          ),
+          style: GoogleFonts.nunito(color: Colors.grey[800], fontSize: 12),
         ),
       ],
     );
@@ -1732,7 +1767,9 @@ class _PreJoinVideoHostState extends State<_PreJoinVideoHost> {
     // On mobile (Android/iOS), the native view must exist before startPreview() or preview stays black.
     if (!kIsWeb) {
       // Delay so the platform view is in the tree and has a surface (Android especially needs this).
-      final delayMs = defaultTargetPlatform == TargetPlatform.android ? 150 : 50;
+      final delayMs = defaultTargetPlatform == TargetPlatform.android
+          ? 150
+          : 50;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!_captureStarted && mounted) {
           await Future.delayed(Duration(milliseconds: delayMs));

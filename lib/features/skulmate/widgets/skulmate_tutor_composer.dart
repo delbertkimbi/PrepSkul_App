@@ -51,37 +51,6 @@ class SkulMateTutorComposer extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Semantics(
-                button: true,
-                label: privacyMuted
-                    ? copy.tutorResumeListening
-                    : speaking
-                    ? copy.tutorInterruptMate
-                    : copy.tutorPauseListening,
-                child: Material(
-                  color: privacyMuted
-                      ? AppTheme.neutral300
-                      : recording
-                      ? AppTheme.skyBlue
-                      : AppTheme.primaryColor,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    onTap: onMicTap,
-                    customBorder: const CircleBorder(),
-                    child: SizedBox(
-                      width: 56,
-                      height: 56,
-                      child: Icon(
-                        privacyMuted
-                            ? PhosphorIcons.microphoneSlash
-                            : PhosphorIcons.microphone,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
@@ -96,9 +65,7 @@ class SkulMateTutorComposer extends StatelessWidget {
                         tooltip: copy.orImportMaterial,
                         onPressed: busy ? null : onToggleAttach,
                         icon: Icon(
-                          attachOpen
-                              ? PhosphorIcons.x
-                              : PhosphorIcons.notePencil,
+                          attachOpen ? PhosphorIcons.x : PhosphorIcons.plus,
                           color: AppTheme.primaryColor,
                         ),
                       ),
@@ -113,29 +80,64 @@ class SkulMateTutorComposer extends StatelessWidget {
                           decoration: InputDecoration(
                             hintText: recording
                                 ? copy.tutorListening
-                                : copy.tutorComposerHint,
+                                : (copy.isFrench
+                                      ? 'Ou écris ici…'
+                                      : 'Or type here…'),
                             border: InputBorder.none,
-                            hintStyle: GoogleFonts.plusJakartaSans(
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            filled: false,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 4,
+                            ),
+                            hintStyle: GoogleFonts.nunito(
                               color: AppTheme.neutral400,
                             ),
                           ),
                         ),
                       ),
-                      IconButton.filled(
-                        onPressed: busy ? null : onSend,
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                        ),
-                        icon: busy
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(PhosphorIcons.arrowUp),
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: controller,
+                        builder: (context, value, _) {
+                          final hasText = value.text.trim().isNotEmpty;
+                          return IconButton.filled(
+                            tooltip: hasText
+                                ? (copy.isFrench ? 'Envoyer' : 'Send')
+                                : recording || speaking
+                                ? (copy.isFrench ? 'Arrêter' : 'Stop')
+                                : (copy.isFrench
+                                      ? 'Parler à Mate'
+                                      : 'Talk to Mate'),
+                            onPressed: busy
+                                ? null
+                                : hasText
+                                ? onSend
+                                : onMicTap,
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.primaryColor,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size(48, 48),
+                            ),
+                            icon: busy
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Icon(
+                                    hasText
+                                        ? PhosphorIcons.arrowUp
+                                        : recording || speaking
+                                        ? PhosphorIcons.stop
+                                        : PhosphorIcons.microphone,
+                                  ),
+                          );
+                        },
                       ),
                     ],
                   ),

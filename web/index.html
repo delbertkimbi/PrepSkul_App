@@ -73,7 +73,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="logo.jpg"/>
   
   <!-- Preload splash screen logo for instant display -->
-  <link rel="preload" as="image" href="app_logo(blue).png" />
+  <link rel="preload" as="image" href="assets/assets/images/mate_3d/cheer.webp" />
 
   <title>PrepSkul: Find Trusted Home and Online Tutors in Cameroon</title>
   <link rel="manifest" href="manifest.json">
@@ -86,7 +86,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: #ffffff;
+      background: #faf9f6;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -105,20 +105,21 @@
     }
     
     .loader-logo {
-      width: 120px;
-      height: 120px;
+      width: min(52vw, 220px);
+      height: min(52vw, 220px);
       margin: 0 auto;
-      animation: frontToBack 3s ease-in-out infinite;
-      filter: drop-shadow(0 4px 10px rgba(27, 44, 79, 0.2));
+      position: relative;
     }
     
+    @keyframes loaderBreathe { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+    @media (prefers-reduced-motion: reduce) { .loader-logo, .loader-progress::after { animation: none; } }
     /* Indeterminate progress bar - visible on white background */
     .loader-progress {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
+      position: relative;
+      margin-top: 28px;
+      width: 96px;
       height: 3px;
+      border-radius: 4px;
       background: rgba(27, 44, 79, 0.12);
       overflow: hidden;
     }
@@ -338,18 +339,48 @@
     cMapPacked: true,
   }
   </script>
-  <!-- Loading Screen - theme blue, progress bar for stable refresh -->
-  <div id="flutter-loading">
-    <div class="loader-container">
-      <div class="loader-logo">
-        <img src="app_logo(blue).png" alt="PrepSkul Logo" />
-      </div>
-    </div>
+  <!-- 3D Mate celebration with lightweight surrounding stars. -->
+  <style>
+    .welcome-spark { transform-origin:140px 140px; animation:spark-arrive 900ms cubic-bezier(.2,.8,.2,1) both; }
+    .welcome-core { transform-origin:140px 140px; animation:core-arrive 700ms ease-out both; }
+    @keyframes spark-arrive { from {opacity:0;transform:scale(.25) rotate(-20deg)} to {opacity:1;transform:scale(1) rotate(0)} }
+    @keyframes core-arrive { from {opacity:0;transform:scale(.65)} to {opacity:1;transform:scale(1)} }
+    @media(prefers-reduced-motion:reduce) { .welcome-spark,.welcome-core {animation:none} }
+  </style>
+  <div id="flutter-loading" role="status" aria-label="Opening PrepSkul">
+    <div style="position:relative;width:280px;height:280px">
+    <svg style="position:absolute;inset:0" width="280" height="280" viewBox="0 0 280 280" aria-hidden="true">
+      <defs><path id="spark" d="M0 -13 L4 -4 L13 0 L4 4 L0 13 L-4 4 L-13 0 L-4 -4Z"/></defs>
+      <g class="welcome-spark" fill="#FFCB35">
+        <use href="#spark" x="60" y="65"/><use href="#spark" x="220" y="90"/>
+        <use href="#spark" x="210" y="215"/><use href="#spark" x="65" y="210"/>
+      </g>
+      <g class="welcome-spark" fill="#8BD2F4" style="animation-delay:100ms">
+        <circle cx="140" cy="35" r="6"/><circle cx="245" cy="150" r="5"/>
+        <circle cx="140" cy="245" r="5"/><circle cx="35" cy="140" r="6"/>
+      </g>
+
+    </svg>
+    <model-viewer id="welcome-mate" src="assets/assets/3d/skulmate.glb?v=soft-mate-7"
+      loading="eager" reveal="auto" autoplay animation-name="06_celebrate"
+      camera-orbit="0deg 85deg 7.7m" camera-target="0m 1.7m 0m" field-of-view="30deg" shadow-intensity="0.35"
+      style="position:absolute;inset:30px;width:220px;height:220px;pointer-events:none" alt="Mate celebrates your arrival">
+      <div slot="poster" aria-hidden="true"></div>
+    </model-viewer></div>
     <div class="loader-progress" aria-hidden="true"></div>
   </div>
-  
+  <script>
+    const welcomeMate = document.getElementById('welcome-mate');
+    const reducedWelcomeMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    welcomeMate.addEventListener('load', () => { if (reducedWelcomeMotion.matches) welcomeMate.pause(); });
+    window.addEventListener('flutter-first-frame', () => welcomeMate.pause(), {once:true});
+    const welcomeChime = new Audio('assets/assets/audio/music/mate_twinkle.wav');
+    welcomeChime.volume = .22;
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) welcomeChime.play().catch(() => {});
+    window.addEventListener('flutter-first-frame', () => { welcomeChime.pause(); }, {once:true});
+  </script>
   <!-- Agora Web SDK for video sessions -->
-  <script src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js"></script>
+  <script defer src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js"></script>
   
   <script src="flutter_bootstrap.js" async></script>
 </body>

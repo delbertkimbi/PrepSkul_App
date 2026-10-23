@@ -7,7 +7,9 @@ class MatePoster extends StatelessWidget {
   final double size;
   @override
   Widget build(BuildContext context) => Image.asset(
-    'assets/mascot/model-front.webp',
+    clip == '06_celebrate'
+        ? 'assets/images/mate_3d/cheer.webp'
+        : 'assets/mascot/model-front.webp',
     width: size,
     height: size,
     fit: BoxFit.contain,

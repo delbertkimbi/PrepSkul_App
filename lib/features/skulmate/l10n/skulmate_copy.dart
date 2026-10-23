@@ -18,8 +18,7 @@ class SkulMateCopy {
 
   /// Use in callbacks / async handlers — never [watch] outside build.
   factory SkulMateCopy.read(BuildContext context) {
-    final code =
-        context.read<LanguageNotifier>().currentLocale.languageCode;
+    final code = context.read<LanguageNotifier>().currentLocale.languageCode;
     return SkulMateCopy(code == 'fr');
   }
 
@@ -51,14 +50,16 @@ class SkulMateCopy {
   String get tutorActionExplainTitle =>
       isFrench ? 'Comprendre un sujet' : 'Understand a topic';
 
-  String get tutorActionExplainBody =>
-      isFrench ? 'Une explication simple, étape par étape' : 'A simple explanation, one step at a time';
+  String get tutorActionExplainBody => isFrench
+      ? 'Une explication simple, étape par étape'
+      : 'A simple explanation, one step at a time';
 
   String get tutorActionQuestionTitle =>
       isFrench ? 'Résoudre une question' : 'Work through a question';
 
-  String get tutorActionQuestionBody =>
-      isFrench ? 'On avance ensemble, sans sauter d’étape' : 'Work it out together, without skipping steps';
+  String get tutorActionQuestionBody => isFrench
+      ? 'On avance ensemble, sans sauter d’étape'
+      : 'Work it out together, without skipping steps';
 
   String get tutorActionPracticeTitle =>
       isFrench ? 'Faire un petit exercice' : 'Try a quick practice';
@@ -111,8 +112,8 @@ class SkulMateCopy {
       : 'I couldn’t read that page. Try again.';
 
   String get tutorComposerHint => isFrench
-      ? 'Parle. J’écoute déjà.'
-      : 'Just talk. I’m already listening.';
+      ? 'Écris ou active le micro.'
+      : 'Type a question or turn on the mic.';
 
   String get tutorEmptyPrompt => isFrench
       ? 'Le tableau est à toi. Parle, j’écoute sans bouton. Écris si tu préfères.'
@@ -120,8 +121,7 @@ class SkulMateCopy {
 
   String get tutorHoldToTalk => isFrench ? 'Écoute' : 'Listening';
 
-  String get tutorListening =>
-      isFrench ? 'Je t’écoute.' : 'I’m listening.';
+  String get tutorListening => isFrench ? 'Je t’écoute.' : 'I’m listening.';
 
   String get tutorModeListen => isFrench ? 'Écouter' : 'Listen';
 
@@ -149,22 +149,18 @@ class SkulMateCopy {
 
   String get continueSection => jumpBackIn;
 
-  String get jumpBackIn =>
-      isFrench ? 'Reprendre' : 'Jump back in';
+  String get jumpBackIn => isFrench ? 'Reprendre' : 'Jump back in';
 
   /// Gentle resurfacing — no exam/syllabus wording.
   String get rerouteNudgeLead =>
       isFrench ? 'Ça vaut un autre essai' : 'Worth another look';
 
-  String get rerouteNudgeAction =>
-      isFrench ? 'Rejouer' : 'Replay';
+  String get rerouteNudgeAction => isFrench ? 'Rejouer' : 'Replay';
 
-  String get rerouteNudgeDismiss =>
-      isFrench ? 'Pas maintenant' : 'Not now';
+  String get rerouteNudgeDismiss => isFrench ? 'Pas maintenant' : 'Not now';
 
-  String get tutorEscalationTitle => isFrench
-      ? 'Un coup de main ?'
-      : 'Want a hand with this?';
+  String get tutorEscalationTitle =>
+      isFrench ? 'Un coup de main ?' : 'Want a hand with this?';
 
   String tutorEscalationBody(String gameTitle) => isFrench
       ? 'Si $gameTitle reste difficile, un tuteur PrepSkul peut t\'aider à clarifier.'
@@ -173,50 +169,40 @@ class SkulMateCopy {
   String get tutorEscalationAction =>
       isFrench ? 'Voir les tuteurs' : 'Browse tutors';
 
-  String get tutorEscalationDismiss =>
-      isFrench ? 'Pas maintenant' : 'Not now';
+  String get tutorEscalationDismiss => isFrench ? 'Pas maintenant' : 'Not now';
 
   String get viewAll => isFrench ? 'Tout voir' : 'View all';
 
   String get showLess => isFrench ? 'Réduire' : 'Show less';
 
-  String get intentSheetTitle => isFrench
-      ? 'Comment veux-tu réviser ?'
-      : 'How do you want to revise?';
+  String get intentSheetTitle =>
+      isFrench ? 'Comment veux-tu réviser ?' : 'How do you want to revise?';
 
   String get intakeChatTitle => isFrench ? 'Discussion' : 'Chat';
 
-  String get intakeAnalyzing => isFrench
-      ? 'Lecture de ton contenu…'
-      : 'Reading your material…';
+  String get intakeAnalyzing =>
+      isFrench ? 'Lecture de ton contenu…' : 'Reading your material…';
 
-  String get intakeTopicChip =>
-      isFrench ? 'Sujet' : 'Topic';
+  String get intakeTopicChip => isFrench ? 'Sujet' : 'Topic';
 
-  String get intakeTopicFallbackYoutube => isFrench
-      ? 'cette vidéo YouTube'
-      : 'this YouTube video';
+  String get intakeTopicFallbackYoutube =>
+      isFrench ? 'cette vidéo YouTube' : 'this YouTube video';
 
-  String get intakeTopicFallbackNotes => isFrench
-      ? 'tes notes'
-      : 'your notes';
+  String get intakeTopicFallbackNotes => isFrench ? 'tes notes' : 'your notes';
 
-  String get intakeTopicFallbackLecture => isFrench
-      ? 'ton enregistrement'
-      : 'your recording';
+  String get intakeTopicFallbackLecture =>
+      isFrench ? 'ton enregistrement' : 'your recording';
 
-  String get intakeTopicFallbackPhoto => isFrench
-      ? 'tes photos'
-      : 'your photo notes';
+  String get intakeTopicFallbackPhoto =>
+      isFrench ? 'tes photos' : 'your photo notes';
 
   String get importPhotosTitle =>
       isFrench ? 'Importer des photos' : 'Import photos';
 
   String get importPhotosContinue => isFrench ? 'Continuer' : 'Continue';
 
-  String importPhotosLimit(int count, int max) => isFrench
-      ? '$count sur $max photos'
-      : '$count of $max photos';
+  String importPhotosLimit(int count, int max) =>
+      isFrench ? '$count sur $max photos' : '$count of $max photos';
 
   String get importPhotosAdd => isFrench ? 'Ajouter une photo' : 'Add photo';
 
@@ -231,21 +217,17 @@ class SkulMateCopy {
       ? 'Chaque chambre teste une facette de ton cours — diagramme, choix, ordre.'
       : 'Each chamber tests a different slice of your notes — diagram, choices, order.';
 
-  String puzzleIntroSteps(int count) => isFrench
-      ? '$count étapes à placer'
-      : '$count steps to place';
+  String puzzleIntroSteps(int count) =>
+      isFrench ? '$count étapes à placer' : '$count steps to place';
 
-  String puzzleIntroTime(int minutes) => isFrench
-      ? '~$minutes min'
-      : '~$minutes min';
+  String puzzleIntroTime(int minutes) =>
+      isFrench ? '~$minutes min' : '~$minutes min';
 
-  String puzzleIntroReward(int xp) => isFrench
-      ? '+$xp XP possible'
-      : 'Up to +$xp XP';
+  String puzzleIntroReward(int xp) =>
+      isFrench ? '+$xp XP possible' : 'Up to +$xp XP';
 
-  String puzzleIntroMastery(String topic) => isFrench
-      ? 'Maîtrise · $topic'
-      : 'Mastery · $topic';
+  String puzzleIntroMastery(String topic) =>
+      isFrench ? 'Maîtrise · $topic' : 'Mastery · $topic';
 
   String get puzzleStartButton =>
       isFrench ? 'Commencer le puzzle' : 'Start puzzle';
@@ -259,47 +241,37 @@ class SkulMateCopy {
   String get briefingHowToPlaySection =>
       isFrench ? 'COMMENT JOUER' : 'HOW TO PLAY';
 
-  String get briefingReadySection =>
-      isFrench ? 'PRÊT' : 'READY';
+  String get briefingReadySection => isFrench ? 'PRÊT' : 'READY';
 
-  String get briefingStartButton =>
-      isFrench ? 'Commencer' : 'Start game';
+  String get briefingStartButton => isFrench ? 'Commencer' : 'Start game';
 
   String get briefingJourneySection =>
       isFrench ? 'PARCOURS DU COFFRE' : 'VAULT JOURNEY';
 
-  String puzzleChamberProgress(int current, int total) => isFrench
-      ? 'Étape $current sur $total'
-      : 'Step $current of $total';
+  String puzzleChamberProgress(int current, int total) =>
+      isFrench ? 'Étape $current sur $total' : 'Step $current of $total';
 
-  String get puzzleDiagramDecrypting => isFrench
-      ? 'Déchiffrement du diagramme…'
-      : 'Decrypting vault diagram…';
+  String get puzzleDiagramDecrypting =>
+      isFrench ? 'Déchiffrement du diagramme…' : 'Decrypting vault diagram…';
 
-  String get puzzleVaultLocked => isFrench
-      ? 'Diagramme du coffre'
-      : 'Vault diagram';
+  String get puzzleVaultLocked =>
+      isFrench ? 'Diagramme du coffre' : 'Vault diagram';
 
-  String puzzleVaultChamberLabel(int index) => isFrench
-      ? 'Étape $index'
-      : 'Step $index';
+  String puzzleVaultChamberLabel(int index) =>
+      isFrench ? 'Étape $index' : 'Step $index';
 
-  String get puzzleStepTypePick =>
-      isFrench ? 'Choix' : 'Pick the answer';
+  String get puzzleStepTypePick => isFrench ? 'Choix' : 'Pick the answer';
 
   String get puzzleStepTypeHotspot =>
       isFrench ? 'Associe les étiquettes' : 'Match the labels';
 
-  String get puzzleStepTypeOrder =>
-      isFrench ? 'Ordre' : 'Tap in order';
+  String get puzzleStepTypeOrder => isFrench ? 'Ordre' : 'Tap in order';
 
-  String puzzleOrderProgress(int done, int total) => isFrench
-      ? '$done sur $total dans l\'ordre'
-      : '$done of $total in order';
+  String puzzleOrderProgress(int done, int total) =>
+      isFrench ? '$done sur $total dans l\'ordre' : '$done of $total in order';
 
-  String briefingTopicLine(String topic) => isFrench
-      ? 'Sujet · $topic'
-      : 'Topic · $topic';
+  String briefingTopicLine(String topic) =>
+      isFrench ? 'Sujet · $topic' : 'Topic · $topic';
 
   /// Narrative prompt — never "What is step 3?"
   String puzzleNextPrompt({
@@ -325,9 +297,7 @@ class SkulMateCopy {
           ? 'Que vient après « $short » ?'
           : 'What comes after "$short"?';
     }
-    return isFrench
-        ? 'Que se passe-t-il ensuite ?'
-        : 'What happens next?';
+    return isFrench ? 'Que se passe-t-il ensuite ?' : 'What happens next?';
   }
 
   String get puzzleWrongStepNudge => isFrench
@@ -338,13 +308,10 @@ class SkulMateCopy {
 
   String get puzzleWrongStep => puzzleWrongStepNudge;
 
-  String get puzzleSlotLabel => isFrench
-      ? 'Prochaine étape'
-      : 'Next in the sequence';
+  String get puzzleSlotLabel =>
+      isFrench ? 'Prochaine étape' : 'Next in the sequence';
 
-  String get puzzleGoalHeader => isFrench
-      ? 'TON OBJECTIF'
-      : 'YOUR GOAL';
+  String get puzzleGoalHeader => isFrench ? 'TON OBJECTIF' : 'YOUR GOAL';
 
   String get puzzleTapLabelThenSlot => isFrench
       ? 'Touche une étiquette, puis la case qui correspond.'
@@ -352,15 +319,13 @@ class SkulMateCopy {
 
   String get puzzleSlotEmpty => isFrench ? 'Case vide' : 'Empty slot';
 
-  String get puzzlePickFromBelow => isFrench
-      ? 'Choisis ta réponse'
-      : 'Pick your answer';
+  String get puzzlePickFromBelow =>
+      isFrench ? 'Choisis ta réponse' : 'Pick your answer';
 
   String get puzzleWhyLabel => isFrench ? 'POURQUOI' : 'WHY THIS FITS';
 
-  String puzzleProgressPlaced(int placed, int total) => isFrench
-      ? '$placed sur $total placées'
-      : '$placed of $total placed';
+  String puzzleProgressPlaced(int placed, int total) =>
+      isFrench ? '$placed sur $total placées' : '$placed of $total placed';
 
   String puzzleCoachHint(int completed, int total) {
     if (completed == 0) {
@@ -383,9 +348,8 @@ class SkulMateCopy {
         : 'Good start. Keep building the sequence.';
   }
 
-  String get puzzleSequenceComplete => isFrench
-      ? 'Parfait ! Séquence complète.'
-      : 'Perfect! Sequence complete.';
+  String get puzzleSequenceComplete =>
+      isFrench ? 'Parfait ! Séquence complète.' : 'Perfect! Sequence complete.';
 
   String puzzleProgressText(int placed, int total) =>
       puzzleProgressPlaced(placed, total);
@@ -397,12 +361,10 @@ class SkulMateCopy {
 
   String get matchingConnected => isFrench ? 'Connecté !' : 'Connected!';
 
-  String matchingPairLinked(String left, String right) => isFrench
-      ? '« $left » ↔ « $right »'
-      : '"$left" ↔ "$right"';
+  String matchingPairLinked(String left, String right) =>
+      isFrench ? '« $left » ↔ « $right »' : '"$left" ↔ "$right"';
 
-  String get matchingContinueButton =>
-      isFrench ? 'Continuer' : 'Continue';
+  String get matchingContinueButton => isFrench ? 'Continuer' : 'Continue';
 
   String get matchingSectionComplete => isFrench
       ? 'Section terminée ! Appuie sur Continuer quand tu es prêt.'
@@ -412,17 +374,14 @@ class SkulMateCopy {
       ? 'Temps écoulé. Les réponses sont révélées. Appuie sur Continuer.'
       : 'Time is up. Answers revealed. Tap Continue when ready.';
 
-  String get matchingNiceMatch => isFrench
-      ? 'Bien joué ! Bonne association.'
-      : 'Nice match!';
+  String get matchingNiceMatch =>
+      isFrench ? 'Bien joué ! Bonne association.' : 'Nice match!';
 
-  String get matchingTryAgain => isFrench
-      ? 'Pas tout à fait. Réessaie.'
-      : 'Oops! Not quite. Try again.';
+  String get matchingTryAgain =>
+      isFrench ? 'Pas tout à fait. Réessaie.' : 'Oops! Not quite. Try again.';
 
-  String get fillBlankCorrect => isFrench
-      ? 'Correct ! Beau travail.'
-      : 'Correct! Nice work.';
+  String get fillBlankCorrect =>
+      isFrench ? 'Correct ! Beau travail.' : 'Correct! Nice work.';
 
   String fillBlankIncorrect(String answer) => isFrench
       ? 'Pas tout à fait. La bonne réponse : $answer'
@@ -449,13 +408,11 @@ class SkulMateCopy {
         : '$trimmed How would you like to revise?';
   }
 
-  String get intakeTopicFallbackDocument => isFrench
-      ? 'ton document'
-      : 'your document';
+  String get intakeTopicFallbackDocument =>
+      isFrench ? 'ton document' : 'your document';
 
-  String get intakeTopicFallbackGeneric => isFrench
-      ? 'ton contenu'
-      : 'your material';
+  String get intakeTopicFallbackGeneric =>
+      isFrench ? 'ton contenu' : 'your material';
 
   String intakeChatSummary(String topicLabel) => isFrench
       ? 'On dirait que tu as partagé du contenu sur $topicLabel. Comment veux-tu réviser ?'
@@ -505,9 +462,8 @@ class SkulMateCopy {
       ? 'Glisse à droite si tu sais, à gauche sinon'
       : 'Swipe right if you know it, left if not';
 
-  String get memoriseTapReveal => isFrench
-      ? 'Touchez la carte pour révéler'
-      : 'Tap card to reveal';
+  String get memoriseTapReveal =>
+      isFrench ? 'Touchez la carte pour révéler' : 'Tap card to reveal';
 
   String get startLearning => isFrench ? 'Commencer' : 'Start learning';
 
@@ -522,13 +478,11 @@ class SkulMateCopy {
 
   String get subdecks => isFrench ? 'Sous-paquets' : 'Subdecks';
 
-  String get leaderboardSharePrompt => isFrench
-      ? 'Tu veux tes amis ici ?'
-      : 'Want your friends here?';
+  String get leaderboardSharePrompt =>
+      isFrench ? 'Tu veux tes amis ici ?' : 'Want your friends here?';
 
-  String get leaderboardShareBody => isFrench
-      ? 'Partage le paquet avec eux.'
-      : 'Share the deck with them.';
+  String get leaderboardShareBody =>
+      isFrench ? 'Partage le paquet avec eux.' : 'Share the deck with them.';
 
   String get shareDeck => isFrench ? 'Partager le paquet' : 'Share deck';
 
@@ -536,27 +490,23 @@ class SkulMateCopy {
 
   String get addToDeck => isFrench ? 'Ajouter au paquet' : 'Add to deck';
 
-  String get writeOwnCards => isFrench
-      ? 'Écris tes propres cartes'
-      : 'Write your own cards';
+  String get writeOwnCards =>
+      isFrench ? 'Écris tes propres cartes' : 'Write your own cards';
 
   String get makeLesson => isFrench
       ? 'Crée une leçon étape par étape'
       : 'Make a step-by-step lesson';
 
-  String get createNotes => isFrench
-      ? 'Crée des notes libres'
-      : 'Create freeform notes';
+  String get createNotes =>
+      isFrench ? 'Crée des notes libres' : 'Create freeform notes';
 
-  String get importSources => isFrench
-      ? 'Notes, YouTube, PDF…'
-      : 'Notes, YouTube, PDF…';
+  String get importSources =>
+      isFrench ? 'Notes, YouTube, PDF…' : 'Notes, YouTube, PDF…';
 
   String get aiTutorMode => isFrench ? 'Tuteur IA' : 'AI Tutor';
 
-  String get aiTutorSubtitle => isFrench
-      ? 'Apprends étape par étape'
-      : 'Learn step by step';
+  String get aiTutorSubtitle =>
+      isFrench ? 'Apprends étape par étape' : 'Learn step by step';
 
   String get upload => isFrench ? 'Importer' : 'Upload';
 
@@ -571,8 +521,7 @@ class SkulMateCopy {
   /// @deprecated Use [sessions]
   String get fromClass => sessions;
 
-  String get pasteNotesTitle =>
-      isFrench ? 'Coller des notes' : 'Paste notes';
+  String get pasteNotesTitle => isFrench ? 'Coller des notes' : 'Paste notes';
 
   String get pasteNotesSubtitle => isFrench
       ? 'Colle ton texte ici. Mate le transformera en jeux de révision.'
@@ -581,12 +530,10 @@ class SkulMateCopy {
   String get pasteTitleOptional =>
       isFrench ? 'Titre (optionnel)' : 'Title (optional)';
 
-  String get pasteTitleHint => isFrench
-      ? 'Ex. Biologie chapitre 3'
-      : 'e.g. Biology chapter 3';
+  String get pasteTitleHint =>
+      isFrench ? 'Ex. Biologie chapitre 3' : 'e.g. Biology chapter 3';
 
-  String get pasteYourNotes =>
-      isFrench ? 'Tes notes' : 'Your notes';
+  String get pasteYourNotes => isFrench ? 'Tes notes' : 'Your notes';
 
   String get pasteNotesHint => isFrench
       ? 'Colle ou tape tes notes ici…'
@@ -596,8 +543,7 @@ class SkulMateCopy {
       ? '$len / $min caractères${ok ? ' ✓' : ''}'
       : '$len / $min characters${ok ? ' ✓' : ''}';
 
-  String get continueLabel =>
-      isFrench ? 'Continuer' : 'Continue';
+  String get continueLabel => isFrench ? 'Continuer' : 'Continue';
 
   String get youtubeImportTitle =>
       isFrench ? 'Importer depuis YouTube' : 'Import from YouTube';
@@ -606,8 +552,7 @@ class SkulMateCopy {
       ? 'Colle un lien de vidéo pour créer des jeux à partir du contenu.'
       : 'Paste a video link to build games from the content.';
 
-  String get youtubeUrlLabel =>
-      isFrench ? 'Lien YouTube' : 'YouTube link';
+  String get youtubeUrlLabel => isFrench ? 'Lien YouTube' : 'YouTube link';
 
   String get youtubeImportHint => isFrench
       ? 'Les vidéos publiques youtube.com et youtu.be sont prises en charge.'
@@ -633,15 +578,12 @@ class SkulMateCopy {
   String get recordingComplete =>
       isFrench ? 'Enregistrement terminé !' : 'Recording complete!';
 
-  String recordingDuration(String duration) => isFrench
-      ? 'Durée : $duration'
-      : 'Duration: $duration';
+  String recordingDuration(String duration) =>
+      isFrench ? 'Durée : $duration' : 'Duration: $duration';
 
-  String get generateNotes =>
-      isFrench ? 'Générer des notes' : 'Generate notes';
+  String get generateNotes => isFrench ? 'Générer des notes' : 'Generate notes';
 
-  String get recordAgain =>
-      isFrench ? 'Réenregistrer' : 'Record again';
+  String get recordAgain => isFrench ? 'Réenregistrer' : 'Record again';
 
   String get micPermissionDenied => isFrench
       ? 'Autorise l\'accès au micro pour enregistrer.'
@@ -700,9 +642,8 @@ class SkulMateCopy {
   String get deckStudyChatTitle =>
       isFrench ? 'Aide-moi à réviser ce paquet' : 'Help me study this deck';
 
-  String get deckStudyUserMessage => isFrench
-      ? 'Aide-moi à réviser ce paquet.'
-      : 'Help me study this deck.';
+  String get deckStudyUserMessage =>
+      isFrench ? 'Aide-moi à réviser ce paquet.' : 'Help me study this deck.';
 
   String deckStudyChatPrompt(String deckTitle) => isFrench
       ? 'Parfait — comment veux-tu travailler sur $deckTitle ?'
@@ -771,55 +712,43 @@ class SkulMateCopy {
       ? 'Garde ce contenu comme paquet réutilisable pour notes, jeux et tuteur IA.'
       : 'Keep this upload as a reusable deck for notes, games, and AI tutor study.';
 
-  String get saveDeckToggle =>
-      isFrench ? 'Créer un paquet' : 'Create a deck';
+  String get saveDeckToggle => isFrench ? 'Créer un paquet' : 'Create a deck';
 
-  String get saveDeckNameLabel =>
-      isFrench ? 'Nom du paquet' : 'Deck name';
+  String get saveDeckNameLabel => isFrench ? 'Nom du paquet' : 'Deck name';
 
   String get saveDeckConfirm =>
       isFrench ? 'Enregistrer le paquet' : 'Save deck';
 
-  String get saveDeckSkip =>
-      isFrench ? 'Pas maintenant' : 'Not now';
+  String get saveDeckSkip => isFrench ? 'Pas maintenant' : 'Not now';
 
-  String get addDeckTitle =>
-      isFrench ? 'Nouveau paquet' : 'New deck';
+  String get addDeckTitle => isFrench ? 'Nouveau paquet' : 'New deck';
 
   String get addDeckSubtitle => isFrench
       ? 'Importe des notes — on crée un paquet réutilisable avec résumés et cartes.'
       : 'Import notes — we\'ll build a reusable deck with summaries and cards.';
 
-  String get addDeckCta =>
-      isFrench ? 'Créer un paquet' : 'Create a deck';
+  String get addDeckCta => isFrench ? 'Créer un paquet' : 'Create a deck';
 
-  String get deckCreateTitle =>
-      isFrench ? 'Ajouter un paquet' : 'Add deck';
+  String get deckCreateTitle => isFrench ? 'Ajouter un paquet' : 'Add deck';
 
   String get deckCreateInMyDecks =>
       isFrench ? 'Dans : Mes paquets' : 'In: My decks';
 
-  String get deckNameLabel =>
-      isFrench ? 'Nom du paquet' : 'Deck name';
+  String get deckNameLabel => isFrench ? 'Nom du paquet' : 'Deck name';
 
-  String get deckNamePlaceholder =>
-      isFrench ? 'Ex. Enzymes' : 'E.g. Enzymes';
+  String get deckNamePlaceholder => isFrench ? 'Ex. Enzymes' : 'E.g. Enzymes';
 
-  String get deckColourLabel =>
-      isFrench ? 'Couleur' : 'Colour';
+  String get deckColourLabel => isFrench ? 'Couleur' : 'Colour';
 
-  String get noCardsYet =>
-      isFrench ? 'Pas encore de cartes' : 'No cards yet';
+  String get noCardsYet => isFrench ? 'Pas encore de cartes' : 'No cards yet';
 
   String get noCardsSubtitle => isFrench
       ? 'Ajoute des cartes pour commencer à réviser'
       : 'Add some cards to start quizzing';
 
-  String get writeCards =>
-      isFrench ? 'Écrire des cartes' : 'Write cards';
+  String get writeCards => isFrench ? 'Écrire des cartes' : 'Write cards';
 
-  String get scrollFinishSession =>
-      isFrench ? 'Terminer' : 'Done';
+  String get scrollFinishSession => isFrench ? 'Terminer' : 'Done';
 
   String get scrollLeaveTitle =>
       isFrench ? 'Quitter la séance ?' : 'Leave session?';
@@ -828,8 +757,7 @@ class SkulMateCopy {
       ? 'Ta progression sera enregistrée.'
       : 'Your progress so far will be saved.';
 
-  String get scrollLeaveConfirm =>
-      isFrench ? 'Quitter' : 'Leave';
+  String get scrollLeaveConfirm => isFrench ? 'Quitter' : 'Leave';
 
   String get publicDecksComingSoonTitle =>
       isFrench ? 'Paquets publics bientôt' : 'Public decks coming soon';
@@ -841,8 +769,7 @@ class SkulMateCopy {
   String get orImportMaterial =>
       isFrench ? 'Ou importer du contenu' : 'Or import material';
 
-  String get comingSoon =>
-      isFrench ? 'Bientôt disponible' : 'Coming soon';
+  String get comingSoon => isFrench ? 'Bientôt disponible' : 'Coming soon';
 
   String get welcomeSheetTitle =>
       isFrench ? 'Salut. Je suis Mate.' : 'Hey. I’m Mate.';
@@ -877,11 +804,9 @@ class SkulMateCopy {
         : 'Every check changes the next move. You are the student — whether you signed up as a learner or a parent.';
   }
 
-  String get welcomeCta =>
-      isFrench ? 'C\'est parti !' : 'Let\'s go!';
+  String get welcomeCta => isFrench ? 'C\'est parti !' : 'Let\'s go!';
 
-  String get paywallTitle =>
-      isFrench ? 'Continue à réviser' : 'Keep revising';
+  String get paywallTitle => isFrench ? 'Continue à réviser' : 'Keep revising';
 
   String get paywallSubtitle => isFrench
       ? 'Tu as utilisé ta révision gratuite du jour. Ajoute des crédits pour continuer maintenant.'
@@ -894,12 +819,10 @@ class SkulMateCopy {
   String get paywallDocLabel =>
       isFrench ? 'Documents et texte' : 'Documents & text';
 
-  String get paywallImageLabel =>
-      isFrench ? 'Images' : 'Images';
+  String get paywallImageLabel => isFrench ? 'Images' : 'Images';
 
-  String paywallCreditsBalance(int balance) => isFrench
-      ? 'Solde : $balance crédits'
-      : 'Balance: $balance credits';
+  String paywallCreditsBalance(int balance) =>
+      isFrench ? 'Solde : $balance crédits' : 'Balance: $balance credits';
 
   String get paywallCreditsActiveHint => isFrench
       ? 'Tes crédits sont actifs. Pas de limite gratuite à afficher.'
@@ -917,17 +840,14 @@ class SkulMateCopy {
       ? 'Révision gratuite disponible aujourd\'hui. Voir ton quota ci-dessous.'
       : 'Free revision available today. See your quota below.';
 
-  String activePlanBadge(String tier) => isFrench
-      ? 'Forfait $tier actif'
-      : '$tier plan active';
+  String activePlanBadge(String tier) =>
+      isFrench ? 'Forfait $tier actif' : '$tier plan active';
 
-  String get plansTopUpHeading => isFrench
-      ? 'Recharger les crédits'
-      : 'Top up credits';
+  String get plansTopUpHeading =>
+      isFrench ? 'Recharger les crédits' : 'Top up credits';
 
-  String get plansChooseHeading => isFrench
-      ? 'Choisir un forfait'
-      : 'Choose a plan';
+  String get plansChooseHeading =>
+      isFrench ? 'Choisir un forfait' : 'Choose a plan';
 
   String get paywallSeeAllPlans =>
       isFrench ? 'Voir tous les forfaits' : 'See all plans';
@@ -935,39 +855,33 @@ class SkulMateCopy {
   String get revisionPlansTitle =>
       isFrench ? 'Crédits de révision' : 'Revision credits';
 
-  String get myProgressTitle =>
-      isFrench ? 'Ma progression' : 'My progress';
+  String get myProgressTitle => isFrench ? 'Ma progression' : 'My progress';
 
   String get progressXpLabel => isFrench ? 'XP total' : 'Total XP';
 
-  String progressLevelLabel(int level) => isFrench
-      ? 'Niveau $level'
-      : 'Level $level';
+  String progressLevelLabel(int level) =>
+      isFrench ? 'Niveau $level' : 'Level $level';
 
   String get progressStreakLabel =>
       isFrench ? 'Série en cours' : 'Current streak';
 
-  String progressBestStreak(int best) => isFrench
-      ? 'Meilleure série : $best jours'
-      : 'Best streak: $best days';
+  String progressBestStreak(int best) =>
+      isFrench ? 'Meilleure série : $best jours' : 'Best streak: $best days';
 
-  String get progressGamesLabel =>
-      isFrench ? 'Jeux joués' : 'Games played';
+  String get progressGamesLabel => isFrench ? 'Jeux joués' : 'Games played';
 
   String progressAccuracy(double pct) => isFrench
       ? 'Précision : ${pct.toStringAsFixed(0)}%'
       : 'Accuracy: ${pct.toStringAsFixed(0)}%';
 
-  String get progressTopicsTitle => isFrench
-      ? 'Tes sujets en cours'
-      : 'Your focus topics';
+  String get progressTopicsTitle =>
+      isFrench ? 'Tes sujets en cours' : 'Your focus topics';
 
   String get progressTopicsEmpty => isFrench
       ? 'Joue quelques jeux de révision. Tes sujets apparaîtront ici.'
       : 'Play a few revision games. Your topics will show up here.';
 
-  String get progressActivityTitle =>
-      isFrench ? 'Activité' : 'Activity';
+  String get progressActivityTitle => isFrench ? 'Activité' : 'Activity';
 
   String progressSessionsOnDay(int count) {
     if (count == 0) {
@@ -979,12 +893,10 @@ class SkulMateCopy {
     return isFrench ? '$count jeux ce jour-là' : '$count games on this day';
   }
 
-  String progressXpToNext(int xp) => isFrench
-      ? '$xp XP pour le niveau suivant'
-      : '$xp XP to next level';
+  String progressXpToNext(int xp) =>
+      isFrench ? '$xp XP pour le niveau suivant' : '$xp XP to next level';
 
-  String get nextStopTitle =>
-      isFrench ? 'Prochaine étape' : 'Next stop';
+  String get nextStopTitle => isFrench ? 'Prochaine étape' : 'Next stop';
 
   String nextStopHeadline(NextStopSuggestion s) {
     switch (s.kind) {
@@ -993,13 +905,9 @@ class SkulMateCopy {
             ? 'Réviser : ${s.subtitle ?? s.title}'
             : 'Review: ${s.subtitle ?? s.title}';
       case NextStopKind.weakTopic:
-        return isFrench
-            ? 'Retravailler : ${s.title}'
-            : 'Revisit: ${s.title}';
+        return isFrench ? 'Retravailler : ${s.title}' : 'Revisit: ${s.title}';
       case NextStopKind.continueGame:
-        return isFrench
-            ? 'Reprendre : ${s.title}'
-            : 'Continue: ${s.title}';
+        return isFrench ? 'Reprendre : ${s.title}' : 'Continue: ${s.title}';
       case NextStopKind.fromSession:
         final tutor = s.tutorName ?? (isFrench ? 'ton tuteur' : 'your tutor');
         return isFrench
@@ -1032,14 +940,11 @@ class SkulMateCopy {
     }
   }
 
-  String get profileRevisionSection =>
-      isFrench ? 'Ma révision' : 'My revision';
+  String get profileRevisionSection => isFrench ? 'Ma révision' : 'My revision';
 
-  String get profileViewGames =>
-      isFrench ? 'Voir mes jeux' : 'View my games';
+  String get profileViewGames => isFrench ? 'Voir mes jeux' : 'View my games';
 
-  String get profileCreditsCta =>
-      isFrench ? 'Crédits' : 'Credits';
+  String get profileCreditsCta => isFrench ? 'Crédits' : 'Credits';
 
   String intakeErrorTitle(SkulMateIntakeSource source, String raw) {
     if (source == SkulMateIntakeSource.youtube) {
@@ -1121,9 +1026,7 @@ class SkulMateCopy {
       return isFrench ? 'Problème de connexion' : 'Connection problem';
     }
     if (lower.contains('not found') || lower.contains('permission')) {
-      return isFrench
-          ? 'Enregistrement introuvable'
-          : 'Recording not found';
+      return isFrench ? 'Enregistrement introuvable' : 'Recording not found';
     }
     return isFrench
         ? 'Impossible de transcrire'
@@ -1173,22 +1076,18 @@ class SkulMateCopy {
 
   String get errorTryAgain => isFrench ? 'Réessayer' : 'Try again';
 
-  String get errorManualText => isFrench
-      ? 'Saisir le texte manuellement'
-      : 'Enter text manually instead';
+  String get errorManualText =>
+      isFrench ? 'Saisir le texte manuellement' : 'Enter text manually instead';
 
-  String get scrollFeedTitle =>
-      isFrench ? 'Révision rapide' : 'Quick revision';
+  String get scrollFeedTitle => isFrench ? 'Révision rapide' : 'Quick revision';
 
   String get scrollObjective => isFrench
       ? 'Fais défiler — révèle, puis dis si tu le savais.'
       : 'Swipe up — reveal, then mark if you knew it.';
 
-  String get scrollSwipeHint =>
-      isFrench ? 'Glisse vers le haut' : 'Swipe up';
+  String get scrollSwipeHint => isFrench ? 'Glisse vers le haut' : 'Swipe up';
 
-  String get scrollRevealAction =>
-      isFrench ? 'Révéler' : 'Reveal';
+  String get scrollRevealAction => isFrench ? 'Révéler' : 'Reveal';
 
   String get scrollTapReveal =>
       isFrench ? 'Appuie pour voir la réponse' : 'Tap to reveal answer';
@@ -1202,11 +1101,9 @@ class SkulMateCopy {
 
   String get scrollDone => isFrench ? 'Terminer' : 'Done';
 
-  String get scrollKeepGoing =>
-      isFrench ? 'Continuer' : 'Keep going';
+  String get scrollKeepGoing => isFrench ? 'Continuer' : 'Keep going';
 
-  String get scrollGateTitle =>
-      isFrench ? 'Belle série !' : 'Nice run!';
+  String get scrollGateTitle => isFrench ? 'Belle série !' : 'Nice run!';
 
   String scrollGateBody(int known, int reviewed) => isFrench
       ? '$known sur $reviewed. Continuer ou terminer la séance ?'
@@ -1260,9 +1157,8 @@ class SkulMateCopy {
   String get scrollCelebrateTitle =>
       isFrench ? 'Belle série !' : 'Nice streak!';
 
-  String get scrollCelebrateBody => isFrench
-      ? 'Continue — tu es en feu.'
-      : 'Keep going — you\'re on a roll.';
+  String get scrollCelebrateBody =>
+      isFrench ? 'Continue — tu es en feu.' : 'Keep going — you\'re on a roll.';
 
   String get scrollFeedTypeLabel => isFrench ? 'Défilement' : 'Scroll';
 
@@ -1298,13 +1194,9 @@ class SkulMateCopy {
             ? 'Itinéraire étape par étape'
             : 'Step-by-step learn route';
       case SkulMateIntentMode.drill:
-        return isFrench
-            ? 'Cartes de rappel actif'
-            : 'Quick recall cards';
+        return isFrench ? 'Cartes de rappel actif' : 'Quick recall cards';
       case SkulMateIntentMode.sheet:
-        return isFrench
-            ? 'Fiche de révision'
-            : 'One-page summary to revise';
+        return isFrench ? 'Fiche de révision' : 'One-page summary to revise';
       case SkulMateIntentMode.fromClass:
         return isFrench
             ? 'Révision depuis ta session'
@@ -1325,9 +1217,7 @@ class SkulMateCopy {
       case SkulMateIntentMode.sheet:
         return isFrench ? 'Créer la fiche' : 'Create sheet';
       case SkulMateIntentMode.fromClass:
-        return isFrench
-            ? 'Jouer le défi du cours'
-            : 'Play class challenge';
+        return isFrench ? 'Jouer le défi du cours' : 'Play class challenge';
     }
   }
 }

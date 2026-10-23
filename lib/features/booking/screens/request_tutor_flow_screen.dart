@@ -431,7 +431,7 @@ safeSetState(() {
         title: Text(
           Localizations.localeOf(context).languageCode == 'fr'
               ? 'Demande une personne'
-              : 'Request a person',
+              : 'Request a tutor',
           style: onboardDisplay(size: 20),
         ),
       ),

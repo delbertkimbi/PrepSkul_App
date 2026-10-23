@@ -24,5 +24,6 @@
   "Which school path are you on?": "audio/mate/en-path0-charon.wav",
   "Arts, science, or still doing both?": "audio/mate/en-path1-charon.wav",
   "Quel parcours suis-tu ?": "audio/mate/fr-path0-charon.wav",
-  "Lettres, sciences ou les deux ?": "audio/mate/fr-path1-charon.wav"
+  "Lettres, sciences ou les deux ?": "audio/mate/fr-path1-charon.wav",
+  "Let’s try it together. Push the box gently. What changes when you push a little harder?": "audio/mate/en-forces-gentle-push-charon.wav"
 }

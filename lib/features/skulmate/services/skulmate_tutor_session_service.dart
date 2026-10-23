@@ -28,13 +28,15 @@ class SkulMateTutorSessionService {
   }
 
   static Map<String, String> _headers(String? token) => {
-        'Content-Type': 'application/json',
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-      };
+    'Content-Type': 'application/json',
+    if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+  };
 
   static Future<Map<String, dynamic>> openSession({
     String? childId,
     bool forceNew = false,
+    String? lessonId,
+    int? lessonStep,
   }) async {
     final token = await _token();
     final userId = await _userId();
@@ -45,6 +47,8 @@ class SkulMateTutorSessionService {
         if (userId != null) 'userId': userId,
         if (childId != null) 'childId': childId,
         if (forceNew) 'forceNew': true,
+        if (lessonId != null) 'lessonId': lessonId,
+        if (lessonStep != null) 'lessonStep': lessonStep,
       },
     );
     final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -115,7 +119,8 @@ class SkulMateTutorSessionService {
         'message': message,
         if (userId != null) 'userId': userId,
         if (childId != null) 'childId': childId,
-        if (trimmedNotes != null && trimmedNotes.isNotEmpty) 'notes': trimmedNotes,
+        if (trimmedNotes != null && trimmedNotes.isNotEmpty)
+          'notes': trimmedNotes,
         'language': LanguageService.languageCode,
         if (learnerContext != null) 'learnerContext': learnerContext,
       },
@@ -153,9 +158,7 @@ class SkulMateTutorSessionService {
       childId: payload.childId,
     );
 
-    final fileUrls = <String>[
-      ...?payload.preUploadedFileUrls,
-    ];
+    final fileUrls = <String>[...?payload.preUploadedFileUrls];
     await _uploadFiles(payload, fileUrls);
 
     final textParts = <String>[
@@ -192,9 +195,10 @@ class SkulMateTutorSessionService {
     return null;
   }
 
-  static Future<void> recordOutcome({
+  static Future<bool> recordOutcome({
     required String sessionId,
     required bool correct,
+    List<int?>? answers,
     String? childId,
     String? turnId,
     String? conceptId,
@@ -209,6 +213,7 @@ class SkulMateTutorSessionService {
       body: {
         'sessionId': sessionId,
         'correct': correct,
+        if (answers != null) 'answers': answers,
         if (userId != null) 'userId': userId,
         if (childId != null) 'childId': childId,
         if (turnId != null) 'turnId': turnId,
@@ -220,6 +225,8 @@ class SkulMateTutorSessionService {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('Could not save your practice result. Please retry.');
     }
+    final saved = jsonDecode(response.body) as Map<String, dynamic>;
+    return saved['correct'] == true && saved['independent'] == true;
   }
 
   static String _sourceType(SkulMateIntakePayload payload) {
@@ -246,12 +253,16 @@ class SkulMateTutorSessionService {
     List<String> fileUrls,
   ) async {
     final userId = await _userId();
-    if (userId == null) return;
+    if (userId == null) throw Exception('Sign in to add your material.');
     final bucket = SupabaseService.client.storage.from('documents');
 
     Future<void> put(List<int> bytes, String name, String contentType) async {
+      if (bytes.isEmpty || bytes.length > 20 * 1024 * 1024) {
+        throw Exception('Choose a non-empty file smaller than 20 MB.');
+      }
+      final safeName = name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
       final path =
-          '$userId/skulmate_${DateTime.now().millisecondsSinceEpoch}_$name';
+          '$userId/skulmate_${DateTime.now().microsecondsSinceEpoch}_$safeName';
       await bucket.uploadBinary(
         path,
         bytes is Uint8List ? bytes : Uint8List.fromList(bytes),
@@ -264,12 +275,41 @@ class SkulMateTutorSessionService {
     for (final file in files) {
       await put(
         await file.readAsBytes(),
-        file.uri.pathSegments.isEmpty ? 'notes.bin' : file.uri.pathSegments.last,
-        'application/octet-stream',
+        file.uri.pathSegments.isEmpty
+            ? 'notes.bin'
+            : file.uri.pathSegments.last,
+        _mimeType(file.uri.pathSegments.last),
       );
     }
+    for (final file in payload.filesWeb ?? const []) {
+      final bytes = file.bytes;
+      if (bytes == null) throw Exception('Please choose the document again.');
+      await put(bytes, file.name, _mimeType(file.name));
+    }
     for (final image in payload.images ?? const []) {
-      await put(await image.readAsBytes(), image.name, 'image/jpeg');
+      await put(await image.readAsBytes(), image.name, _mimeType(image.name));
+    }
+  }
+
+  static String _mimeType(String name) {
+    switch (name.toLowerCase().split('.').last) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'txt':
+        return 'text/plain';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      default:
+        throw Exception('Choose a PDF, document, text file, or photo.');
     }
   }
 }

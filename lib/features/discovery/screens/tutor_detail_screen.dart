@@ -1,3 +1,6 @@
+import 'package:prepskul/core/design/learner_action.dart';
+import 'package:prepskul/core/design/learner_design.dart';
+import 'package:prepskul/core/design/prepskul_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -10,7 +13,8 @@ import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/discovery/widgets/youtube_video_player.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
-import 'package:prepskul/features/booking/services/session_feedback_service.dart' hide LogService;
+import 'package:prepskul/features/booking/services/session_feedback_service.dart'
+    hide LogService;
 // TODO: Fix import path
 // import 'package:prepskul/features/sessions/widgets/tutor_response_dialog.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -19,7 +23,6 @@ import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
-import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:share_plus/share_plus.dart';
@@ -33,7 +36,7 @@ class TutorDetailScreen extends StatefulWidget {
   final bool isPreview;
 
   const TutorDetailScreen({
-    Key? key, 
+    Key? key,
     required this.tutor,
     this.isPreview = false,
   }) : super(key: key);
@@ -61,7 +64,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     _currentUserId = SupabaseService.client.auth.currentUser?.id;
     _initializeConnectivity();
     _loadReviews(); // Load tutor reviews
-    
+
     // CRITICAL: Refresh tutor data FIRST to get latest video URL from database
     // This ensures we show the updated approved video, not the stale cached one
     // Note: _refreshTutorData() will call _extractVideoIdFromData() internally,
@@ -74,7 +77,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         _extractVideoId();
       }
     });
-    
+
     // Cache tutor details when loaded
     _cacheTutorDetails();
   }
@@ -83,7 +86,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   /// Uses direct Supabase query (same as dashboard) to get exact data
   Future<void> _refreshTutorData() async {
     try {
-      final tutorId = widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
+      final tutorId =
+          widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
       if (tutorId == null) {
         LogService.warning('Cannot refresh tutor data: no tutor ID found');
         return;
@@ -92,7 +96,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       // Fetch directly from Supabase (same method as dashboard) - no status filter
       // This ensures we get the latest data including video_url
       LogService.debug('🔄 Refreshing tutor data for ID: $tutorId');
-      
+
       // Use specific relationship to avoid ambiguity: profiles!tutor_profiles_user_id_fkey
       // This explicitly uses the user_id foreign key relationship
       var response = await SupabaseService.client
@@ -107,7 +111,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           ''')
           .eq('user_id', tutorId)
           .maybeSingle();
-      
+
       // If not found by user_id, try by id (in case tutorId is actually tutor_profiles.id)
       if (response == null) {
         LogService.debug('Not found by user_id, trying by id...');
@@ -134,31 +138,39 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         } else if (profilesData is List && profilesData.isNotEmpty) {
           profile = Map<String, dynamic>.from(profilesData[0]);
         }
-        
+
         // Get video: Use video_url (primary), fallback to video_link or video_intro
         final videoUrl = response['video_url']?.toString();
         final videoLink = response['video_link']?.toString();
         final videoIntro = response['video_intro']?.toString();
         final effectiveVideoUrl = videoUrl ?? videoLink ?? videoIntro;
-        
+
         LogService.debug('📹 Video URLs from database:');
         LogService.debug('   video_url: ${videoUrl ?? "null"}');
         LogService.debug('   video_link: ${videoLink ?? "null"}');
         LogService.debug('   video_intro: ${videoIntro ?? "null"}');
-        LogService.debug('   effectiveVideoUrl: ${effectiveVideoUrl ?? "null"}');
-        
+        LogService.debug(
+          '   effectiveVideoUrl: ${effectiveVideoUrl ?? "null"}',
+        );
+
         // Compare with widget.tutor to see if video changed
-        final oldVideoUrl = widget.tutor['video_url'] ?? widget.tutor['video_link'] ?? widget.tutor['video_intro'];
+        final oldVideoUrl =
+            widget.tutor['video_url'] ??
+            widget.tutor['video_link'] ??
+            widget.tutor['video_intro'];
         if (oldVideoUrl != effectiveVideoUrl) {
-          LogService.info('✅ Video URL changed! Old: $oldVideoUrl → New: $effectiveVideoUrl');
+          LogService.info(
+            '✅ Video URL changed! Old: $oldVideoUrl → New: $effectiveVideoUrl',
+          );
         } else {
           LogService.debug('ℹ️ Video URL unchanged: $effectiveVideoUrl');
         }
-        
+
         // Get profile photo: Use profile_photo_url first, then avatar_url
         final profilePhotoUrl = response['profile_photo_url']?.toString();
         final avatarUrl = profile?['avatar_url']?.toString();
-        final effectiveAvatarUrl = (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+        final effectiveAvatarUrl =
+            (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
             ? profilePhotoUrl
             : (avatarUrl != null && avatarUrl.isNotEmpty)
             ? avatarUrl
@@ -171,7 +183,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           // Override with refreshed values
           'id': response['user_id']?.toString() ?? tutorId,
           'user_id': response['user_id']?.toString() ?? tutorId,
-          'full_name': profile?['full_name']?.toString() ?? widget.tutor['full_name'] ?? 'Tutor',
+          'full_name':
+              profile?['full_name']?.toString() ??
+              widget.tutor['full_name'] ??
+              'Tutor',
           'avatar_url': effectiveAvatarUrl,
           'profile_photo_url': profilePhotoUrl,
           'video_url': effectiveVideoUrl,
@@ -180,21 +195,25 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           // Include other important fields
           'rating': response['rating'] ?? widget.tutor['rating'] ?? 0.0,
           'admin_approved_rating': response['admin_approved_rating'],
-          'total_reviews': response['total_reviews'] ?? widget.tutor['total_reviews'] ?? 0,
+          'total_reviews':
+              response['total_reviews'] ?? widget.tutor['total_reviews'] ?? 0,
           'status': response['status'],
           // CRITICAL: Include subjects and specializations from database
           'subjects': response['subjects'] ?? widget.tutor['subjects'],
-          'specializations': response['specializations'] ?? widget.tutor['specializations'],
+          'specializations':
+              response['specializations'] ?? widget.tutor['specializations'],
         };
-        
+
         safeSetState(() {
           _refreshedTutorData = refreshedData;
         });
-        
+
         // Log the video URLs for debugging
-        LogService.debug('Refreshed tutor data - video_url: $videoUrl, video_link: $videoLink, video_intro: $videoIntro');
+        LogService.debug(
+          'Refreshed tutor data - video_url: $videoUrl, video_link: $videoLink, video_intro: $videoIntro',
+        );
         LogService.debug('Effective video URL: $effectiveVideoUrl');
-        
+
         // Re-extract video ID from refreshed data (will re-initialize if video changed)
         _extractVideoIdFromData(refreshedData);
       }
@@ -208,7 +227,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   Future<void> _initializeConnectivity() async {
     await _connectivity.initialize();
     _checkConnectivity();
-    
+
     // Listen to connectivity changes
     _connectivity.connectivityStream.listen((isOnline) {
       if (mounted) {
@@ -216,7 +235,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         safeSetState(() {
           _isOffline = !isOnline;
         });
-        
+
         // If came back online, refresh tutor details
         if (isOnline && wasOffline) {
           LogService.info('🌐 Connection restored - refreshing tutor details');
@@ -234,7 +253,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       safeSetState(() {
         _isOffline = !isOnline;
       });
-      
+
       // If we just came back online, refresh data if needed
       if (isOnline && wasOffline) {
         LogService.info('🌐 Connection detected - tutor details screen');
@@ -245,7 +264,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   /// Cache tutor details for offline access
   Future<void> _cacheTutorDetails() async {
     try {
-      final tutorId = widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
+      final tutorId =
+          widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
       if (tutorId != null) {
         await OfflineCacheService.cacheTutorDetails(tutorId, widget.tutor);
       }
@@ -267,29 +287,33 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   /// - https://www.youtube.com/embed/VIDEO_ID
   String? _extractVideoIdFromUrl(String url) {
     if (url.isEmpty) return null;
-    
+
     try {
       // Pattern for youtube.com/shorts/VIDEO_ID (YouTube Shorts)
-      final shortsPattern = RegExp(r'youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})');
+      final shortsPattern = RegExp(
+        r'youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})',
+      );
       final shortsMatch = shortsPattern.firstMatch(url);
       if (shortsMatch != null && shortsMatch.groupCount >= 1) {
         return shortsMatch.group(1);
       }
-      
+
       // Pattern for youtube.com/watch?v=VIDEO_ID
-      final watchPattern = RegExp(r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})');
+      final watchPattern = RegExp(
+        r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+      );
       final match = watchPattern.firstMatch(url);
       if (match != null && match.groupCount >= 1) {
         return match.group(1);
       }
-      
+
       // Pattern for youtube.com/embed/VIDEO_ID
       final embedPattern = RegExp(r'youtube\.com\/embed\/([a-zA-Z0-9_-]{11})');
       final embedMatch = embedPattern.firstMatch(url);
       if (embedMatch != null && embedMatch.groupCount >= 1) {
         return embedMatch.group(1);
       }
-      
+
       return null;
     } catch (e) {
       LogService.error('Error extracting video ID from URL: $e');
@@ -305,7 +329,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           tutorData['video_intro'] ??
           tutorData['video_link'] ??
           '';
-      
+
       if (newVideoUrl.isNotEmpty) {
         final newVideoId = _extractVideoIdFromUrl(newVideoUrl);
         if (newVideoId != null && newVideoId.isNotEmpty) {
@@ -313,25 +337,31 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           final oldVideoId = _videoId;
           final videoIdChanged = oldVideoId != null && oldVideoId != newVideoId;
           final isFirstTime = oldVideoId == null;
-          
-          LogService.debug('📹 Video ID: old=$oldVideoId, new=$newVideoId, changed=$videoIdChanged, firstTime=$isFirstTime');
-          
+
+          LogService.debug(
+            '📹 Video ID: old=$oldVideoId, new=$newVideoId, changed=$videoIdChanged, firstTime=$isFirstTime',
+          );
+
           safeSetState(() {
             _videoUrl = newVideoUrl;
             _videoId = newVideoId;
-            
+
             if (videoIdChanged || isFirstTime) {
               if (videoIdChanged) {
-                LogService.info('🔄 Video ID changed from $oldVideoId to $newVideoId');
+                LogService.info(
+                  '🔄 Video ID changed from $oldVideoId to $newVideoId',
+                );
               } else {
                 LogService.info('🎬 Video ID extracted: $newVideoId');
               }
             }
           });
-          
+
           // Removed automatic initialization - video will only initialize when user clicks play button
         } else {
-          LogService.warning('Could not extract video ID from URL: $newVideoUrl');
+          LogService.warning(
+            'Could not extract video ID from URL: $newVideoUrl',
+          );
         }
       } else {
         LogService.info('No video URL provided for tutor');
@@ -346,7 +376,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   }
 
   /// Get current tutor data (refreshed if available, otherwise from widget)
-  Map<String, dynamic> get _currentTutorData => _refreshedTutorData ?? widget.tutor;
+  Map<String, dynamic> get _currentTutorData =>
+      _refreshedTutorData ?? widget.tutor;
 
   /// Get YouTube thumbnail URL
   String? _getThumbnailUrl() {
@@ -376,13 +407,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           final degree = eduMap['highest_education']?.toString() ?? '';
           final field = eduMap['field_of_study']?.toString() ?? '';
           final uni = eduMap['institution']?.toString() ?? '';
-          
+
           final parts = <String>[];
           if (degree.isNotEmpty) parts.add(degree);
           if (field.isNotEmpty) parts.add('in $field');
           final mainPart = parts.join(' ');
-          
-          education = mainPart.isNotEmpty 
+
+          education = mainPart.isNotEmpty
               ? (uni.isNotEmpty ? '$mainPart at $uni' : mainPart)
               : uni;
         } catch (_) {
@@ -394,19 +425,20 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     }
     final experience = widget.tutor['experience'] ?? '';
     // Calculate effective rating logic
-    final totalReviewsVal = (widget.tutor['total_reviews'] as num?)?.toInt() ?? 0;
-    final adminApprovedRating = (widget.tutor['admin_approved_rating'] as num?)?.toDouble();
-    final calculatedRating = (widget.tutor['rating'] as num?)?.toDouble() ?? 0.0;
+    final totalReviewsVal =
+        (widget.tutor['total_reviews'] as num?)?.toInt() ?? 0;
+    final adminApprovedRating = (widget.tutor['admin_approved_rating'] as num?)
+        ?.toDouble();
+    final calculatedRating =
+        (widget.tutor['rating'] as num?)?.toDouble() ?? 0.0;
 
-    final rating =
-        (totalReviewsVal < 3 && adminApprovedRating != null)
+    final rating = (totalReviewsVal < 3 && adminApprovedRating != null)
         ? adminApprovedRating!
         : (calculatedRating > 0
               ? calculatedRating
               : (adminApprovedRating ?? 0.0));
 
-    final totalReviews =
-        (totalReviewsVal < 3 && adminApprovedRating != null)
+    final totalReviews = (totalReviewsVal < 3 && adminApprovedRating != null)
         ? 10
         : totalReviewsVal;
     final totalStudents = widget.tutor['total_students'] ?? 0;
@@ -442,6 +474,17 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
     return Scaffold(
       backgroundColor: OnboardPalette.cream,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFE7E9ED))),
+          ),
+          child: _buildActionButtons(context),
+        ),
+      ),
       body: SafeArea(
         top: true,
         bottom: false,
@@ -454,7 +497,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               backgroundColor: OnboardPalette.cream,
               surfaceTintColor: OnboardPalette.cream,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: AppTheme.primaryColor),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: AppTheme.primaryColor,
+                ),
                 onPressed: () => Navigator.pop(context),
               ),
               actions: [
@@ -465,7 +511,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 IconButton(
                   icon: Icon(
                     _isFavorited ? Icons.favorite : Icons.favorite_border,
-                    color: _isFavorited ? AppTheme.primaryColor : AppTheme.primaryColor,
+                    color: _isFavorited
+                        ? AppTheme.primaryColor
+                        : AppTheme.primaryColor,
                   ),
                   onPressed: () {
                     safeSetState(() {
@@ -473,9 +521,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(_isFavorited 
-                          ? 'Added to favorites!' 
-                          : 'Removed from favorites!'),
+                        content: Text(
+                          _isFavorited
+                              ? 'Added to favorites!'
+                              : 'Removed from favorites!',
+                        ),
                       ),
                     );
                   },
@@ -491,280 +541,289 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ),
             ),
 
-          // Content
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header Section
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          // Avatar (Larger & clickable)
-                          GestureDetector(
-                            onTap: () => _showProfileImage(context),
-                            child: Container(
-                              width: 90,
-                              height: 90,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: AppTheme.primaryColor.withOpacity(0.3),
-                                  width: 3,
+            // Content
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header Section
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            // Avatar (Larger & clickable)
+                            GestureDetector(
+                              onTap: () => _showProfileImage(context),
+                              child: Container(
+                                width: 90,
+                                height: 90,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppTheme.primaryColor.withOpacity(
+                                      0.3,
+                                    ),
+                                    width: 3,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                                 ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.06),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 2),
+                                child: ClipOval(
+                                  child: _buildAvatarImage(
+                                    widget.tutor['avatar_url'],
+                                    widget.tutor['full_name'] ?? 'Tutor',
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          name,
+                                          style: GoogleFonts.nunito(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.w700,
+                                            color: LearnerDesign.ink,
+                                            height: 1.2,
+                                          ),
+                                        ),
+                                      ),
+                                      if (widget.tutor['is_verified'] == true)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.primaryColor
+                                                .withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.verified,
+                                                size: 14,
+                                                color: AppTheme.primaryColor,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Verified',
+                                                style: GoogleFonts.nunito(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppTheme.primaryColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.star,
+                                        size: 18,
+                                        color: Colors.amber[700],
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        rating.toStringAsFixed(1),
+                                        style: GoogleFonts.nunito(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: LearnerDesign.ink,
+                                        ),
+                                      ),
+                                      // Only show review count when at least 3 ratings exist
+                                      if (rating > 0 && totalReviews >= 3)
+                                        Text(
+                                          ' ($totalReviews)',
+                                          style: GoogleFonts.nunito(
+                                            fontSize: 14,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ),
-                              child: ClipOval(
-                                child: _buildAvatarImage(
-                                  widget.tutor['avatar_url'],
-                                  widget.tutor['full_name'] ?? 'Tutor',
-                                ),
-                              ),
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        name,
-                                        style: GoogleFonts.nunito(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.black,
-                                          height: 1.2,
-                                        ),
-                                      ),
-                                    ),
-                                    if (widget.tutor['is_verified'] == true)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.primaryColor
-                                              .withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(
-                                            4,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.verified,
-                                              size: 14,
-                                              color: AppTheme.primaryColor,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Verified',
-                                              style: GoogleFonts.nunito(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                                color: AppTheme.primaryColor,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.star,
-                                      size: 18,
-                                      color: Colors.amber[700],
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      rating.toStringAsFixed(1),
-                                      style: GoogleFonts.nunito(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.black,
-                                      ),
-                                    ),
-                                    // Only show review count when at least 3 ratings exist
-                                    if (rating > 0 && totalReviews >= 3)
-                                      Text(
-                                        ' ($totalReviews)',
-                                        style: GoogleFonts.nunito(
-                                          fontSize: 14,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
 
-                      // Location
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 18,
-                            color: Colors.grey[600],
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '$city, $quarter',
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
+                        // Location
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on_outlined,
+                              size: 18,
                               color: Colors.grey[600],
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Stats Bar
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    border: Border(
-                      top: BorderSide(color: Colors.grey[200]!),
-                      bottom: BorderSide(color: Colors.grey[200]!),
+                            const SizedBox(width: 6),
+                            Text(
+                              '$city, $quarter',
+                              style: GoogleFonts.nunito(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildQuickStat(
-                        Icons.people_outline,
-                        '$totalStudents',
-                        'Students',
+
+                  // Stats Bar
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      border: Border(
+                        top: BorderSide(color: Colors.grey[200]!),
+                        bottom: BorderSide(color: Colors.grey[200]!),
                       ),
-                      Container(width: 1, height: 30, color: Colors.grey[300]),
-                      _buildQuickStat(
-                        Icons.class_outlined,
-                        '$completedSessions',
-                        'Lessons',
-                      ),
-                      Container(width: 1, height: 30, color: Colors.grey[300]),
-                      _buildQuickStat(
-                        Icons.work_outline,
-                        experience,
-                        'Experience',
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // About Section
-                _buildSection('About', bio, Icons.person_outline),
-
-                const SizedBox(height: 20),
-
-                // Subjects
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Subjects',
-                        style: GoogleFonts.nunito(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildQuickStat(
+                          Icons.people_outline,
+                          '$totalStudents',
+                          'Students',
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children:
-                            (widget.tutor['subjects'] as List?)
-                                ?.map(
-                                  (subject) => Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryColor.withOpacity(
-                                        0.08,
-                                      ),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: AppTheme.primaryColor
-                                            .withOpacity(0.2),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      subject.toString(),
-                                      style: GoogleFonts.nunito(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppTheme.primaryColor,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                                .toList() ??
-                            [],
-                      ),
-                    ],
+                        Container(
+                          width: 1,
+                          height: 30,
+                          color: Colors.grey[300],
+                        ),
+                        _buildQuickStat(
+                          Icons.class_outlined,
+                          '$completedSessions',
+                          'Lessons',
+                        ),
+                        Container(
+                          width: 1,
+                          height: 30,
+                          color: Colors.grey[300],
+                        ),
+                        _buildQuickStat(
+                          Icons.work_outline,
+                          experience,
+                          'Experience',
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 24),
 
-                // Education
-                _buildSection('Education', education, Icons.school_outlined),
+                  // About Section
+                  _buildSection('About', bio, Icons.person_outline),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                // Teaching Style
-                _buildSection(
-                  'Teaching Style',
-                  teachingStyle,
-                  Icons.psychology_outlined,
-                ),
+                  // Subjects
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Subjects',
+                          style: GoogleFonts.nunito(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: LearnerDesign.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children:
+                              (widget.tutor['subjects'] as List?)
+                                  ?.map(
+                                    (subject) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryColor
+                                            .withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: AppTheme.primaryColor
+                                              .withOpacity(0.2),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        subject.toString(),
+                                        style: GoogleFonts.nunito(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppTheme.primaryColor,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList() ??
+                              [],
+                        ),
+                      ],
+                    ),
+                  ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                // Student Success
-                _buildSection(
-                  'Student Success',
-                  studentSuccessText,
-                  Icons.emoji_events_outlined,
-                ),
+                  // Education
+                  _buildSection('Education', education, Icons.school_outlined),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                // Certifications
+                  // Teaching Style
+                  _buildSection(
+                    'Teaching Style',
+                    teachingStyle,
+                    Icons.psychology_outlined,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Student Success
+                  _buildSection(
+                    'Student Success',
+                    studentSuccessText,
+                    Icons.emoji_events_outlined,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Certifications
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Column(
@@ -775,34 +834,37 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           style: GoogleFonts.nunito(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
-                            color: Colors.black,
+                            color: LearnerDesign.ink,
                           ),
                         ),
                         const SizedBox(height: 12),
-                      _buildCertificationsSection(),
-                const SizedBox(height: 20),
-                // Reviews Section
-                _buildReviewsSection(),
-                const SizedBox(height: 20),
+                        _buildAvailabilitySchedule(
+                          _currentTutorData['combined_availability']
+                              as Map<String, dynamic>?,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildCertificationsSection(),
+                        const SizedBox(height: 20),
+                        // Reviews Section
+                        _buildReviewsSection(),
+                        const SizedBox(height: 20),
                       ],
                     ),
                   ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                // Pricing & Availability (AFTER all information)
-                _buildPricingSection(),
+                  // Pricing & Availability (AFTER all information)
+                  _buildPricingSection(),
 
-                const SizedBox(height: 32),
+                  const SizedBox(height: 32),
 
-                // Action Buttons (AT THE VERY BOTTOM)
-                _buildActionButtons(context),
-
-                const SizedBox(height: 40),
-              ],
+                  // Booking actions remain visible in the bottom bar.
+                  const SizedBox(height: 40),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
@@ -812,10 +874,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   Widget _buildPricingSection() {
     final pricing = PricingService.calculateFromTutorData(widget.tutor);
     final perSession = pricing['perSession'] as double;
-    final perMonth = pricing['perMonth'] as double;
-    final sessionsPerWeek = pricing['sessionsPerWeek'] as int;
     final hasDiscount = pricing['hasDiscount'] as bool? ?? false;
-    final originalPerMonth = pricing['originalPerMonth'] as double?;
     final originalPerSession = pricing['originalPerSession'] as double?;
     final discountPercent = pricing['discountPercent'] as double? ?? 0.0;
 
@@ -826,18 +885,14 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.payments_outlined,
-                size: 24,
-                color: AppTheme.primaryColor,
-              ),
+              const PrepSkulIcon(PrepSkulGlyph.price, size: 24),
               const SizedBox(width: 10),
               Text(
                 'Pricing & Availability',
                 style: GoogleFonts.nunito(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: Colors.black,
+                  color: AppTheme.primaryColor,
                 ),
               ),
             ],
@@ -846,82 +901,12 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.05),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
             ),
             child: Column(
               children: [
-                // Monthly estimate
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Monthly Package',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (hasDiscount && originalPerMonth != null) ...[
-                          Text(
-                            PricingService.formatPrice(originalPerMonth),
-                            style: GoogleFonts.nunito(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey[500],
-                              decoration: TextDecoration.lineThrough,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                        ],
-                    Text(
-                      PricingService.formatPrice(perMonth),
-                      style: GoogleFonts.nunito(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.primaryColor,
-                          ),
-                        ),
-                        if (hasDiscount && discountPercent > 0) ...[
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${discountPercent.toStringAsFixed(0)}% OFF',
-                              style: GoogleFonts.nunito(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.green[700],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      'Based on $sessionsPerWeek session${sessionsPerWeek > 1 ? 's' : ''}/week',
-                      style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-                Divider(color: Colors.grey[300], height: 32),
                 // Per session rate
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -948,13 +933,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           ),
                           const SizedBox(height: 4),
                         ],
-                    Text(
-                      PricingService.formatPrice(perSession),
-                      style: GoogleFonts.nunito(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        Text(
+                          PricingService.formatPrice(perSession),
+                          style: GoogleFonts.nunito(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                             color: AppTheme.primaryColor,
-                      ),
+                          ),
                         ),
                       ],
                     ),
@@ -964,9 +949,6 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          _buildAvailabilitySchedule(
-            widget.tutor['combined_availability'] as Map<String, dynamic>?,
-          ),
         ],
       ),
     );
@@ -1000,154 +982,38 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
+      child: Row(
         children: [
-          // Message button and Book Trial Session row
-          Row(
-            children: [
-              // Message button - only show when user has active booking/trial with this tutor
-              FutureBuilder<bool>(
-                future: _hasActiveBookingWithTutor(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const SizedBox.shrink();
-                  }
-                  if (snapshot.data == true) {
-                    return Container(
-                      height: 56,
-                      width: 56,
-                      margin: const EdgeInsets.only(right: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: AppTheme.primaryColor, width: 2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: IconButton(
-                        onPressed: _isOffline
-                            ? () => OfflineDialog.show(
-                                  context,
-                                  message: 'Messaging requires an internet connection. Please check your connection and try again.',
-                                )
-                            : () => _navigateToChat(context),
-                        icon: const Icon(
-                          Icons.message,
-                          color: AppTheme.primaryColor,
-                          size: 24,
-                        ),
-                        tooltip: 'Message Tutor',
-                        padding: EdgeInsets.zero,
-                      ),
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
-              // Book Trial Session button - RIGHT SIDE
-              Expanded(
-            child: OutlinedButton(
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: LearnerAction(
+              compact: true,
+              secondary: true,
+              label: 'Message tutor',
               onPressed: _isOffline
-                  ? () => OfflineDialog.show(
-                        context,
-                        message: 'Booking a session requires an internet connection. Please check your connection and try again.',
-                      )
+                  ? () => OfflineDialog.show(context)
+                  : () => _navigateToChat(context),
+              icon: const PrepSkulIcon(PrepSkulGlyph.message),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: LearnerAction(
+              label: 'Book a session',
+              onPressed: _isOffline
+                  ? () => OfflineDialog.show(context)
                   : () {
-                // Pause video before navigating
-                // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
-                final tutorData = _currentTutorData;
-                    
-                    // Log tutor data for debugging
-                    LogService.info('📋 [TUTOR_DETAIL] Navigating to BookTrialSessionScreen');
-                    LogService.info('📋 [TUTOR_DETAIL] Tutor data keys: ${tutorData.keys.toList()}');
-                    LogService.info('📋 [TUTOR_DETAIL] Tutor user_id: ${tutorData['user_id']}');
-                    LogService.info('📋 [TUTOR_DETAIL] Tutor id: ${tutorData['id']}');
-                    LogService.info('📋 [TUTOR_DETAIL] Tutor name: ${tutorData['full_name'] ?? tutorData['profiles']?['full_name'] ?? 'Unknown'}');
-                    
-                    // Validate tutor ID before navigation
-                    final tutorId = tutorData['user_id'] as String? ?? tutorData['id'] as String?;
-                    if (tutorId == null) {
-                      LogService.error('❌ [TUTOR_DETAIL] Tutor ID is missing! Cannot book trial session.');
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error: Tutor information is incomplete. Please try again.'),
-                          backgroundColor: Colors.red,
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => BookTutorFlowScreen(
+                            tutor: _currentTutorData,
+                            surveyData: null,
+                          ),
                         ),
                       );
-                      return;
-                    }
-                    
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        BookTrialSessionScreen(tutor: tutorData),
-                  ),
-                );
-              },
-              style: OutlinedButton.styleFrom(
-                backgroundColor: Colors.white,
-                side: BorderSide(color: AppTheme.primaryColor, width: 2),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                    minimumSize: const Size(0, 56), // Same height as message button
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                'Book Trial Session',
-                style: GoogleFonts.nunito(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Book This Tutor (filled)
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isOffline
-                  ? () => OfflineDialog.show(
-                        context,
-                        message: 'Booking a tutor requires an internet connection. Please check your connection and try again.',
-                      )
-                  : () {
-                // Pause video before navigating
-                // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
-                final tutorData = _currentTutorData;
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => BookTutorFlowScreen(
-                      tutor: tutorData,
-                      // TODO: Pass actual survey data
-                      surveyData: null,
-                    ),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isOffline 
-                    ? Colors.grey[400] 
-                    : AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                elevation: 0,
-              ),
-              child: Text(
-                'Book This Tutor',
-                style: GoogleFonts.nunito(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+                    },
             ),
           ),
         ],
@@ -1158,19 +1024,26 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   Widget _buildQuickStat(IconData icon, String value, String label) {
     return Column(
       children: [
-        Icon(icon, size: 22, color: AppTheme.primaryColor),
+        PrepSkulIcon(
+          icon == Icons.people_outline
+              ? PrepSkulGlyph.tutors
+              : icon == Icons.class_outlined
+              ? PrepSkulGlyph.learn
+              : PrepSkulGlyph.practice,
+          size: 26,
+        ),
         const SizedBox(height: 4),
         Text(
           value,
           style: GoogleFonts.nunito(
             fontSize: 14,
             fontWeight: FontWeight.w700,
-            color: Colors.black,
+            color: LearnerDesign.ink,
           ),
         ),
         Text(
           label,
-          style: GoogleFonts.nunito(fontSize: 10, color: Colors.grey[600]),
+          style: GoogleFonts.nunito(fontSize: 12, color: LearnerDesign.muted),
         ),
       ],
     );
@@ -1179,8 +1052,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   Widget _buildSection(String title, String content, IconData icon) {
     // For About section, add read more functionality if text exceeds 3 lines
     final isAboutSection = title == 'About';
-    final bool needsReadMore = isAboutSection && content.length > 150; // Approximate 3 lines
-    
+    final bool needsReadMore =
+        isAboutSection && content.length > 150; // Approximate 3 lines
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Column(
@@ -1191,7 +1065,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             style: GoogleFonts.nunito(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Colors.black,
+              color: LearnerDesign.ink,
             ),
           ),
           const SizedBox(height: 10),
@@ -1220,7 +1094,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           color: Colors.grey[700],
           height: 1.6,
         );
-        
+
         // Calculate if text exceeds 3 lines
         final textPainter = TextPainter(
           text: TextSpan(text: content, style: textStyle),
@@ -1229,15 +1103,12 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         );
         textPainter.layout(maxWidth: MediaQuery.of(context).size.width - 56);
         final exceeds3Lines = textPainter.didExceedMaxLines;
-        
+
         if (!exceeds3Lines) {
           // Text fits in 3 lines, no need for read more
-          return Text(
-            content,
-            style: textStyle,
-          );
+          return Text(content, style: textStyle);
         }
-        
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1245,7 +1116,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               content,
               style: textStyle,
               maxLines: isExpanded ? null : 3,
-              overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              overflow: isExpanded
+                  ? TextOverflow.visible
+                  : TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
             GestureDetector(
@@ -1324,7 +1197,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           padding: const EdgeInsets.only(bottom: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+            children: [
               // Icon based on type and level
               _getEducationIcon(
                 item['type'] as String,
@@ -1371,74 +1244,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   }
 
   Widget _getEducationIcon(String type, String? level) {
-    if (type == 'education' && level != null) {
-      final levelLower = level.toLowerCase();
-
-      // Different icons for different education levels
-      if (levelLower.contains('phd') ||
-          levelLower.contains('doctorate') ||
-          levelLower.contains('doctoral')) {
-        return Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.purple.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(Icons.school, size: 24, color: Colors.purple[700]),
-        );
-      } else if (levelLower.contains('master') ||
-          levelLower.contains('msc') ||
-          levelLower.contains('mba') ||
-          levelLower.contains('ms')) {
-        return Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            Icons.workspace_premium,
-            size: 24,
-            color: Colors.blue[700],
-          ),
-        );
-      } else if (levelLower.contains('bachelor') ||
-          levelLower.contains('bsc') ||
-          levelLower.contains('ba') ||
-          levelLower.contains('bachelor')) {
-        return Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(Icons.verified, size: 24, color: Colors.green[700]),
-        );
-      } else if (levelLower.contains('diploma') ||
-          levelLower.contains('certificate')) {
-        return Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            Icons.card_membership,
-            size: 24,
-            color: Colors.orange[700],
-          ),
-        );
-      }
-    }
-
-    // Default icon for additional certifications
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.amber.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        color: LearnerDesign.sky,
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Icon(Icons.workspace_premium, size: 24, color: Colors.amber[700]),
+      child: const PrepSkulIcon(PrepSkulGlyph.learn, size: 28),
     );
   }
 
@@ -1459,8 +1271,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         // Use NetworkImage for URLs from Supabase storage
         return Image.network(
           avatarUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
           loadingBuilder: (context, child, loadingProgress) {
@@ -1494,34 +1306,34 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
   Widget _buildAvatarPlaceholder(String name, {bool isLarge = false}) {
     if (isLarge) {
-                      return Container(
-                        height: 300,
-                        color: AppTheme.primaryColor.withOpacity(0.1),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
+      return Container(
+        height: 300,
+        color: AppTheme.primaryColor.withOpacity(0.1),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
                 name.isNotEmpty ? name[0].toUpperCase() : 'T',
-                                style: GoogleFonts.nunito(
-                                  fontSize: 80,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                name,
-                                style: GoogleFonts.nunito(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
+                style: GoogleFonts.nunito(
+                  fontSize: 80,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                name,
+                style: GoogleFonts.nunito(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return Container(
@@ -1684,24 +1496,20 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.star_outline,
-                size: 24,
-                color: AppTheme.primaryColor,
-              ),
+              const PrepSkulIcon(PrepSkulGlyph.rating, size: 26),
               const SizedBox(width: 10),
               Text(
                 'Reviews',
                 style: GoogleFonts.nunito(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: Colors.black,
+                  color: LearnerDesign.ink,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          
+
           if (_isLoadingReviews)
             const Center(
               child: Padding(
@@ -1748,8 +1556,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   Widget _buildRatingSummary(Map<String, dynamic> stats) {
     final averageRating = (stats['average_rating'] as num?)?.toDouble() ?? 0.0;
     final totalReviews = (stats['total_reviews'] as num?)?.toInt() ?? 0;
-    final ratingDistribution = stats['rating_distribution'] as Map<int, int>? ?? {};
-    
+    final ratingDistribution =
+        stats['rating_distribution'] as Map<int, int>? ?? {};
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1767,7 +1576,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 style: GoogleFonts.nunito(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
-                  color: Colors.black,
+                  color: LearnerDesign.ink,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1802,7 +1611,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             ...ratingDistribution.entries.map((entry) {
               final rating = entry.key;
               final count = entry.value;
-              final percentage = totalReviews > 0 ? (count / totalReviews * 100) : 0.0;
+              final percentage = totalReviews > 0
+                  ? (count / totalReviews * 100)
+                  : 0.0;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -1822,7 +1633,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       child: LinearProgressIndicator(
                         value: percentage / 100,
                         backgroundColor: Colors.grey[200],
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.amber[700]!),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.amber[700]!,
+                        ),
                         minHeight: 8,
                       ),
                     ),
@@ -1852,7 +1665,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     final wouldRecommend = review['student_would_recommend'] as bool?;
     final whatWentWell = review['student_what_went_well'] as String?;
     final whatCouldImprove = review['student_what_could_improve'] as String?;
-    
+
     // Format date
     String dateText = 'Recently';
     if (submittedAt != null) {
@@ -1860,7 +1673,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         final date = DateTime.parse(submittedAt);
         final now = DateTime.now();
         final difference = now.difference(date);
-        
+
         if (difference.inDays == 0) {
           dateText = 'Today';
         } else if (difference.inDays == 1) {
@@ -1876,7 +1689,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         dateText = 'Recently';
       }
     }
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -1909,7 +1722,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               if (wouldRecommend == true) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.accentGreen.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
@@ -1917,7 +1733,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.thumb_up, size: 12, color: AppTheme.accentGreen),
+                      Icon(
+                        Icons.thumb_up,
+                        size: 12,
+                        color: AppTheme.accentGreen,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         'Recommended',
@@ -1955,7 +1775,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.check_circle_outline, size: 16, color: AppTheme.accentGreen),
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 16,
+                    color: AppTheme.accentGreen,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -1995,7 +1819,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.lightbulb_outline, size: 16, color: Colors.orange[700]),
+                  Icon(
+                    Icons.lightbulb_outline,
+                    size: 16,
+                    color: Colors.orange[700],
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -2024,9 +1852,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ),
             ),
           ],
-          
+
           // Tutor Response Section
-          if (review['tutor_response'] != null && (review['tutor_response'] as String).isNotEmpty) ...[
+          if (review['tutor_response'] != null &&
+              (review['tutor_response'] as String).isNotEmpty) ...[
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
@@ -2068,11 +1897,12 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ),
             ),
           ],
-          
+
           // Respond Button (only for tutor viewing their own profile)
-          if (_currentUserId != null && 
+          if (_currentUserId != null &&
               widget.tutor['user_id'] == _currentUserId &&
-              (review['tutor_response'] == null || (review['tutor_response'] as String).isEmpty)) ...[
+              (review['tutor_response'] == null ||
+                  (review['tutor_response'] as String).isEmpty)) ...[
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
@@ -2096,11 +1926,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       ),
     );
   }
-  
+
   Future<void> _showResponseDialog(Map<String, dynamic> review) async {
     final feedbackId = review['id'] as String;
     final existingResponse = review['tutor_response'] as String?;
-    
+
     // TODO: Uncomment when file available
     // final result = await TutorResponseDialog.show(
     //   context,
@@ -2120,7 +1950,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       final currentUserId = SupabaseService.currentUser?.id;
       if (currentUserId == null) return false;
 
-      final tutorId = widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
+      final tutorId =
+          widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
       if (tutorId == null) return false;
 
       final supabase = SupabaseService.client;
@@ -2174,12 +2005,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     try {
       // Use refreshed tutor data if available, otherwise fall back to widget.tutor
       final tutorData = _currentTutorData;
-      
-      final tutorId = tutorData['id']?.toString() ?? 
-                     tutorData['user_id']?.toString() ??
-                     widget.tutor['id']?.toString() ?? 
-                     widget.tutor['user_id']?.toString();
-      
+
+      final tutorId =
+          tutorData['id']?.toString() ??
+          tutorData['user_id']?.toString() ??
+          widget.tutor['id']?.toString() ??
+          widget.tutor['user_id']?.toString();
+
       if (tutorId == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -2196,25 +2028,27 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       }
 
       // Get tutor name from multiple possible sources
-      final tutorName = tutorData['full_name'] ?? 
-                       tutorData['profiles']?['full_name'] ??
-                       widget.tutor['full_name'] ?? 
-                       widget.tutor['profiles']?['full_name'] ?? 
-                       'Tutor';
-      
+      final tutorName =
+          tutorData['full_name'] ??
+          tutorData['profiles']?['full_name'] ??
+          widget.tutor['full_name'] ??
+          widget.tutor['profiles']?['full_name'] ??
+          'Tutor';
+
       // Get tutor avatar URL
-      final tutorAvatarUrl = tutorData['avatar_url'] ?? 
-                            tutorData['profiles']?['avatar_url'] ??
-                            widget.tutor['avatar_url'] ?? 
-                            widget.tutor['profiles']?['avatar_url'];
-      
+      final tutorAvatarUrl =
+          tutorData['avatar_url'] ??
+          tutorData['profiles']?['avatar_url'] ??
+          widget.tutor['avatar_url'] ??
+          widget.tutor['profiles']?['avatar_url'];
+
       // Get tutor subjects
       final subjectsData = tutorData['subjects'] ?? widget.tutor['subjects'];
       final List<String> subjectsList = subjectsData is List
           ? List<String>.from(subjectsData.map((s) => s.toString()))
           : (subjectsData is String && subjectsData.isNotEmpty
-              ? [subjectsData]
-              : []);
+                ? [subjectsData]
+                : []);
 
       // Use ShareService for rich sharing with image and deep link
       await ShareService.shareTutorProfile(
@@ -2224,7 +2058,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         tutorAvatarUrl: tutorAvatarUrl,
         subjects: subjectsList,
       );
-      
+
       LogService.success('Tutor profile shared successfully');
     } catch (e) {
       LogService.error('Error sharing tutor: $e');
@@ -2261,7 +2095,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       }
 
       final tutorData = _currentTutorData;
-      final tutorUserId = tutorData['user_id']?.toString() ?? tutorData['id']?.toString();
+      final tutorUserId =
+          tutorData['user_id']?.toString() ?? tutorData['id']?.toString();
       if (tutorUserId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2285,172 +2120,22 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
       final supabase = SupabaseService.client;
 
-      // Try to find existing conversation
-      // First check by booking request
-      var conversationResponse = await supabase
+      // The server verifies the learner and approved tutor, and reuses the pair.
+      final conversationId =
+          await supabase.rpc(
+                'open_tutor_inquiry',
+                params: {'p_tutor_id': tutorUserId},
+              )
+              as String;
+      final conversationResponse = await supabase
           .from('conversations')
           .select('*')
-          .eq('student_id', currentUserId)
-          .eq('tutor_id', tutorUserId)
-          .eq('status', 'active')
-          .order('last_message_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-
-      // If not found, try to find by recurring session
-      if (conversationResponse == null) {
-        final recurringSession = await supabase
-            .from('recurring_sessions')
-            .select('id')
-            .eq('learner_id', currentUserId)
-            .eq('tutor_id', tutorUserId)
-            .eq('status', 'active')
-            .limit(1)
-            .maybeSingle();
-
-        if (recurringSession != null) {
-          final recurringId = recurringSession['id'] as String;
-          final conversationId = await ConversationLifecycleService.getConversationIdForRecurring(recurringId);
-          
-          if (conversationId != null) {
-            conversationResponse = await supabase
-                .from('conversations')
-                .select('*')
-                .eq('id', conversationId)
-                .order('last_message_at', ascending: false)
-                .limit(1)
-                .maybeSingle();
-          }
-        }
-      }
-
-      // If still not found, try to find by trial session
-      if (conversationResponse == null) {
-        final trialSession = await supabase
-            .from('trial_sessions')
-            .select('id')
-            .eq('learner_id', currentUserId)
-            .eq('tutor_id', tutorUserId)
-            .inFilter('status', ['pending', 'approved', 'scheduled'])
-            .limit(1)
-            .maybeSingle();
-
-        if (trialSession != null) {
-          final trialId = trialSession['id'] as String;
-          final conversationId = await ConversationLifecycleService.getConversationIdForTrial(trialId);
-          
-          if (conversationId != null) {
-            conversationResponse = await supabase
-                .from('conversations')
-                .select('*')
-                .eq('id', conversationId)
-                .order('last_message_at', ascending: false)
-                .limit(1)
-                .maybeSingle();
-          }
-        }
-      }
-
-      // If still not found, try to find by booking request
-      if (conversationResponse == null) {
-        final bookingRequest = await supabase
-            .from('booking_requests')
-            .select('id')
-            .eq('student_id', currentUserId)
-            .eq('tutor_id', tutorUserId)
-            .inFilter('status', ['pending', 'approved'])
-            .limit(1)
-            .maybeSingle();
-
-        if (bookingRequest != null) {
-          final bookingId = bookingRequest['id'] as String;
-          final conversationId = await ConversationLifecycleService.getConversationIdForBooking(bookingId);
-          
-          if (conversationId != null) {
-            conversationResponse = await supabase
-                .from('conversations')
-                .select('*')
-                .eq('id', conversationId)
-                .order('last_message_at', ascending: false)
-                .limit(1)
-                .maybeSingle();
-          }
-        }
-      }
-
-      // If still no conversation but user has trial or booking, create one on demand
-      if (conversationResponse == null) {
-        final trialSession = await supabase
-            .from('trial_sessions')
-            .select('id')
-            .eq('learner_id', currentUserId)
-            .eq('tutor_id', tutorUserId)
-            .inFilter('status', ['pending', 'approved', 'scheduled'])
-            .limit(1)
-            .maybeSingle();
-
-        if (trialSession != null) {
-          final trialId = trialSession['id'] as String;
-          final newId = await ConversationLifecycleService.createConversationForTrial(
-            trialSessionId: trialId,
-            studentId: currentUserId,
-            tutorId: tutorUserId,
-          );
-          if (newId != null) {
-            conversationResponse = await supabase
-                .from('conversations')
-                .select('*')
-                .eq('id', newId)
-                .maybeSingle();
-          }
-        }
-      }
-
-      if (conversationResponse == null) {
-        final bookingRequest = await supabase
-            .from('booking_requests')
-            .select('id')
-            .eq('student_id', currentUserId)
-            .eq('tutor_id', tutorUserId)
-            .inFilter('status', ['pending', 'approved'])
-            .limit(1)
-            .maybeSingle();
-
-        if (bookingRequest != null) {
-          final bookingId = bookingRequest['id'] as String;
-          final newId = await ConversationLifecycleService.createConversationForBooking(
-            bookingRequestId: bookingId,
-            studentId: currentUserId,
-            tutorId: tutorUserId,
-          );
-          if (newId != null) {
-            conversationResponse = await supabase
-                .from('conversations')
-                .select('*')
-                .eq('id', newId)
-                .maybeSingle();
-          }
-        }
-      }
+          .eq('id', conversationId)
+          .single();
 
       // Dismiss loading
       if (loadingShown && mounted && Navigator.of(context).canPop()) {
         Navigator.pop(context);
-      }
-
-      if (conversationResponse == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Book a trial or session to start chatting with this tutor.',
-                style: GoogleFonts.nunito(),
-              ),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
       }
 
       // Get tutor profile info
@@ -2466,8 +2151,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         studentId: conversationResponse['student_id'] as String,
         tutorId: conversationResponse['tutor_id'] as String,
         bookingRequestId: conversationResponse['booking_request_id'] as String?,
-        recurringSessionId: conversationResponse['recurring_session_id'] as String?,
-        individualSessionId: conversationResponse['individual_session_id'] as String?,
+        recurringSessionId:
+            conversationResponse['recurring_session_id'] as String?,
+        individualSessionId:
+            conversationResponse['individual_session_id'] as String?,
         trialSessionId: conversationResponse['trial_session_id'] as String?,
         status: conversationResponse['status'] as String? ?? 'active',
         expiresAt: conversationResponse['expires_at'] != null
@@ -2494,10 +2181,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       LogService.error('Error navigating to chat: $e');
       if (mounted) {
         // Dismiss loading if still showing
-        if (loadingShown && Navigator.of(context, rootNavigator: true).canPop()) {
+        if (loadingShown &&
+            Navigator.of(context, rootNavigator: true).canPop()) {
           Navigator.of(context, rootNavigator: true).pop();
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

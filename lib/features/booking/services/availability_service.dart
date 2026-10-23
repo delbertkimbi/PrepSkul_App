@@ -1,3 +1,4 @@
+import '../utils/booking_time.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/models/recurring_session_model.dart';
@@ -9,7 +10,7 @@ import 'package:prepskul/features/booking/models/recurring_session_model.dart';
 /// - Get tutor's available time slots
 /// - Manage tutor's availability schedule
 class AvailabilityService {
-  static final _supabase = SupabaseService.client;
+  static get _supabase => SupabaseService.client;
 
   /// Check if requested times conflict with tutor's existing sessions
   static Future<ConflictResult> checkConflicts({
@@ -61,22 +62,20 @@ class AvailabilityService {
   }
 
   /// Get tutor's available days and times
-  static Future<TutorAvailability> getTutorAvailability(
-      String tutorId) async {
+  static Future<TutorAvailability> getTutorAvailability(String tutorId) async {
     try {
       final tutorProfile = await _supabase
           .from('tutor_profiles')
           .select('available_schedule, availability_schedule')
           .eq('user_id', tutorId)
           .maybeSingle();
-      
+
       if (tutorProfile == null) {
         throw Exception('Tutor profile not found: $tutorId');
       }
 
       // Parse available_schedule (array of strings like "Weekday evenings")
-      final availableSchedule =
-          tutorProfile['available_schedule'] as List?;
+      final availableSchedule = tutorProfile['available_schedule'] as List?;
       final Set<String> availableDays = {};
 
       if (availableSchedule != null) {
@@ -88,7 +87,7 @@ class AvailabilityService {
               'Tuesday',
               'Wednesday',
               'Thursday',
-              'Friday'
+              'Friday',
             ]);
           }
           if (scheduleStr.contains('weekend')) {
@@ -97,22 +96,16 @@ class AvailabilityService {
         }
       }
 
-      // If no availability data, assume all days available
-      if (availableDays.isEmpty) {
-        availableDays.addAll([
-          'Monday',
-          'Tuesday',
-          'Wednesday',
-          'Thursday',
-          'Friday',
-          'Saturday',
-          'Sunday',
-        ]);
-      }
-
       // Parse availability_schedule JSONB (detailed schedule with times)
       final detailedSchedule =
           tutorProfile['availability_schedule'] as Map<String, dynamic>?;
+      if (detailedSchedule != null) {
+        availableDays.addAll(
+          detailedSchedule.entries
+              .where((e) => e.value is List && (e.value as List).isNotEmpty)
+              .map((e) => e.key),
+        );
+      }
 
       return TutorAvailability(
         tutorId: tutorId,
@@ -126,7 +119,8 @@ class AvailabilityService {
 
   /// Get tutor's blocked time slots (from recurring, individual, and trial sessions)
   static Future<Map<String, List<String>>> getBlockedTimeSlots(
-      String tutorId) async {
+    String tutorId,
+  ) async {
     try {
       final Map<String, List<String>> blockedSlots = {};
 
@@ -156,24 +150,28 @@ class AvailabilityService {
           .from('trial_sessions')
           .select('scheduled_date, scheduled_time')
           .eq('tutor_id', tutorId)
-          .inFilter('status', ['pending', 'confirmed', 'completed']) // Block pending requests too to avoid double booking
+          .inFilter('status', [
+            'pending',
+            'confirmed',
+            'completed',
+          ]) // Block pending requests too to avoid double booking
           .gte('scheduled_date', DateTime.now().toIso8601String());
 
       for (final session in trialSessions as List) {
         final dateStr = session['scheduled_date'] as String;
         final timeStr = session['scheduled_time'] as String;
-        
-        // Convert date to day name (e.g., "Monday") to merge with generic pattern if needed, 
-        // OR store as specific date override. 
-        // For simplicity in this method which returns generic "Day -> [Times]", 
+
+        // Convert date to day name (e.g., "Monday") to merge with generic pattern if needed,
+        // OR store as specific date override.
+        // For simplicity in this method which returns generic "Day -> [Times]",
         // we might lose the specific date context if we just use Day Name.
-        // However, the UI calls this to get *generic* blocked slots? 
+        // However, the UI calls this to get *generic* blocked slots?
         // Wait, _loadTutorSchedule in UI gets blocked slots for *selected date*.
         // But it asks for *all* blocked slots and then filters by day name?
         // "final dayBlockedSlots = blockedSlots[dayName] ?? [];"
         // This logic is flawed for specific dates (like trials).
         // A trial on "Monday, Oct 23" shouldn't block "Monday, Oct 30".
-        
+
         // We should probably handle specific dates separately or return a structure that supports both.
         // For now, to minimally break existing contract, we'll add them to the day name bucket,
         // BUT this is technically incorrect for non-recurring.
@@ -181,13 +179,13 @@ class AvailabilityService {
         // The UI currently only looks up by dayName.
         // Let's try to convert the specific date to day name, BUT this means a single trial blocks ALL Mondays.
         // That's bad.
-        
+
         // Correct approach: logic should be "Is this specific date/time blocked?"
         // The UI `_loadTutorSchedule` gets `blockedSlots` map.
         // We should change `getBlockedTimeSlots` to accept a `date` parameter?
         // Or return a more complex object.
       }
-      
+
       return blockedSlots;
     } catch (e) {
       throw Exception('Failed to get blocked time slots: $e');
@@ -195,167 +193,83 @@ class AvailabilityService {
   }
 
   /// Get blocked time slots for a specific date
-  
+
   /// Normalize time string to "HH:mm" format
   /// Handles formats like "7:00 PM", "19:00", "7:00 AM", etc.
-  static String _normalizeTimeTo24Hour(String time) {
-    // If already in 24-hour format (HH:mm), return as is
-    if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(time.split(' ')[0])) {
-      final parts = time.split(' ')[0].split(':');
-      final hour = int.parse(parts[0]);
-      if (hour >= 0 && hour <= 23) {
-        return '${parts[0].padLeft(2, '0')}:${parts[1]}';
-      }
-    }
-    
-    // Parse 12-hour format (e.g., "7:00 PM")
-    try {
-      final parts = time.split(' ');
-      final timePart = parts[0].split(':');
-      var hour = int.parse(timePart[0]);
-      final minute = timePart.length > 1 ? timePart[1] : '00';
-      
-      // Check for AM/PM
-      if (parts.length > 1) {
-        final ampm = parts[1].toUpperCase();
-        if (ampm == 'PM' && hour != 12) {
-          hour += 12;
-        } else if (ampm == 'AM' && hour == 12) {
-          hour = 0;
-        }
-      }
-      
-      return '${hour.toString().padLeft(2, '0')}:$minute';
-    } catch (e) {
-      // If parsing fails, return as is (might already be in correct format)
-      return time;
-    }
+  static String _normalizeTimeTo24Hour(String time) =>
+      BookingTime.normalize(time);
+
+  static Future<List<Map<String, dynamic>>> _busyWindows(
+    String tutorId,
+    DateTime date,
+  ) async {
+    final rows = await _supabase.rpc(
+      'tutor_busy_windows',
+      params: {
+        'p_tutor_id': tutorId,
+        'p_date': date.toIso8601String().split('T')[0],
+      },
+    );
+    return (rows as List)
+        .map((r) => Map<String, dynamic>.from(r as Map))
+        .toList();
   }
-  
+
   static Future<List<String>> getBlockedTimesForDate(
-      String tutorId, DateTime date) async {
-    try {
-      final List<String> blockedTimes = [];
-      final dayName = _getDayName(date);
-      final dateStr = date.toIso8601String().split('T')[0];
-
-      // 1. Recurring Sessions (Weekly pattern)
-      final recurringSessions = await _supabase
-          .from('recurring_sessions')
-          .select()
-          .eq('tutor_id', tutorId)
-          .eq('status', 'active');
-
-      for (final session in recurringSessions as List) {
-        final days = List<String>.from(session['days'] ?? []);
-        final times = Map<String, String>.from(session['times'] ?? {});
-        if (days.contains(dayName) && times.containsKey(dayName)) {
-          blockedTimes.add(_normalizeTimeTo24Hour(times[dayName]!));
-        }
-      }
-
-      // 2. Individual Sessions (Specific instances, overrides recurring)
-      // This captures rescheduled recurring sessions or cancellations
-      // For now, simpler to just check recurring pattern + specific one-offs
-      
-      // 3. Trial Sessions (One-off)
-      final trialSessions = await _supabase
-          .from('trial_sessions')
-          .select('scheduled_time')
-          .eq('tutor_id', tutorId)
-          .eq('scheduled_date', dateStr)
-          .inFilter('status', ['pending', 'confirmed', 'completed']);
-
-      for (final session in trialSessions as List) {
-        blockedTimes.add(session['scheduled_time'] as String);
-      }
-      
-      // 4. Individual Sessions (One-off / Rescheduled)
-      // If we have the table
-      try {
-        final individualSessions = await _supabase
-            .from('individual_sessions')
-            .select('scheduled_time')
-            .eq('tutor_id', tutorId)
-            .eq('scheduled_date', dateStr)
-            .inFilter('status', ['scheduled', 'in_progress', 'completed']);
-            
-        for (final session in individualSessions as List) {
-          blockedTimes.add(session['scheduled_time'] as String);
-        }
-      } catch (_) {
-        // Table might not exist yet
-      }
-
-      return blockedTimes.toSet().toList(); // Remove duplicates
-    } catch (e) {
-      LogService.debug('Error getting blocked times for date: $e');
-      return [];
-    }
+    String tutorId,
+    DateTime date,
+  ) async {
+    final windows = await _busyWindows(tutorId, date);
+    return windows
+        .map((w) => w['start_minute'] as int)
+        .where((m) => m >= 0 && m < 1440)
+        .map(
+          (m) =>
+              '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}',
+        )
+        .toSet()
+        .toList();
   }
 
-  static String _getDayName(DateTime date) {
-    // Simple helper or use intl
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    return days[date.weekday - 1];
-  }
-
-  /// Get available time slots for a specific day
+  /// Only published starts which do not overlap the server's occupied ranges.
+  /// This is a preview, not a reservation; submission must revalidate atomically.
   static Future<List<String>> getAvailableTimesForDay({
     required String tutorId,
     required String day,
-    DateTime? date, // Added optional specific date
+    DateTime? date,
+    int durationMinutes = 60,
   }) async {
-    try {
-      // Get blocked slots
-      List<String> dayBlockedSlots = [];
-      
-      if (date != null) {
-        // Use new precise method if date is provided
-        dayBlockedSlots = await getBlockedTimesForDate(tutorId, date);
-      } else {
-        // Fallback to generic pattern
-        final blockedSlots = await getBlockedTimeSlots(tutorId);
-        dayBlockedSlots = blockedSlots[day] ?? [];
-      }
-
-      // All possible time slots (in production, this comes from tutor's settings)
-      // Fetch from tutor_profiles
-      final tutorProfile = await _supabase
-          .from('tutor_profiles')
-          .select('availability_schedule')
-          .eq('user_id', tutorId)
-          .maybeSingle();
-      
-      if (tutorProfile == null) {
-        throw Exception('Tutor profile not found: $tutorId');
-      }
-          
-      List<String> allSlots = [];
-      final schedule = tutorProfile['availability_schedule'] as Map<String, dynamic>?;
-      
-      if (schedule != null && schedule.containsKey(day)) {
-        // Use tutor's defined slots for this day
-        allSlots = List<String>.from(schedule[day] ?? []);
-      } else {
-        // Fallback defaults if no schedule set
-        allSlots = [
-          '09:00', '10:00', '11:00', '12:00', '13:00', 
-          '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
-        ];
-      }
-
-      // Filter out blocked slots
-      return allSlots.where((slot) {
-        // Normalize slot format for comparison (e.g. "09:00" vs "9:00 AM")
-        // For now assume simple string match, but might need normalization helper
-        return !dayBlockedSlots.contains(slot);
-      }).toList();
-    } catch (e) {
-      LogService.debug('Failed to get available times: $e'); // Log but don't crash
-      // Return defaults on error
-      return ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
-    }
+    if (date == null)
+      throw ArgumentError('A specific booking date is required');
+    if (durationMinutes <= 0 || durationMinutes > 180)
+      throw ArgumentError('Unsupported duration');
+    final windows = await _busyWindows(tutorId, date);
+    final tutor = await _supabase
+        .from('tutor_profiles')
+        .select('availability_schedule')
+        .eq('user_id', tutorId)
+        .maybeSingle();
+    if (tutor == null) throw StateError('Tutor profile unavailable');
+    final schedule = tutor['availability_schedule'];
+    final published = schedule is Map ? schedule[day] : null;
+    if (published == null) return [];
+    if (published is! List)
+      throw const FormatException('Invalid published schedule');
+    return published
+        .map((s) => BookingTime.normalize(s as String))
+        .toSet()
+        .where(
+          (slot) => !windows.any(
+            (w) => BookingTime.overlaps(
+              slot,
+              durationMinutes,
+              w['start_minute'] as int,
+              w['end_minute'] as int,
+            ),
+          ),
+        )
+        .toList()
+      ..sort();
   }
 
   /// Update tutor's availability schedule

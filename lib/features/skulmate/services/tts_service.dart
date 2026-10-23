@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'mate_bundled_voice.dart';
+import 'mate_cloud_voice.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, ValueNotifier;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:prepskul/core/localization/language_service.dart';
@@ -15,6 +16,7 @@ class TTSService {
 
   FlutterTts? _flutterTts;
   final _bundledVoice = MateBundledVoice();
+  final _cloudVoice = MateCloudVoice();
   bool _isInitialized = false;
   bool _isEnabled = true;
   final ValueNotifier<bool> speaking = ValueNotifier(false);
@@ -148,25 +150,8 @@ class TTSService {
   /// Speak text, interrupting any in-progress utterance by default.
   Future<void> speak(String text, {bool interrupt = true}) async {
     if (!_isEnabled || text.isEmpty) return;
-    if (!_isInitialized) await ensureInitialized();
-    if (!_isInitialized) return;
-
-    if (kIsWeb) await _preferNeuralVoice();
-
-    try {
-      if (!interrupt && _activeSpeakText == text) return;
-      if (interrupt) {
-        await stop();
-      }
-      _activeSpeakText = text;
-      await _flutterTts!.speak(text);
-      LogService.debug(
-        '[TTS] Speaking: ${text.substring(0, text.length > 50 ? 50 : text.length)}...',
-      );
-    } catch (e) {
-      _activeSpeakText = null;
-      LogService.error('[TTS] Error speaking: $e');
-    }
+    if (!interrupt && speaking.value) return;
+    await speakAndWait(text);
   }
 
   /// Debounced speak — waits for the user to pause before reading aloud.
@@ -195,6 +180,12 @@ class TTSService {
     if (await _bundledVoice.speak(text, (value) => speaking.value = value)) {
       return;
     }
+    if (await _cloudVoice.speak(
+      text,
+      _currentLanguage,
+      (value) => speaking.value = value,
+    ))
+      return;
     if (!_isInitialized) await ensureInitialized();
     if (!_isInitialized) return;
     if (kIsWeb) await _preferNeuralVoice();
@@ -235,6 +226,7 @@ class TTSService {
 
   /// Stop current speech
   Future<void> stop() async {
+    await _cloudVoice.stop();
     await _bundledVoice.stop();
     speaking.value = false;
     if (!_isInitialized) return;

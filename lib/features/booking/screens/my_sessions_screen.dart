@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/design/learner_design.dart';
+import 'package:prepskul/features/discovery/screens/find_tutors_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
@@ -78,12 +80,14 @@ class _MySessionsMemoryCache {
 /// Allows students/parents to view their upcoming and completed sessions
 /// Shows feedback prompts for completed sessions
 class MySessionsScreen extends StatefulWidget {
+  final bool embedded;
   final int? initialTab; // 0 = Upcoming, 1 = Past
   final String? sessionId; // Session ID to scroll to
   
   const MySessionsScreen({
     Key? key,
     this.initialTab,
+    this.embedded = false,
     this.sessionId,
   }) : super(key: key);
 
@@ -127,6 +131,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   void initState() {
     super.initState();
     _calendarFocusedDay = DateTime.now();
+    if (widget.embedded) _viewMode = 'calendar';
     // Use initialTab from arguments if provided, otherwise default to 0
     final initialTabIndex = widget.initialTab ?? 0;
     _tabController = TabController(
@@ -987,7 +992,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   Expanded(
                     child: Text(
                       'Connect Google Calendar',
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.nunito(
                         fontWeight: FontWeight.w600,
                         fontSize: 18,
                       ),
@@ -997,14 +1002,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               ),
               content: Text(
                 'To add sessions to your calendar, please connect your Google account.\n\nOnce connected, we will remember your preference and you will never be asked again.',
-                style: GoogleFonts.poppins(fontSize: 14),
+                style: GoogleFonts.nunito(fontSize: 14),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
                   child: Text(
                     'Cancel',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       color: Colors.grey[600],
                     ),
                   ),
@@ -1017,7 +1022,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                   child: Text(
                     'Connect',
-                    style: GoogleFonts.poppins(),
+                    style: GoogleFonts.nunito(),
                   ),
                 ),
               ],
@@ -1270,7 +1275,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           // Main countdown text
           Text(
             countdownText,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: isWithin24Hours ? 16 : 14,
               fontWeight: FontWeight.w800,
               color: AppTheme.primaryColor,
@@ -1281,7 +1286,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             const SizedBox(height: 4),
             Text(
               countdownSubtext,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 11,
                 color: Colors.grey[700],
                 fontWeight: FontWeight.w500,
@@ -1345,7 +1350,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           const SizedBox(width: 4),
           Text(
             label,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 8,
               fontWeight: FontWeight.w600,
               color: color,
@@ -1435,7 +1440,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     children: [
                       Text(
                         'Credits balance',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey[700],
@@ -1449,7 +1454,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         children: [
                           Text(
                             '$points',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
                               color: AppTheme.primaryColor,
@@ -1459,7 +1464,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           const SizedBox(width: 6),
                           Text(
                             'points',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: Colors.grey[600],
@@ -1470,7 +1475,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       const SizedBox(height: 4),
                       Text(
                         '$sessionsAvailable sessions available',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                           color: Colors.grey[600],
@@ -1637,7 +1642,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           ),
                           child: Text(
                             'TRIAL',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 8,
                               fontWeight: FontWeight.w600,
                               color: Colors.orange[700],
@@ -1691,7 +1696,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                 child: Center(
                                   child: Text(
                                     (tutorName?.isNotEmpty ?? false) ? tutorName![0].toUpperCase() : 'T',
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       fontSize: 17,
                                       fontWeight: FontWeight.w700,
                                       color: modeColor,
@@ -1704,7 +1709,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                 child: Center(
                                   child: Text(
                                     (tutorName?.isNotEmpty ?? false) ? tutorName![0].toUpperCase() : 'T',
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       fontSize: 17,
                                       fontWeight: FontWeight.w700,
                                       color: modeColor,
@@ -1718,7 +1723,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                               child: Center(
                                 child: Text(
                                   (tutorName?.isNotEmpty ?? false) ? tutorName![0].toUpperCase() : 'T',
-                                  style: GoogleFonts.poppins(
+                                  style: GoogleFonts.nunito(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w700,
                                     color: modeColor,
@@ -1737,7 +1742,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       children: [
                         Text(
                           tutorName ?? 'Loading...',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: Colors.black,
@@ -1758,7 +1763,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             Expanded(
                               child: Text(
                                 subject,
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 13,
                                   color: Colors.grey[700],
                                   height: 1.2,
@@ -1828,7 +1833,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           Expanded(
                             child: Text(
                               'Session is currently in progress',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
                                 color: AppTheme.accentGreen,
@@ -1865,7 +1870,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             Expanded(
                               child: Text(
                                 _formatDateTime(scheduledDate, scheduledTime),
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 12,
                                   color: Colors.grey[700],
                                   fontWeight: FontWeight.w500,
@@ -1882,7 +1887,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             Expanded(
                               child: Text(
                                 _formatStartEndTime(scheduledDate, scheduledTime, durationMinutes),
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 12,
                                   color: Colors.grey[700],
                                   fontWeight: FontWeight.w500,
@@ -1920,7 +1925,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         Expanded(
                           child: Text(
                             location == 'online' ? 'Online Session' : 'On-site Session',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                               fontSize: 12,
                       color: Colors.grey[700],
                               fontWeight: FontWeight.w500,
@@ -1940,7 +1945,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         onsiteAddress?.trim().isNotEmpty == true
                             ? onsiteAddress!
                             : 'On-site address not set',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontSize: 11,
                           color: Colors.grey[600],
                         ),
@@ -2001,7 +2006,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       Expanded(
                         child: Text(
                           'This session expired and was never attended',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                             color: Colors.red[700],
@@ -2063,7 +2068,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             ),
                             label: Text(
                               'Join Session',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -2115,7 +2120,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           children: [
                             Text(
                               hasFeedback ? 'Feedback Submitted' : 'Share Your Feedback',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: hasFeedback ? Colors.green[900] : Colors.black87,
@@ -2124,7 +2129,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             if (!hasFeedback)
                               Text(
                                 'Help us improve by rating your session',
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.nunito(
                                   fontSize: 12,
                                   color: Colors.grey[600],
                                 ),
@@ -2142,7 +2147,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                               : () => _openFeedbackScreen(sessionId),
                           child: Text(
                             'Submit',
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.nunito(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.primaryColor,
@@ -2269,7 +2274,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         builder: (dialogContext) => AlertDialog(
           title: Text(
             'End recurring booking?',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2277,12 +2282,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             children: [
               Text(
                 'This will stop upcoming sessions for both sides. Past/completed sessions stay unchanged.',
-                style: GoogleFonts.poppins(fontSize: 13),
+                style: GoogleFonts.nunito(fontSize: 13),
               ),
               const SizedBox(height: 12),
               Text(
                 'When stopping, choose what happens next:',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -2299,11 +2304,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       onChanged: (v) => setDialogState(() => terminationMode = v ?? 'end_now'),
                       title: Text(
                         'Stop everything now',
-                        style: GoogleFonts.poppins(fontSize: 13),
+                        style: GoogleFonts.nunito(fontSize: 13),
                       ),
                       subtitle: Text(
                         'Cancels all upcoming unstarted sessions.',
-                        style: GoogleFonts.poppins(fontSize: 12),
+                        style: GoogleFonts.nunito(fontSize: 12),
                       ),
                     ),
                     RadioListTile<String>(
@@ -2316,11 +2321,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       ),
                       title: Text(
                         'Allow paid upcoming sessions only',
-                        style: GoogleFonts.poppins(fontSize: 13),
+                        style: GoogleFonts.nunito(fontSize: 13),
                       ),
                       subtitle: Text(
                         'Keeps already-paid sessions; stops unpaid ones.',
-                        style: GoogleFonts.poppins(fontSize: 12),
+                        style: GoogleFonts.nunito(fontSize: 12),
                       ),
                     ),
                     RadioListTile<String>(
@@ -2333,11 +2338,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       ),
                       title: Text(
                         'Request admin refund/intervention review',
-                        style: GoogleFonts.poppins(fontSize: 13),
+                        style: GoogleFonts.nunito(fontSize: 13),
                       ),
                       subtitle: Text(
                         'Flags the case to admin while stopping unpaid upcoming sessions.',
-                        style: GoogleFonts.poppins(fontSize: 12),
+                        style: GoogleFonts.nunito(fontSize: 12),
                       ),
                     ),
                   ],
@@ -2362,7 +2367,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               onPressed: () => Navigator.pop(dialogContext, false),
               child: Text(
                 'Keep booking',
-                style: GoogleFonts.poppins(color: AppTheme.textMedium),
+                style: GoogleFonts.nunito(color: AppTheme.textMedium),
               ),
             ),
             ElevatedButton(
@@ -2371,7 +2376,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
               ),
-              child: Text('End booking', style: GoogleFonts.poppins()),
+              child: Text('End booking', style: GoogleFonts.nunito()),
             ),
           ],
         ),
@@ -2464,7 +2469,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             Expanded(
               child: Text(
                 'Session Details',
-                style: GoogleFonts.poppins(
+                style: GoogleFonts.nunito(
                   fontWeight: FontWeight.w600,
                   fontSize: 18,
                 ),
@@ -2555,7 +2560,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                   padding: const EdgeInsets.only(bottom: 6),
                                   child: Text(
                                     countdownText,
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.nunito(
                                       fontSize: 12,
                                       color: AppTheme.textMedium,
                                       fontWeight: FontWeight.w500,
@@ -2572,7 +2577,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                 icon: Icon(PhosphorIcons.videoCamera, size: 18),
                                 label: Text(
                                   status == 'in_progress' ? 'Join Session' : 'Join Video Session',
-                                  style: GoogleFonts.poppins(),
+                                  style: GoogleFonts.nunito(),
                                 ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: canJoin
@@ -2597,7 +2602,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       icon: Icon(PhosphorIcons.chatCircleDots, size: 18, color: AppTheme.primaryColor),
                       label: Text(
                         'Message Tutor',
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.nunito(
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primaryColor,
                         ),
@@ -2626,7 +2631,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         ),
                         label: Text(
                           'End Recurring',
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.nunito(
                             fontWeight: FontWeight.w600,
                             color: Colors.red[700],
                           ),
@@ -2653,7 +2658,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             onPressed: () => Navigator.pop(context),
             child: Text(
               'Close',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 color: AppTheme.primaryColor,
                 fontWeight: FontWeight.w600,
               ),
@@ -2674,7 +2679,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             width: 80,
             child: Text(
               label,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[700],
@@ -2684,7 +2689,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.nunito(
                 fontSize: 13,
                 color: Colors.black87,
               ),
@@ -2700,7 +2705,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: OnboardPalette.cream,
-      appBar: AppBar(
+      appBar: widget.embedded ? null : AppBar(
         leading: Builder(
           builder: (context) {
             // Check if we can pop - if not, navigate to dashboard instead
@@ -2764,8 +2769,19 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // View: List | By day | Calendar
-          Padding(
+          if (widget.embedded) TabBar(
+            controller: _tabController,
+            indicatorColor: AppTheme.primaryColor,
+            labelColor: AppTheme.primaryColor,
+            unselectedLabelColor: AppTheme.textMedium,
+            labelStyle: onboardFont(size: 14),
+            tabs: [
+              Tab(text: Localizations.localeOf(context).languageCode == 'fr' ? 'À venir (${_upcomingSessions.length})' : 'Upcoming (${_upcomingSessions.length})'),
+              Tab(text: Localizations.localeOf(context).languageCode == 'fr' ? 'Passés (${_pastSessions.length})' : 'Past (${_pastSessions.length})'),
+            ],
+          ),
+          // Only offer view controls when there is something to arrange.
+          if (!widget.embedded && (_upcomingSessions.isNotEmpty || _pastSessions.isNotEmpty)) Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -2773,7 +2789,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 children: [
                   Text(
                     'View: ',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.nunito(
                       fontSize: 13,
                       color: Colors.grey[700],
                       fontWeight: FontWeight.w500,
@@ -2856,35 +2872,24 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               children: [
                 // Upcoming Sessions
                 _upcomingSessions.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              PhosphorIcons.calendar,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No Upcoming Sessions',
-                              style: GoogleFonts.poppins(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Book a session to get started',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                color: Colors.grey[500],
-                              ),
-                            ),
-                          ],
+                    ? LayoutBuilder(builder: (context, bounds) => SingleChildScrollView(
+                        child: ConstrainedBox(constraints: BoxConstraints(minHeight: bounds.maxHeight),
+                          child: Padding(padding: const EdgeInsets.all(28), child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(width: 64, height: 64, decoration: BoxDecoration(color: LearnerDesign.sky, borderRadius: BorderRadius.circular(22)),
+                                child: const Icon(Icons.calendar_today_outlined, color: LearnerDesign.blue, size: 28)),
+                              const SizedBox(height: 24),
+                              Text(Localizations.localeOf(context).languageCode == 'fr' ? 'Du temps pour comprendre.' : 'Make room for a breakthrough.', textAlign: TextAlign.center, style: LearnerDesign.title(24)),
+                              const SizedBox(height: 10),
+                              Text(Localizations.localeOf(context).languageCode == 'fr' ? 'Tes cours réservés apparaîtront ici. Trouve un tuteur pour travailler ensemble.' : 'Your booked lessons will live here. Find a tutor when you’d like to work with someone.', textAlign: TextAlign.center, style: LearnerDesign.body()),
+                              const SizedBox(height: 24),
+                              FilledButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FindTutorsScreen())),
+                                icon: const Icon(Icons.add, size: 18), label: Text(Localizations.localeOf(context).languageCode == 'fr' ? 'Trouver un tuteur' : 'Find a tutor')),
+                            ],
+                          )),
                         ),
-                      )
+                      ))
                     : RefreshIndicator(
                         onRefresh: _loadSessions,
                         child: _viewMode == 'calendar'
@@ -2920,7 +2925,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             const SizedBox(height: 16),
                             Text(
                               'No Completed Sessions',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.grey[600],
@@ -2929,7 +2934,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             const SizedBox(height: 8),
                             Text(
                               'Your completed sessions will appear here',
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.nunito(
                                 fontSize: 14,
                                 color: Colors.grey[500],
                               ),
@@ -2995,7 +3000,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         padding: const EdgeInsets.only(top: 8, bottom: 6),
         child: Text(
           label,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 15,
             fontWeight: FontWeight.w700,
             color: AppTheme.primaryColor,
@@ -3048,7 +3053,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         padding: const EdgeInsets.only(top: 8, bottom: 6),
         child: Text(
           label,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.nunito(
             fontSize: 15,
             fontWeight: FontWeight.w700,
             color: AppTheme.primaryColor,
@@ -3095,7 +3100,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       },
       selectedColor: AppTheme.primaryColor,
       checkmarkColor: Colors.white,
-      labelStyle: GoogleFonts.poppins(
+      labelStyle: GoogleFonts.nunito(
         fontSize: 13,
         fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
         color: selected ? Colors.white : AppTheme.textDark,
@@ -3190,15 +3195,15 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         focusedDay: clampedFocused,
         selectedDayPredicate: (day) => _isSameDay(clampedFocused, day),
         onDaySelected: (selectedDay, focusedDay) {
-          safeSetState(() => _calendarFocusedDay = focusedDay);
+          safeSetState(() => _calendarFocusedDay = selectedDay);
         },
         eventLoader: (day) =>
             datesWithSessions.any((d) => _isSameDay(d, day)) ? ['session'] : [],
-        calendarFormat: CalendarFormat.month,
+        calendarFormat: widget.embedded ? CalendarFormat.week : CalendarFormat.month,
         headerStyle: HeaderStyle(
           formatButtonVisible: false,
           titleCentered: true,
-          titleTextStyle: GoogleFonts.poppins(
+          titleTextStyle: GoogleFonts.nunito(
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -3235,7 +3240,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           padding: const EdgeInsets.only(top: 8),
           child: Text(
             'No sessions on this day',
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.nunito(
               fontSize: 14,
               color: Colors.grey[600],
             ),
