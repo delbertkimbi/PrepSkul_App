@@ -60,10 +60,12 @@ android {
     // --- START: Signing Configs (Kotlin DSL syntax) ---
     signingConfigs {
         create("release") {
-            storeFile = file(storeProperties["storeFile"] as String)
-            storePassword = storeProperties["storePassword"] as String
-            keyAlias = storeProperties["keyAlias"] as String
-            keyPassword = storeProperties["keyPassword"] as String
+            // A fresh debug checkout does not need production signing secrets.
+            // Release signing remains required by Android's validation task.
+            storeFile = storeProperties.getProperty("storeFile")?.let { file(it) }
+            storePassword = storeProperties.getProperty("storePassword")
+            keyAlias = storeProperties.getProperty("keyAlias")
+            keyPassword = storeProperties.getProperty("keyPassword")
         }
     }
     // --- END: Signing Configs ---

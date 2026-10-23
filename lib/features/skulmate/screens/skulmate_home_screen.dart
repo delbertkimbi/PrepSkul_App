@@ -813,6 +813,12 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                             key: ValueKey('practice-${turn.id}'),
                             surface: turn.surface!,
                             onOutcome: (_) async {},
+                            onContinue: () => _sendText(
+                              Localizations.localeOf(context).languageCode ==
+                                      'fr'
+                                  ? 'Reprenons mes réponses ensemble, puis passons au prochain défi.'
+                                  : 'Let’s review my answers together, then try the next challenge.',
+                            ),
                             onVerifiedOutcome: (correct, answers) async {
                               _reactToAnswer(correct);
                               if (_sessionId == null || turn.id == null) {

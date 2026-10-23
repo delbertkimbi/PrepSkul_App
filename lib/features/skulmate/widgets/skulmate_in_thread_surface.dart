@@ -7,6 +7,7 @@ import 'package:prepskul/features/skulmate/widgets/skulmate_surface_styles.dart'
 /// Compact practice card inside the tutor thread.
 class SkulMateInThreadSurface extends StatefulWidget {
   final PracticeSurface surface;
+  final VoidCallback? onContinue;
   final Future<void> Function(bool correct) onOutcome;
   final Future<void> Function(bool correct, List<int?> answers)?
   onVerifiedOutcome;
@@ -14,6 +15,7 @@ class SkulMateInThreadSurface extends StatefulWidget {
   const SkulMateInThreadSurface({
     super.key,
     required this.surface,
+    this.onContinue,
     required this.onOutcome,
     this.onVerifiedOutcome,
   });
@@ -64,6 +66,11 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
           ),
           const SizedBox(height: 8),
           Text(
+            french
+                ? "Question ${_index + 1} sur ${widget.surface.items.length}"
+                : "Question ${_index + 1} of ${widget.surface.items.length}",
+          ),
+          Text(
             blank ?? question,
             style: GoogleFonts.nunito(
               fontSize: 16,
@@ -105,12 +112,15 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
                         ? null
                         : () => _answerQuiz(i, correctIndex),
                     borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: Text(options[i]),
                       ),
-                      child: Text(options[i]),
                     ),
                   ),
                 ),
@@ -125,6 +135,31 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
                 child: Text(french ? 'Continuer' : 'Continue'),
               ),
             ),
+          if (_revealed && options.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              _picked == int.tryParse('${item['correctAnswer']}')
+                  ? (french ? 'Bien joué !' : 'Nicely done!')
+                  : (french
+                        ? 'Regardons la correction ensemble.'
+                        : 'Let’s work through the correction.'),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            if (item['explanation'] != null) Text('${item['explanation']}'),
+            if (!_done && !_saving && _saveError == null)
+              FilledButton(
+                onPressed: () => _finish(
+                  _picked == int.tryParse('${item['correctAnswer']}'),
+                ),
+                child: Text(
+                  _index < widget.surface.items.length - 1
+                      ? (french ? 'Question suivante' : 'Next question')
+                      : (french
+                            ? 'Terminer cette pratique'
+                            : 'Finish practice'),
+                ),
+              ),
+          ],
           if (_saving) const LinearProgressIndicator(),
           if (_saveError != null) ...[
             Text(
@@ -137,8 +172,24 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
               child: Text(french ? 'Réessayer' : 'Retry'),
             ),
           ],
-          if (_done)
-            Text(french ? 'Progression enregistrée' : 'Progress saved'),
+          if (_done) ...[
+            Text(
+              _allCorrect
+                  ? (french ? 'Pratique terminée.' : 'Practice complete.')
+                  : (french
+                        ? 'Revoyons les points difficiles avec Mate.'
+                        : 'Let’s review the tricky parts with Mate.'),
+            ),
+            if (widget.onContinue != null)
+              FilledButton(
+                onPressed: widget.onContinue,
+                child: Text(
+                  _allCorrect
+                      ? (french ? 'Continuer avec Mate' : 'Continue with Mate')
+                      : (french ? 'Corriger avec Mate' : 'Review with Mate'),
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -149,9 +200,6 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
       _picked = picked;
       _revealed = true;
     });
-    final correct = picked == correctIndex;
-    await Future<void>.delayed(const Duration(milliseconds: 450));
-    await _finish(correct);
   }
 
   Future<void> _finish(bool correct) async {
