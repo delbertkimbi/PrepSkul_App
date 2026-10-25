@@ -1,3 +1,4 @@
+import '../widgets/mate_tutor_recommendations.dart';
 import 'package:prepskul/core/widgets/mascot_state.dart';
 import 'dart:async';
 import 'package:prepskul/core/design/prepskul_icon.dart';
@@ -845,6 +846,8 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                               }
                             },
                           ),
+                        if (turn.escalate && _learningSubject != null)
+                          MateTutorRecommendations(subject: _learningSubject!),
                         if (turn.escalate)
                           Align(
                             alignment: Alignment.centerLeft,

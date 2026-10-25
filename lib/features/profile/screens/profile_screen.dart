@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'account_deletion_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -1078,6 +1079,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
 
+                      Center(
+                        child: TextButton(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const AccountDeletionScreen(),
+                            ),
+                          ),
+                          child: const Text(
+                            'Delete account',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 40),
                     ],
                   ),

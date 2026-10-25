@@ -40,17 +40,21 @@ class SkulMateTutorSessionService {
   }) async {
     final token = await _token();
     final userId = await _userId();
-    final response = await SkulMateService.postJson(
-      url: '$_base/skulmate/session',
-      token: token ?? '',
-      body: {
-        if (userId != null) 'userId': userId,
-        if (childId != null) 'childId': childId,
-        if (forceNew) 'forceNew': true,
-        if (lessonId != null) 'lessonId': lessonId,
-        if (lessonStep != null) 'lessonStep': lessonStep,
-      },
-    );
+    // Opening a session is not a long-running generation request. Avoid
+    // retrying a session-creating POST and waiting minutes on poor networks.
+    final response = await http
+        .post(
+          Uri.parse('$_base/skulmate/session'),
+          headers: _headers(token),
+          body: jsonEncode({
+            if (userId != null) 'userId': userId,
+            if (childId != null) 'childId': childId,
+            if (forceNew) 'forceNew': true,
+            if (lessonId != null) 'lessonId': lessonId,
+            if (lessonStep != null) 'lessonStep': lessonStep,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 200) {
       throw Exception(json['error'] ?? 'Could not open tutor session');
@@ -67,7 +71,9 @@ class SkulMateTutorSessionService {
         if (userId != null) 'userId': userId,
       },
     );
-    final response = await http.get(uri, headers: _headers(token));
+    final response = await http
+        .get(uri, headers: _headers(token))
+        .timeout(const Duration(seconds: 20));
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 200) {
       throw Exception(json['error'] ?? 'Could not load tutor session');
@@ -86,7 +92,9 @@ class SkulMateTutorSessionService {
         if (userId != null) 'userId': userId,
       },
     );
-    final response = await http.get(uri, headers: _headers(token));
+    final response = await http
+        .get(uri, headers: _headers(token))
+        .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) return [];
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     final rows = json['sessions'] as List<dynamic>? ?? [];

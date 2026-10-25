@@ -119,7 +119,41 @@ class _SkulMateInThreadSurfaceState extends State<SkulMateInThreadSurface> {
                           horizontal: 12,
                           vertical: 10,
                         ),
-                        child: Text(options[i]),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? AppTheme.primaryColor
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                "${String.fromCharCode(65 + i)}.",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: selected
+                                      ? Colors.white
+                                      : AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(child: Text(options[i])),
+                            if (_revealed && i == correctIndex)
+                              Text(
+                                french ? 'Correct' : 'Correct',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            if (_revealed && selected && i != correctIndex)
+                              Text(french ? 'Ton choix' : 'Your choice'),
+                          ],
+                        ),
                       ),
                     ),
                   ),
