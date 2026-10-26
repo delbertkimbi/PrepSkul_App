@@ -4,7 +4,7 @@ import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/push_notification_service.dart';
 import 'home_goal_line_service.dart';
-import 'game_stats_service.dart';
+import 'learning_activity_store.dart';
 
 /// Daily SkulMate revision reminder — local notification, Duolingo-style timing.
 ///
@@ -75,18 +75,19 @@ class SkulMateStreakReminderService {
       final enabled = await isEnabled();
       if (!enabled) return;
 
-      final stats = await GameStatsService.getStats();
+      final activity = await LearningActivityStore.read();
 
       final now = DateTime.now();
-      final lastPlayed = stats.lastPlayedDate;
-      final playedToday =
-          lastPlayed != null &&
-          lastPlayed.year == now.year &&
-          lastPlayed.month == now.month &&
-          lastPlayed.day == now.day;
+      final playedToday = activity.any((row) {
+        final at = DateTime.tryParse('${row['at'] ?? ''}')?.toLocal();
+        return at != null &&
+            at.year == now.year &&
+            at.month == now.month &&
+            at.day == now.day;
+      });
 
       final time = await getReminderTime();
-      final streakCount = stats.currentStreak > 0 ? stats.currentStreak : 0;
+      final streakCount = LearningActivityStore.streak(activity, now);
       final french = LanguageService.isFrench;
       final title = french
           ? 'Qu\'est-ce qu\'on révise aujourd\'hui ?'

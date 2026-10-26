@@ -13,6 +13,26 @@ import 'package:prepskul/features/skulmate/services/skulmate_service.dart';
 import 'package:prepskul/features/skulmate/services/skulmate_session_cache.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// Session failures keep authentication and unavailable service states distinct.
+class MateSessionException implements Exception {
+  final int statusCode;
+  const MateSessionException(this.statusCode);
+  String message(bool french) => switch (statusCode) {
+    401 =>
+      french
+          ? 'Reconnecte-toi pour continuer avec Mate.'
+          : 'Sign in again to continue with Mate.',
+    404 =>
+      french
+          ? 'Ce cours a changé. Rouvre ton parcours pour continuer.'
+          : 'This lesson has changed. Reopen your learning path to continue.',
+    _ =>
+      french
+          ? 'Mate est momentanément indisponible. Tes cours enregistrés restent disponibles.'
+          : 'Mate is temporarily unavailable. Your saved lessons are still available.',
+  };
+}
+
 /// Talks to the SkulMate tutor session API.
 class SkulMateTutorSessionService {
   SkulMateTutorSessionService._();
@@ -57,7 +77,7 @@ class SkulMateTutorSessionService {
         .timeout(const Duration(seconds: 20));
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 200) {
-      throw Exception(json['error'] ?? 'Could not open tutor session');
+      throw MateSessionException(response.statusCode);
     }
     return json;
   }

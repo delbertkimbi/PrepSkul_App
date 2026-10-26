@@ -229,7 +229,14 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
     );
   }
 
-  Future<void> _bootstrap() async {
+  Future<void>? _openingSession;
+  Future<void> _bootstrap() {
+    return _openingSession ??= _openSessionOnce().whenComplete(
+      () => _openingSession = null,
+    );
+  }
+
+  Future<void> _openSessionOnce() async {
     if (!_pendingNewSession &&
         widget.initialMessage == null &&
         widget.lessonId == null &&
@@ -264,7 +271,11 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
           _sessionId = null;
           _demo = false;
           _busy = false;
-          _error = SkulMateCopy.read(context).tutorSessionError;
+          _error = e is MateSessionException
+              ? e.message(Localizations.localeOf(context).languageCode == 'fr')
+              : (Localizations.localeOf(context).languageCode == 'fr'
+                    ? 'Connexion à Mate interrompue. Réessaie quand la connexion revient.'
+                    : 'Couldn’t connect to Mate. Retry when the connection is available.');
         });
       }
     }
@@ -410,7 +421,14 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
       return;
     }
     final sessionId = _sessionId;
-    if (sessionId == null) await _bootstrap();
+    if (sessionId == null) {
+      _composer.text = text;
+      safeSetState(() => _busy = true);
+      _voice.setThinking();
+      await _bootstrap();
+      if (!mounted) return;
+      safeSetState(() => _busy = false);
+    }
     final id = _sessionId;
     if (id == null) return;
 
@@ -675,7 +693,9 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                   child: Row(
                     children: [
                       AliveMate(
-                        state: _reaction == SkulMateMascotState.success
+                        state: _busy
+                            ? MascotState.thinking
+                            : _reaction == SkulMateMascotState.success
                             ? MascotState.success
                             : _reaction == SkulMateMascotState.tryAgain
                             ? MascotState.tryAgain
@@ -872,12 +892,10 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Row(
                             children: [
-                              const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
+                              const AliveMate(
+                                mood: Mood.thinking,
+                                state: MascotState.thinking,
+                                size: 52,
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -935,7 +953,13 @@ class _SkulMateHomeScreenState extends State<SkulMateHomeScreen>
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const SizedBox(height: 16),
-        ExcludeSemantics(child: prepMate(mood: Mood.wave, size: 112)),
+        ExcludeSemantics(
+          child: AliveMate(
+            mood: _busy ? Mood.thinking : Mood.wave,
+            state: _busy ? MascotState.thinking : null,
+            size: 112,
+          ),
+        ),
         const SizedBox(height: 12),
         Text(
           copy.isFrench

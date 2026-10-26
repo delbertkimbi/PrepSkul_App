@@ -22,3 +22,14 @@ Still required before promising end-to-end readiness:
 - Pixel installation: wireless connection dropped during APK transfer; installation failed.
 
 The database connector reported unavailable during this pass. No database changes were applied.
+
+## October 26 continuation
+
+- The local preview's Mate API on port 3000 was not running. Restarted it and verified the session endpoint responds with HTTP 401 for an unauthenticated request. This proves reachability, not authenticated lesson generation.
+- Added `scripts/run-preview.sh` to start the backend alongside the Flutter preview.
+- Session opening now coalesces concurrent requests. Authentication and missing-lesson failures have distinct messages. Typed/voice input is retained while reconnecting, with immediate thinking feedback.
+- Busy Mate uses the existing thinking animation; the learning summary selects encouragement, celebration or graduation according to the streak.
+- Local reminders now use learning activity rather than legacy game statistics. They use the saved visit time. Remote push/email reminders and production scheduler delivery have not been verified.
+- Eight practice/voice-input tests passed. Targeted analysis reported no errors and three existing style infos.
+
+Higgsfield implementation boundary: use the assessment's deterministic interactive teaching board first. Generated images/video should be optional reviewed assets, never a dependency for opening or completing a lesson. CLI/MCP generation spends account credits; web Unlimited/free allowances must not be assumed to apply. No paid generation or subscription was initiated.

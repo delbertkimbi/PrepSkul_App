@@ -38,7 +38,17 @@ class _ProgressState extends State<MateLearningProgressScreen> {
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              const Center(child: AliveMate(mood: Mood.cheer, size: 132)),
+              Center(
+                child: AliveMate(
+                  mood: streak > 0 ? Mood.cheer : Mood.encourage,
+                  state: streak >= 7
+                      ? MascotState.graduation
+                      : streak > 0
+                      ? MascotState.celebrate
+                      : MascotState.encourage,
+                  size: 104,
+                ),
+              ),
               const SizedBox(height: 8),
               const PrepSkulIcon(PrepSkulGlyph.streak, size: 32),
               const SizedBox(height: 20),
