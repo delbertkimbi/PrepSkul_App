@@ -33,3 +33,5 @@ The database connector reported unavailable during this pass. No database change
 - Eight practice/voice-input tests passed. Targeted analysis reported no errors and three existing style infos.
 
 Higgsfield implementation boundary: use the assessment's deterministic interactive teaching board first. Generated images/video should be optional reviewed assets, never a dependency for opening or completing a lesson. CLI/MCP generation spends account credits; web Unlimited/free allowances must not be assumed to apply. No paid generation or subscription was initiated.
+
+Device verification (October 26): current debug APK installed successfully on the connected Pixel 7a. Package update timestamp is October 26, 08:34; MainActivity launched and remained the resumed activity with a live process. Port 3000 is forwarded to the local backend. This development connection requires the computer/backend and ADB connection. Web release build also passed (155.1 seconds). Signed-in lesson completion is not yet verified.
